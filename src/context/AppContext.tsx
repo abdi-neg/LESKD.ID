@@ -1,0 +1,355 @@
+import { createContext, useContext, useReducer, useEffect, ReactNode } from 'react';
+import { AppState, AppView, ExamSession, Profile, Question, ExamType, ExamPackage } from '../types';
+import { mockQuestions, EXAM_CONFIGS } from '../data/mockData';
+import { supabase, getProfile } from '../lib/supabase';
+import {
+  saveExamProgress,
+  loadExamProgress,
+  getActiveSessionId,
+  clearExamProgress,
+} from '../lib/examPersistence';
+
+type AppAction =
+  | { type: 'SET_AUTH_LOADING'; payload: boolean }
+  | { type: 'SET_PROFILE'; payload: Profile | null }
+  | { type: 'LOGOUT' }
+  | { type: 'SET_VIEW'; payload: AppView }
+  | { type: 'START_EXAM'; payload: { examType: ExamType; pkg?: ExamPackage } }
+  | { type: 'RESUME_EXAM'; payload: ExamSession }
+  | { type: 'ANSWER_QUESTION'; payload: { questionId: string; answer: string } }
+  | { type: 'TOGGLE_MARK'; payload: string }
+  | { type: 'NAVIGATE_QUESTION'; payload: number }
+  | { type: 'TICK_TIMER' }
+  | { type: 'RESTORE_TIMER'; payload: number }
+  | { type: 'SUBMIT_EXAM' }
+  | { type: 'CLEAR_EXAM' }
+  | { type: 'OPEN_REVIEW'; payload: string };
+
+const initialState: AppState = {
+  profile: null,
+  authLoading: true,
+  currentView: 'landing',
+  examSession: null,
+  reviewResultId: null,
+};
+
+export function packageTypeToExamType(pt: string): ExamType {
+  if (pt === 'MINI_TIU') return 'TIU';
+  if (pt === 'MINI_TWK') return 'TWK';
+  if (pt === 'MINI_TKP') return 'TKP';
+  return 'FULL';
+}
+
+// Fetch questions for a package from Supabase, fallback to mockQuestions
+async function fetchQuestionsForExam(
+  examType: ExamType,
+  packageId?: string,
+): Promise<Question[]> {
+  const config = EXAM_CONFIGS[examType];
+
+  if (packageId) {
+    const query = supabase
+      .from('questions')
+      .select('*')
+      .eq('package_id', packageId)
+      .order('created_at');
+
+    const { data } = await query;
+    if (data && data.length > 0) {
+      // Filter by category for non-FULL types
+      const filtered = examType === 'FULL'
+        ? (data as Question[])
+        : (data as Question[]).filter((q) => q.category === examType);
+      if (filtered.length > 0) return filtered.slice(0, config.questionCount);
+    }
+  }
+
+  // Fallback: mockQuestions
+  const mock = examType === 'FULL'
+    ? mockQuestions
+    : mockQuestions.filter((q) => q.category === examType);
+
+  let padded = mock;
+  while (padded.length < config.questionCount) {
+    padded = [...padded, ...padded].slice(0, config.questionCount);
+  }
+  return padded.slice(0, config.questionCount);
+}
+
+function buildSession(
+  examType: ExamType,
+  questions: Question[],
+  pkg?: ExamPackage,
+): ExamSession {
+  const config = EXAM_CONFIGS[examType];
+  const answers: ExamSession['answers'] = {};
+  questions.forEach((q) => {
+    answers[q.id] = { questionId: q.id, selectedAnswer: null, isMarked: false };
+  });
+  return {
+    id: crypto.randomUUID(),
+    packageId: pkg?.id,
+    packageName: pkg?.name,
+    examType,
+    questions,
+    answers,
+    currentQuestionIndex: 0,
+    timeRemaining: config.timeMinutes * 60,
+    status: 'in_progress',
+    startedAt: new Date(),
+  };
+}
+
+function calculateScores(session: ExamSession) {
+  let tiu = 0, twk = 0, tkp = 0;
+  session.questions.forEach((q) => {
+    const answer = session.answers[q.id];
+    if (!answer?.selectedAnswer) return;
+    if (q.category === 'TKP') {
+      const v: Record<string, number> = { A: 5, B: 4, C: 3, D: 2, E: 1 };
+      tkp += v[answer.selectedAnswer] ?? 0;
+    } else {
+      const pts = answer.selectedAnswer === q.correct_answer ? 5 : 0;
+      if (q.category === 'TIU') tiu += pts;
+      else twk += pts;
+    }
+  });
+  return { tiu, twk, tkp, total: tiu + twk + tkp };
+}
+
+function getViewForProfile(p: Profile): AppView {
+  if (!p.is_approved) return 'waiting-room';
+  if (p.role === 'participant') return 'participant-dashboard';
+  return 'admin-dashboard';
+}
+
+function appReducer(state: AppState, action: AppAction): AppState {
+  switch (action.type) {
+    case 'SET_AUTH_LOADING':
+      return { ...state, authLoading: action.payload };
+
+    case 'SET_PROFILE': {
+      if (!action.payload) return { ...state, profile: null, currentView: 'landing', authLoading: false };
+      const examActive = state.currentView === 'exam-engine' || state.currentView === 'exam-results';
+      return {
+        ...state,
+        profile: action.payload,
+        authLoading: false,
+        currentView: examActive ? state.currentView : getViewForProfile(action.payload),
+      };
+    }
+
+    case 'LOGOUT':
+      return { ...initialState, authLoading: false };
+
+    case 'SET_VIEW':
+      return { ...state, currentView: action.payload };
+
+    // Kept for edge cases; normal flow goes through async startExam()
+    case 'START_EXAM': {
+      const { examType, pkg } = action.payload;
+      const config = EXAM_CONFIGS[examType];
+      const mock = examType === 'FULL'
+        ? mockQuestions
+        : mockQuestions.filter((q) => q.category === examType);
+      let padded = mock;
+      while (padded.length < config.questionCount) {
+        padded = [...padded, ...padded].slice(0, config.questionCount);
+      }
+      const session = buildSession(examType, padded.slice(0, config.questionCount), pkg);
+      return { ...state, examSession: session, currentView: 'exam-engine' };
+    }
+
+    case 'RESUME_EXAM':
+      return { ...state, examSession: action.payload, currentView: 'exam-engine' };
+
+    case 'ANSWER_QUESTION': {
+      if (!state.examSession) return state;
+      const { questionId, answer } = action.payload;
+      return {
+        ...state,
+        examSession: {
+          ...state.examSession,
+          answers: {
+            ...state.examSession.answers,
+            [questionId]: {
+              ...state.examSession.answers[questionId],
+              selectedAnswer: answer as import('../types').AnswerOption,
+            },
+          },
+        },
+      };
+    }
+
+    case 'TOGGLE_MARK': {
+      if (!state.examSession) return state;
+      const qId = action.payload;
+      const cur = state.examSession.answers[qId];
+      return {
+        ...state,
+        examSession: {
+          ...state.examSession,
+          answers: { ...state.examSession.answers, [qId]: { ...cur, isMarked: !cur.isMarked } },
+        },
+      };
+    }
+
+    case 'NAVIGATE_QUESTION': {
+      if (!state.examSession) return state;
+      return { ...state, examSession: { ...state.examSession, currentQuestionIndex: action.payload } };
+    }
+
+    case 'RESTORE_TIMER': {
+      if (!state.examSession) return state;
+      return { ...state, examSession: { ...state.examSession, timeRemaining: action.payload } };
+    }
+
+    case 'TICK_TIMER': {
+      if (!state.examSession || state.examSession.timeRemaining <= 0) return state;
+      const newTime = state.examSession.timeRemaining - 1;
+      if (newTime <= 0) {
+        const scores = calculateScores(state.examSession);
+        return {
+          ...state,
+          currentView: 'exam-results',
+          examSession: { ...state.examSession, timeRemaining: 0, status: 'completed', completedAt: new Date(), scores },
+        };
+      }
+      return { ...state, examSession: { ...state.examSession, timeRemaining: newTime } };
+    }
+
+    case 'SUBMIT_EXAM': {
+      if (!state.examSession) return state;
+      const scores = calculateScores(state.examSession);
+      return {
+        ...state,
+        currentView: 'exam-results',
+        examSession: { ...state.examSession, status: 'completed', completedAt: new Date(), scores },
+      };
+    }
+
+    case 'CLEAR_EXAM':
+      return { ...state, examSession: null, currentView: 'participant-dashboard' };
+
+    case 'OPEN_REVIEW':
+      return { ...state, reviewResultId: action.payload, currentView: 'exam-review' };
+
+    default:
+      return state;
+  }
+}
+
+interface AppContextType {
+  state: AppState;
+  dispatch: React.Dispatch<AppAction>;
+  signOut: () => Promise<void>;
+  refreshProfile: () => Promise<void>;
+  startExam: (examType: ExamType, pkg?: ExamPackage) => Promise<void>;
+}
+
+const AppContext = createContext<AppContextType | null>(null);
+
+export function AppProvider({ children }: { children: ReactNode }) {
+  const [state, dispatch] = useReducer(appReducer, initialState);
+
+  async function refreshProfile() {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      dispatch({ type: 'SET_PROFILE', payload: null });
+      return;
+    }
+    try {
+      const profile = await getProfile(user.id);
+      if (profile) {
+        dispatch({ type: 'SET_PROFILE', payload: profile as Profile });
+      } else {
+        dispatch({ type: 'SET_PROFILE', payload: null });
+      }
+    } catch {
+      dispatch({ type: 'SET_PROFILE', payload: null });
+    }
+  }
+
+  // Primary entry point for starting an exam — fetches real questions from Supabase
+  async function startExam(examType: ExamType, pkg?: ExamPackage) {
+    const questions = await fetchQuestionsForExam(examType, pkg?.id);
+    const session = buildSession(examType, questions, pkg);
+    dispatch({ type: 'RESUME_EXAM', payload: session });
+  }
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        const savedId = getActiveSessionId();
+        if (savedId) {
+          const saved = loadExamProgress(savedId);
+          if (saved) {
+            // Re-fetch real questions from Supabase to restore the session correctly
+            fetchQuestionsForExam(saved.examType, saved.packageId).then((questions) => {
+              // Merge with saved answers (questions may have same IDs)
+              const restoredSession: ExamSession = {
+                id: saved.sessionId,
+                packageId: saved.packageId,
+                packageName: saved.packageName,
+                examType: saved.examType,
+                questions,
+                answers: saved.answers,
+                currentQuestionIndex: saved.currentQuestionIndex,
+                timeRemaining: saved.timeRemaining,
+                status: 'in_progress',
+                startedAt: new Date(saved.startedAt),
+              };
+              dispatch({ type: 'RESUME_EXAM', payload: restoredSession });
+            });
+          }
+        }
+        refreshProfile();
+      } else {
+        dispatch({ type: 'SET_AUTH_LOADING', payload: false });
+      }
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      (async () => {
+        if (event === 'SIGNED_OUT' || !session) {
+          dispatch({ type: 'LOGOUT' });
+          return;
+        }
+        if (event === 'SIGNED_IN' && session.user) {
+          await refreshProfile();
+        }
+      })();
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // Auto-save answers + timeRemaining on every state change during exam
+  useEffect(() => {
+    const session = state.examSession;
+    if (!session) return;
+
+    if (session.status === 'in_progress') {
+      saveExamProgress(session);
+    } else {
+      clearExamProgress(session.id);
+    }
+  }, [state.examSession]);
+
+  async function signOut() {
+    await supabase.auth.signOut();
+    dispatch({ type: 'LOGOUT' });
+  }
+
+  return (
+    <AppContext.Provider value={{ state, dispatch, signOut, refreshProfile, startExam }}>
+      {children}
+    </AppContext.Provider>
+  );
+}
+
+export function useApp() {
+  const ctx = useContext(AppContext);
+  if (!ctx) throw new Error('useApp must be used within AppProvider');
+  return ctx;
+}
