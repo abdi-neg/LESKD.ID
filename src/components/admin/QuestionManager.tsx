@@ -399,15 +399,21 @@ export default function QuestionManager() {
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1.5">Kategori</label>
-                      <select
-                        value={form.category}
-                        onChange={(e) => setForm({ ...form, category: e.target.value as Category })}
-                        className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/30 focus:border-[#1e3a8a]"
-                      >
-                        {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-                      </select>
-                    </div>
+  <label className="block text-sm font-medium text-gray-700 mb-1.5">Kategori</label>
+  <select
+    value={form.category}
+    onChange={(e) => setForm({ ...form, category: e.target.value as Category })}
+    disabled={selectedPkg?.package_type !== 'FULL'}
+    className={`w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/30 focus:border-[#1e3a8a] ${
+      selectedPkg?.package_type !== 'FULL' ? 'bg-gray-100 text-gray-500 cursor-not-allowed font-semibold' : 'bg-white text-gray-800'
+    }`}
+  >
+    {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+  </select>
+  {selectedPkg?.package_type !== 'FULL' && (
+    <p className="text-[11px] text-gray-400 mt-1">Kategori dikunci otomatis sesuai jenis paket mini tryout.</p>
+  )}
+</div>
                     {form.category !== 'TKP' && (
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1.5">Jawaban Benar</label>
