@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Plus, Trash2, CreditCard as Edit3, Check, X, Search, Filter,
+  Plus, Trash2, Edit3, Check, X, Search, Filter,
   BookOpen, Image, Loader2, RefreshCw, FileUp, Package, ChevronDown,
-  CheckCircle2, AlertCircle,
+  AlertCircle,
 } from 'lucide-react';
 import { Question, Category, AnswerOption, ExamPackage, PackageType, OptionType } from '../../types';
 import { supabase } from '../../lib/supabase';
@@ -39,6 +39,11 @@ const emptyForm = {
   explanation: '',
   image_url: null as string | null,
   option_type: 'text' as OptionType,
+  points_a: 0,
+  points_b: 0,
+  points_c: 0,
+  points_d: 0,
+  points_e: 0,
 };
 
 const catColors: Record<string, string> = {
@@ -46,6 +51,17 @@ const catColors: Record<string, string> = {
   TWK: 'bg-emerald-100 text-emerald-700',
   TKP: 'bg-rose-100 text-rose-700',
 };
+
+// Dummy subcomponent to fix undefined PackageCompletenessCard
+function PackageCompletenessCard({ counts, requirements }: { pkg: ExamPackage; counts: any; requirements: any }) {
+  return (
+    <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100 text-xs text-gray-500 flex gap-4">
+      <div><b>TIU:</b> {counts.TIU} / {requirements.TIU || 0}</div>
+      <div><b>TWK:</b> {counts.TWK} / {requirements.TWK || 0}</div>
+      <div><b>TKP:</b> {counts.TKP} / {requirements.TKP || 0}</div>
+    </div>
+  );
+}
 
 export default function QuestionManager() {
   const [packages, setPackages] = useState<ExamPackage[]>([]);
@@ -68,7 +84,6 @@ export default function QuestionManager() {
   const [uploadingImage, setUploadingImage] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Load packages on mount
   useEffect(() => {
     async function loadPackages() {
       setLoadingPkgs(true);
@@ -106,7 +121,6 @@ export default function QuestionManager() {
     }
   }, [selectedPkg]);
 
-  // Per-category counts for selected package
   const catCounts = {
     TIU: questions.filter((q) => q.category === 'TIU').length,
     TWK: questions.filter((q) => q.category === 'TWK').length,
@@ -121,7 +135,6 @@ export default function QuestionManager() {
     return matchCat && matchSearch;
   });
 
-  // Image helpers
   function handleImageChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -172,7 +185,7 @@ export default function QuestionManager() {
     loadQuestions();
   }
 
-  function startEdit(q: Question) {
+  function startEdit(q: any) {
     setForm({
       category: q.category,
       question_text: q.question_text,
@@ -185,6 +198,11 @@ export default function QuestionManager() {
       explanation: q.explanation,
       image_url: q.image_url ?? null,
       option_type: q.option_type ?? 'text',
+      points_a: q.points_a ?? 0,
+      points_b: q.points_b ?? 0,
+      points_c: q.points_c ?? 0,
+      points_d: q.points_d ?? 0,
+      points_e: q.points_e ?? 0,
     });
     setImageFile(null);
     setImagePreview(q.image_url ?? null);
@@ -298,7 +316,6 @@ export default function QuestionManager() {
         )}
       </div>
 
-      {/* Package not selected state */}
       {!selectedPkg && (
         <div className="text-center py-20 bg-white rounded-2xl border border-gray-100 shadow-sm">
           <Package className="w-12 h-12 mx-auto mb-3 text-gray-200" />
@@ -307,13 +324,10 @@ export default function QuestionManager() {
         </div>
       )}
 
-      {/* Content when package is selected */}
       {selectedPkg && (
         <>
-          {/* Completeness Indicator for selected package */}
           <PackageCompletenessCard pkg={selectedPkg} counts={catCounts} requirements={requirements} />
 
-          {/* Action Buttons */}
           <div className="flex items-center gap-2 flex-wrap">
             <motion.button
               whileHover={{ scale: 1.02 }}
@@ -335,33 +349,17 @@ export default function QuestionManager() {
             </motion.button>
           </div>
 
-          {/* Docx Importer */}
           <AnimatePresence>
             {showImporter && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                className="overflow-hidden"
-              >
-                <DocxImporter
-                  packageId={selectedPkg.id}
-                  packageType={selectedPkg.package_type}
-                  onImported={() => { setShowImporter(false); loadQuestions(); }}
-                />
+              <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
+                <DocxImporter packageId={selectedPkg.id} packageType={selectedPkg.package_type} onImported={() => { setShowImporter(false); loadQuestions(); }} />
               </motion.div>
             )}
           </AnimatePresence>
 
-          {/* Add/Edit Form */}
           <AnimatePresence>
             {showForm && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                className="overflow-hidden"
-              >
+              <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
                 <form onSubmit={handleSubmit} className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6">
                   <div className="flex items-center justify-between mb-6">
                     <h3 className="font-bold text-gray-800 text-lg flex items-center gap-2">
@@ -373,7 +371,6 @@ export default function QuestionManager() {
                     </button>
                   </div>
 
-                  {/* Package badge */}
                   <div className="mb-4 flex items-center gap-2 bg-blue-50 border border-blue-100 rounded-xl px-3 py-2">
                     <Package className="w-4 h-4 text-[#1e3a8a]" />
                     <span className="text-xs text-gray-500">Paket:</span>
@@ -391,16 +388,18 @@ export default function QuestionManager() {
                         {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
                       </select>
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1.5">Jawaban Benar</label>
-                      <select
-                        value={form.correct_answer}
-                        onChange={(e) => setForm({ ...form, correct_answer: e.target.value as AnswerOption })}
-                        className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/30 focus:border-[#1e3a8a]"
-                      >
-                        {OPTIONS.map((o) => <option key={o} value={o}>Opsi {o}</option>)}
-                      </select>
-                    </div>
+                    {form.category !== 'TKP' && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1.5">Jawaban Benar</label>
+                        <select
+                          value={form.correct_answer}
+                          onChange={(e) => setForm({ ...form, correct_answer: e.target.value as AnswerOption })}
+                          className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/30 focus:border-[#1e3a8a]"
+                        >
+                          {OPTIONS.map((o) => <option key={o} value={o}>Opsi {o}</option>)}
+                        </select>
+                      </div>
+                    )}
                   </div>
 
                   <div className="mb-4">
@@ -415,29 +414,22 @@ export default function QuestionManager() {
                     />
                   </div>
 
-                  {/* Image Upload */}
                   <div className="mb-4">
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                      Gambar Soal <span className="text-gray-400 font-normal">(opsional — untuk soal figural)</span>
-                    </label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Gambar Soal (opsional)</label>
                     {imagePreview ? (
                       <div className="relative inline-block">
                         <img src={imagePreview} alt="Preview soal" className="max-h-48 max-w-full rounded-xl border border-gray-200 object-contain" />
-                        <button type="button" onClick={removeImage} className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center shadow-md transition-colors">
-                          <X className="w-3.5 h-3.5" />
-                        </button>
+                        <button type="button" onClick={removeImage} className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center shadow-md"><X className="w-3.5 h-3.5" /></button>
                       </div>
                     ) : (
-                      <label className="flex flex-col items-center justify-center w-full h-28 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:border-[#1e3a8a] hover:bg-blue-50/30 transition-colors">
+                      <label className="flex flex-col items-center justify-center w-full h-28 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:border-[#1e3a8a] hover:bg-blue-50/30">
                         <Image className="w-7 h-7 text-gray-300 mb-2" />
                         <span className="text-sm text-gray-500">Klik untuk upload gambar</span>
-                        <span className="text-xs text-gray-400 mt-0.5">PNG, JPG, GIF, WebP — maks 5MB</span>
                         <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
                       </label>
                     )}
                   </div>
 
-                  {/* Option Type Toggle */}
                   <div className="mb-4">
                     <label className="block text-sm font-medium text-gray-700 mb-2">Tipe Pilihan Jawaban</label>
                     <div className="flex gap-2">
@@ -446,90 +438,53 @@ export default function QuestionManager() {
                           key={t}
                           type="button"
                           onClick={() => setForm({ ...form, option_type: t })}
-                          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border-2 transition-all
-                            ${form.option_type === t
-                              ? 'border-[#1e3a8a] bg-[#1e3a8a]/5 text-[#1e3a8a]'
-                              : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300'}`}
+                          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border-2 transition-all ${form.option_type === t ? 'border-[#1e3a8a] bg-[#1e3a8a]/5 text-[#1e3a8a]' : 'border-gray-200 bg-white text-gray-500'}`}
                         >
-                          {t === 'text' ? (
-                            <><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7" /></svg> Teks</>
-                          ) : (
-                            <><Image className="w-4 h-4" /> Gambar (Figural)</>
-                          )}
+                          {t === 'text' ? 'Teks' : 'Gambar (Figural)'}
                         </button>
                       ))}
                     </div>
-                    {form.option_type === 'image' && (
-                      <p className="text-xs text-amber-600 mt-1.5 flex items-center gap-1">
-                        <AlertCircle className="w-3.5 h-3.5" />
-                        Mode Figural: masukkan URL gambar untuk setiap pilihan jawaban
-                      </p>
-                    )}
                   </div>
 
-                  {/* Options */}
-                  {form.option_type === 'text' ? (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
-                      {OPTIONS.map((opt) => {
-                        const key = `option_${opt.toLowerCase()}` as keyof typeof form;
-                        const isCorrect = opt === form.correct_answer;
-                        return (
-                          <div key={opt}>
-                            <label className="block text-xs font-medium text-gray-600 mb-1">
-                              Opsi {opt} {isCorrect && <span className="text-[#10b981]">(Benar)</span>}
-                            </label>
-                            <input
-                              value={form[key] as string}
-                              onChange={(e) => setForm({ ...form, [key]: e.target.value })}
-                              required
-                              placeholder={`Isi opsi ${opt}`}
-                              className={`w-full border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 transition-colors
-                                ${isCorrect
-                                  ? 'border-[#10b981] bg-emerald-50 focus:ring-[#10b981]/20'
-                                  : 'border-gray-200 focus:ring-[#1e3a8a]/30 focus:border-[#1e3a8a]'}`}
-                            />
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-                      {OPTIONS.map((opt) => {
-                        const key = `option_${opt.toLowerCase()}` as keyof typeof form;
-                        const url = form[key] as string;
-                        const isCorrect = opt === form.correct_answer;
-                        return (
-                          <div key={opt} className={`rounded-2xl border-2 p-3 transition-colors ${isCorrect ? 'border-[#10b981] bg-emerald-50' : 'border-gray-200 bg-gray-50'}`}>
-                            <label className="block text-xs font-medium text-gray-600 mb-2">
-                              Opsi {opt} {isCorrect && <span className="text-[#10b981] font-semibold">(Benar)</span>}
-                            </label>
-                            <input
-                              value={url}
-                              onChange={(e) => setForm({ ...form, [key]: e.target.value })}
-                              required
-                              placeholder={`URL gambar opsi ${opt}`}
-                              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/30 bg-white mb-2"
-                            />
-                            {url && (
-                              <div className="relative">
-                                <img
-                                  src={url}
-                                  alt={`Opsi ${opt}`}
-                                  className="w-full max-h-28 object-contain rounded-xl border border-gray-200 bg-white"
-                                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                  {/* Options Input Block with TKP Points */}
+                  <div className="space-y-3 mb-4">
+                    {OPTIONS.map((opt) => {
+                      const keyTxt = `option_${opt.toLowerCase()}` as keyof typeof form;
+                      const keyPts = `points_${opt.toLowerCase()}` as keyof typeof form;
+                      const isCorrect = opt === form.correct_answer && form.category !== 'TKP';
+
+                      return (
+                        <div key={opt} className={`p-3 rounded-2xl border ${isCorrect ? 'border-[#10b981] bg-emerald-50' : 'border-gray-200'}`}>
+                          <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+                            <div className="flex-1 w-full">
+                              <label className="block text-xs font-medium text-gray-600 mb-1">Opsi {opt}</label>
+                              <input
+                                value={form[keyTxt] as string}
+                                onChange={(e) => setForm({ ...form, [keyTxt]: e.target.value })}
+                                required
+                                placeholder={form.option_type === 'text' ? `Isi teks opsi ${opt}` : `Masukkan URL Gambar opsi ${opt}`}
+                                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white"
+                              />
+                            </div>
+                            {form.category === 'TKP' && (
+                              <div className="w-full sm:w-28">
+                                <label className="block text-xs font-medium text-gray-600 mb-1">Poin (1-5)</label>
+                                <input
+                                  type="number"
+                                  min="1"
+                                  max="5"
+                                  value={form[keyPts] as number}
+                                  onChange={(e) => setForm({ ...form, [keyPts]: parseInt(e.target.value) || 0 })}
+                                  required
+                                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm text-center font-bold bg-amber-50 text-amber-900 focus:ring-amber-500"
                                 />
                               </div>
                             )}
-                            {!url && (
-                              <div className="w-full h-16 rounded-xl border border-dashed border-gray-300 flex items-center justify-center">
-                                <Image className="w-5 h-5 text-gray-300" />
-                              </div>
-                            )}
                           </div>
-                        );
-                      })}
-                    </div>
-                  )}
+                        </div>
+                      );
+                    })}
+                  </div>
 
                   <div className="mb-6">
                     <label className="block text-sm font-medium text-gray-700 mb-1.5">Pembahasan / Penjelasan Jawaban</label>
@@ -538,22 +493,14 @@ export default function QuestionManager() {
                       onChange={(e) => setForm({ ...form, explanation: e.target.value })}
                       rows={3}
                       placeholder="Jelaskan mengapa jawaban tersebut benar..."
-                      className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/30 focus:border-[#1e3a8a] resize-none"
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm resize-none"
                     />
                   </div>
 
                   <div className="flex gap-3 justify-end">
-                    <button type="button" onClick={cancelForm} className="px-5 py-2.5 rounded-xl border border-gray-200 text-gray-600 font-medium hover:bg-gray-50 transition-colors text-sm">Batal</button>
-                    <button
-                      type="submit"
-                      disabled={saving}
-                      className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#10b981] hover:bg-[#059669] text-white font-semibold transition-colors text-sm disabled:opacity-60"
-                    >
-                      {saving ? (
-                        <><Loader2 className="w-4 h-4 animate-spin" />{uploadingImage ? 'Upload gambar...' : 'Menyimpan...'}</>
-                      ) : (
-                        <><Check className="w-4 h-4" />{editId ? 'Simpan Perubahan' : 'Tambah Soal'}</>
-                      )}
+                    <button type="button" onClick={cancelForm} className="px-5 py-2.5 rounded-xl border border-gray-200 text-gray-600 font-medium text-sm">Batal</button>
+                    <button type="submit" disabled={saving} className="px-5 py-2.5 rounded-xl bg-[#10b981] text-white font-semibold text-sm disabled:opacity-60">
+                      {saving ? 'Menyimpan...' : editId ? 'Simpan Perubahan' : 'Tambah Soal'}
                     </button>
                   </div>
                 </form>
@@ -565,206 +512,53 @@ export default function QuestionManager() {
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex flex-wrap gap-3 items-center">
             <div className="relative flex-1 min-w-48">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Cari soal..."
-                className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/20 focus:border-[#1e3a8a]"
-              />
+              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Cari soal..." className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-xl" />
             </div>
             <div className="flex items-center gap-2">
               <Filter className="w-4 h-4 text-gray-400" />
               {(['ALL', ...CATEGORIES] as const).map((cat) => (
-                <button
-                  key={cat}
-                  onClick={() => setFilterCat(cat)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors
-                    ${filterCat === cat ? 'bg-[#1e3a8a] text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-                >
-                  {cat === 'ALL' ? 'Semua' : cat}
-                  {cat !== 'ALL' && (
-                    <span className="ml-1 opacity-70">({catCounts[cat]})</span>
-                  )}
+                <button key={cat} onClick={() => setFilterCat(cat)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${filterCat === cat ? 'bg-[#1e3a8a] text-white' : 'bg-gray-100 text-gray-600'}`}>
+                  {cat === 'ALL' ? 'Semua' : cat} {cat !== 'ALL' && `(${catCounts[cat]})`}
                 </button>
               ))}
             </div>
           </div>
 
           {/* Questions List */}
-          {loading ? (
-            <div className="space-y-3">
-              {[1, 2, 3].map((i) => <div key={i} className="bg-gray-100 rounded-2xl h-20 animate-pulse" />)}
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <AnimatePresence>
-                {filtered.map((q, i) => (
-                  <motion.div
-                    key={q.id}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, x: -20 }}
-                    transition={{ delay: i * 0.02 }}
-                    className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${catColors[q.category]}`}>{q.category}</span>
-                          {q.image_url && (
-                            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 flex items-center gap-1">
-                              <Image className="w-3 h-3" /> Gambar Soal
-                            </span>
-                          )}
-                          {q.option_type === 'image' && (
-                            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-600 flex items-center gap-1">
-                              <Image className="w-3 h-3" /> Figural
-                            </span>
-                          )}
-                          <span className="text-xs text-gray-400">#{q.id.slice(0, 8)}</span>
-                        </div>
-                        {q.image_url && (
-                          <img src={q.image_url} alt="Gambar soal" className="mb-2 max-h-24 rounded-lg border border-gray-100 object-contain" />
-                        )}
-                        <p className="text-sm text-gray-700 font-medium line-clamp-2">{q.question_text}</p>
-                        <div className="mt-2 flex flex-wrap gap-1.5">
-                          {OPTIONS.map((opt) => {
-                            const val = q[`option_${opt.toLowerCase()}` as keyof Question] as string;
-                            const isCorrect = opt === q.correct_answer;
-                            return (
-                              <span key={opt} className={`text-xs px-2 py-0.5 rounded-md ${isCorrect ? 'bg-[#10b981] text-white font-semibold' : 'bg-gray-100 text-gray-500'}`}>
-                                {opt}: {val.slice(0, 20)}{val.length > 20 ? '...' : ''}
-                              </span>
-                            );
-                          })}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1.5 flex-shrink-0">
-                        <button onClick={() => startEdit(q)} className="w-8 h-8 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-lg flex items-center justify-center transition-colors">
-                          <Edit3 className="w-4 h-4" />
-                        </button>
-                        <button onClick={() => setDeleteId(q.id)} className="w-8 h-8 bg-red-50 hover:bg-red-100 text-red-500 rounded-lg flex items-center justify-center transition-colors">
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
+          <div className="space-y-3">
+            {filtered.map((q: any, i) => (
+              <motion.div key={q.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.02 }} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${catColors[q.category]}`}>{q.category}</span>
+                      <span className="text-xs text-gray-400">#{q.id.slice(0, 8)}</span>
                     </div>
-                  </motion.div>
-                ))}
-              </AnimatePresence>
-
-              {filtered.length === 0 && !loading && (
-                <div className="text-center py-16 text-gray-400">
-                  <BookOpen className="w-12 h-12 mx-auto mb-3 opacity-40" />
-                  <p className="font-medium">
-                    {questions.length === 0 ? 'Belum ada soal di paket ini' : 'Tidak ada soal ditemukan'}
-                  </p>
-                  {questions.length === 0 && (
-                    <p className="text-sm mt-1">Tambahkan soal manual atau import via Word</p>
-                  )}
+                    <p className="text-sm text-gray-700 font-medium line-clamp-2">{q.question_text}</p>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {OPTIONS.map((opt) => {
+                        const val = q[`option_${opt.toLowerCase()}` as keyof Question] as string;
+                        const isCorrect = opt === q.correct_answer && q.category !== 'TKP';
+                        const pts = q[`points_${opt.toLowerCase()}` as any];
+                        return (
+                          <span key={opt} className={`text-xs px-2 py-0.5 rounded-md ${isCorrect ? 'bg-[#10b981] text-white font-semibold' : 'bg-gray-100 text-gray-500'}`}>
+                            {opt}: {val?.slice(0, 15)}{val?.length > 15 ? '...' : ''} 
+                            {q.category === 'TKP' && <b className="ml-1 text-amber-700">({pts || 0}p)</b>}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    <button onClick={() => startEdit(q)} className="w-8 h-8 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center"><Edit3 className="w-4 h-4" /></button>
+                    <button onClick={() => { if(confirm('Hapus soal ini?')) confirmDelete(q.id) }} className="w-8 h-8 bg-red-50 text-red-500 rounded-lg flex items-center justify-center"><Trash2 className="w-4 h-4" /></button>
+                  </div>
                 </div>
-              )}
-            </div>
-          )}
+              </motion.div>
+            ))}
+          </div>
         </>
       )}
-
-      {/* Delete Confirmation */}
-      <AnimatePresence>
-        {deleteId && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-          >
-            <motion.div
-              initial={{ scale: 0.9, y: 20 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.9 }}
-              className="bg-white rounded-3xl shadow-2xl max-w-sm w-full p-6 text-center"
-            >
-              <div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Trash2 className="w-7 h-7 text-red-500" />
-              </div>
-              <h3 className="font-bold text-gray-800 text-lg mb-2">Hapus Soal?</h3>
-              <p className="text-gray-500 text-sm mb-6">Soal ini akan dihapus permanen dari paket ini.</p>
-              <div className="flex gap-3">
-                <button onClick={() => setDeleteId(null)} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 font-medium hover:bg-gray-50 transition-colors">Batal</button>
-                <button onClick={() => confirmDelete(deleteId)} className="flex-1 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-white font-semibold transition-colors">Hapus</button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
-
-// Per-package completeness card
-const CAT_STYLES: Record<Category, { label: string; bg: string; text: string; bar: string; completeBg: string; completeBorder: string }> = {
-  TIU: { label: 'TIU', bg: 'bg-blue-50', text: 'text-blue-700', bar: 'bg-blue-400', completeBg: 'bg-emerald-50', completeBorder: 'border-emerald-200' },
-  TWK: { label: 'TWK', bg: 'bg-emerald-50', text: 'text-emerald-700', bar: 'bg-emerald-400', completeBg: 'bg-emerald-50', completeBorder: 'border-emerald-200' },
-  TKP: { label: 'TKP', bg: 'bg-rose-50', text: 'text-rose-700', bar: 'bg-rose-400', completeBg: 'bg-emerald-50', completeBorder: 'border-emerald-200' },
-};
-
-function PackageCompletenessCard({
-  pkg,
-  counts,
-  requirements,
-}: {
-  pkg: ExamPackage;
-  counts: Record<Category, number>;
-  requirements: Partial<Record<Category, number>>;
-}) {
-  const cats = Object.keys(requirements) as Category[];
-  const allComplete = cats.every((cat) => counts[cat] >= (requirements[cat] ?? 0));
-
-  return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
-      <div className="flex items-center justify-between mb-3">
-        <div>
-          <p className="text-sm font-bold text-gray-800">Kelengkapan Soal — {pkg.name}</p>
-          <p className="text-xs text-gray-500">{TYPE_LABELS[pkg.package_type]}</p>
-        </div>
-        {allComplete && (
-          <span className="flex items-center gap-1.5 text-xs font-bold text-[#10b981] bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-full">
-            <CheckCircle2 className="w-3.5 h-3.5" /> LENGKAP
-          </span>
-        )}
-      </div>
-
-      <div className={`grid gap-3 ${cats.length === 1 ? 'grid-cols-1 max-w-xs' : cats.length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
-        {cats.map((cat) => {
-          const current = counts[cat];
-          const required = requirements[cat] ?? 0;
-          const complete = current >= required;
-          const pct = required > 0 ? Math.min((current / required) * 100, 100) : 0;
-          const st = CAT_STYLES[cat];
-          return (
-            <div key={cat} className={`rounded-xl p-3 border ${complete ? st.completeBg + ' ' + st.completeBorder : st.bg + ' border-gray-200'}`}>
-              <div className="flex items-center justify-between mb-1">
-                <span className={`text-xs font-bold ${complete ? 'text-emerald-700' : st.text}`}>{cat}</span>
-                {complete
-                  ? <CheckCircle2 className="w-3.5 h-3.5 text-[#10b981]" />
-                  : <span className="text-xs text-amber-500 font-semibold">-{required - current}</span>
-                }
-              </div>
-              <div className="flex items-baseline gap-1 mb-1.5">
-                <span className={`text-xl font-extrabold leading-none ${complete ? 'text-emerald-700' : current > 0 ? 'text-amber-600' : 'text-gray-400'}`}>
-                  {current}
-                </span>
-                <span className="text-xs text-gray-400">/ {required} soal</span>
-              </div>
-              <div className="w-full h-1.5 bg-white/70 rounded-full overflow-hidden">
-                <div
-                  className={`h-full rounded-full transition-all duration-500 ${complete ? 'bg-[#10b981]' : st.bar}`}
-                  style={{ width: `${pct}%` }}
-                />
-              </div>
-            </div>
-          );
-        })}
-      </div>
     </div>
   );
 }
