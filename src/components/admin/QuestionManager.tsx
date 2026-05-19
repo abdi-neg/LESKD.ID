@@ -110,12 +110,23 @@ export default function QuestionManager() {
     setLoading(false);
   }
 
-  useEffect(() => {
+ useEffect(() => {
     if (selectedPkg) {
       setQuestions([]);
       setSearch('');
       setFilterCat('ALL');
       loadQuestions();
+      
+      // LOGIKA PINTAR BARU: Otomatis set kategori form berdasarkan jenis paket
+      if (selectedPkg.package_type === 'MINI_TIU') {
+        setForm(prev => ({ ...prev, category: 'TIU' }));
+      } else if (selectedPkg.package_type === 'MINI_TWK') {
+        setForm(prev => ({ ...prev, category: 'TWK' }));
+      } else if (selectedPkg.package_type === 'MINI_TKP') {
+        setForm(prev => ({ ...prev, category: 'TKP' }));
+      } else {
+        setForm(prev => ({ ...prev, category: 'TIU' })); // Bawaan untuk paket FULL
+      }
     } else {
       setQuestions([]);
     }
@@ -341,7 +352,16 @@ export default function QuestionManager() {
             <motion.button
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
-              onClick={() => { cancelForm(); setShowForm(true); setShowImporter(false); }}
+              onClick={() => { 
+  // Menghapus data form kecuali kategori yang sudah ditebak otomatis
+  setForm(prev => ({ ...emptyForm, category: prev.category }));
+  setEditId(null);
+  setImageFile(null);
+  setImagePreview(null);
+  if (fileInputRef.current) fileInputRef.current.value = '';
+  setShowForm(true); 
+  setShowImporter(false); 
+}}
               className="flex items-center gap-2 bg-[#1e3a8a] hover:bg-[#1e40af] text-white font-semibold px-4 py-2.5 rounded-xl transition-colors text-sm"
             >
               <Plus className="w-4 h-4" />
