@@ -369,16 +369,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // Auto-save answers + timeRemaining on every state change during exam
-  useEffect(() => {
-    const session = state.examSession;
-    if (!session) return;
+  // Auto-save answers + timeRemaining on every state change during exam
+useEffect(() => {
+  const session = state.examSession;
+  if (!session) return;
 
-    if (session.status === 'in_progress') {
-      saveExamProgress(session);
-    } else {
-      clearExamProgress(session.id);
-    }
-  }, [state.examSession]);
+  // Mengunci data agar halaman Review Cepat tidak kehilangan acuan data soal
+  if (session.status === 'in_progress' || session.status === 'completed') {
+    saveExamProgress(session);
+  }
+}, [state.examSession]);
 
   async function signOut() {
     await supabase.auth.signOut();
