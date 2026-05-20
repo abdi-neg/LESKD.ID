@@ -105,9 +105,20 @@ function calculateScores(session: ExamSession) {
   session.questions.forEach((q) => {
     const answer = session.answers[q.id];
     if (!answer?.selectedAnswer) return;
+    
     if (q.category === 'TKP') {
-      const v: Record<string, number> = { A: 5, B: 4, C: 3, D: 2, E: 1 };
-      tkp += v[answer.selectedAnswer] ?? 0;
+      // MESIN KALKULASI BARU: Membaca poin dinamis yang diinput admin dari Supabase
+      const selected = answer.selectedAnswer.toLowerCase(); // menjamin huruf kecil ('a','b','c','d','e')
+      
+      // Ambil nilai poin dari kolom terkait, jika kosong/null otomatis dianggap 0 poin
+      let points = 0;
+      if (selected === 'a') points = Number(q.points_a ?? 0);
+      else if (selected === 'b') points = Number(q.points_b ?? 0);
+      else if (selected === 'c') points = Number(q.points_c ?? 0);
+      else if (selected === 'd') points = Number(q.points_d ?? 0);
+      else if (selected === 'e') points = Number(q.points_e ?? 0);
+      
+      tkp += points;
     } else {
       const pts = answer.selectedAnswer === q.correct_answer ? 5 : 0;
       if (q.category === 'TIU') tiu += pts;
@@ -310,13 +321,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      (async () => {
+      (() => {
         if (event === 'SIGNED_OUT' || !session) {
           dispatch({ type: 'LOGOUT' });
           return;
         }
         if (event === 'SIGNED_IN' && session.user) {
-          await refreshProfile();
+          refreshProfile();
         }
       })();
     });
