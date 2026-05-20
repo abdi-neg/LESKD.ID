@@ -28,6 +28,13 @@ export interface ReviewSnapshot {
     explanation: string;
     image_url?: string | null;
     option_type?: string;
+    
+    // 🧠 TAMBAHAN: Daftarkan tipe poin agar TypeScript tidak error saat kompilasi
+    points_a?: number;
+    points_b?: number;
+    points_c?: number;
+    points_d?: number;
+    points_e?: number;
   }>;
   answers: Record<string, QuestionAnswer>;
   scores: { tiu: number; twk: number; tkp: number; total: number };
@@ -120,6 +127,13 @@ export function buildReviewSnapshot(session: ExamSession): ReviewSnapshot {
       explanation: q.explanation ?? '',
       image_url: q.image_url,
       option_type: q.option_type ?? 'text',
+      
+      // 🚀 SEKARANG DI SINI: Menyalin nilai bobot poin TKP agar ikut masuk ke dalam snapshot
+      points_a: (q as any).points_a,
+      points_b: (q as any).points_b,
+      points_c: (q as any).points_c,
+      points_d: (q as any).points_d,
+      points_e: (q as any).points_e,
     })),
     answers: session.answers,
     scores: session.scores ?? { tiu: 0, twk: 0, tkp: 0, total: 0 },
