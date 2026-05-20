@@ -104,15 +104,27 @@ function buildSession(
 ): ExamSession {
   const config = EXAM_CONFIGS[examType];
   const answers: ExamSession['answers'] = {};
-  questions.forEach((q) => {
+  
+  // 🚀 MEMAKSA PEMETAAN ULANG: Menjamin tiap soal di dalam session membawa poinnya
+  const securedQuestions = questions.map((q) => ({
+    ...q,
+    points_a: (q as any).points_a ?? 0,
+    points_b: (q as any).points_b ?? 0,
+    points_c: (q as any).points_c ?? 0,
+    points_d: (q as any).points_d ?? 0,
+    points_e: (q as any).points_e ?? 0,
+  })) as Question[];
+
+  securedQuestions.forEach((q) => {
     answers[q.id] = { questionId: q.id, selectedAnswer: null, isMarked: false };
   });
+
   return {
     id: crypto.randomUUID(),
     packageId: pkg?.id,
     packageName: pkg?.name,
     examType,
-    questions,
+    questions: securedQuestions, // 👈 Menggunakan data soal yang poinnya sudah dikunci
     answers,
     currentQuestionIndex: 0,
     timeRemaining: config.timeMinutes * 60,
