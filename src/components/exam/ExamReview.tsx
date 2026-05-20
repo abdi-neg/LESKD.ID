@@ -23,8 +23,20 @@ function QuestionCard({
 }) {
   const [expanded, setExpanded] = useState(false);
   const selected = answer?.selectedAnswer ?? null;
-  const isCorrect = selected !== null && selected === question.correct_answer;
+  const isTKP = question.category === 'TKP';
+  
+  // Logika status untuk TIU/TWK
+  const isCorrect = !isTKP && selected !== null && selected === question.correct_answer;
   const isUnanswered = selected === null;
+
+  // Fungsi helper untuk mengambil poin dari snapshot soal
+  const getOptionPoints = (opt: AnswerOption) => {
+    const key = `points_${opt.toLowerCase()}` as keyof typeof question;
+    return (question[key] as number) ?? 0;
+  };
+
+  // Mendapatkan skor yang diperoleh user di soal ini
+  const userGainedPoints = selected ? getOptionPoints(selected as AnswerOption) : 0;
 
   return (
     <motion.div
@@ -39,13 +51,26 @@ function QuestionCard({
       >
         {/* Status badge */}
         <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5
-          ${isUnanswered ? 'bg-gray-100' : isCorrect ? 'bg-emerald-500' : 'bg-red-500'}`}>
-          {isUnanswered
-            ? <Target className="w-3.5 h-3.5 text-gray-400" />
-            : isCorrect
-              ? <CheckCircle className="w-3.5 h-3.5 text-white" />
-              : <XCircle className="w-3.5 h-3.5 text-white" />
-          }
+          ${isUnanswered 
+            ? 'bg-gray-100' 
+            : isTKP 
+              ? userGainedPoints === 5 
+                ? 'bg-emerald-500' 
+                : 'bg-amber-500' // TKP jika tidak poin maksimal diberi warna amber/orange hangat
+              : isCorrect 
+                ? 'bg-emerald-500' 
+                : 'bg-red-500'
+          }`}
+        >
+          {isUnanswered ? (
+            <Target className="w-3.5 h-3.5 text-gray-400" />
+          ) : isTKP ? (
+            <span className="text-[10px] font-extrabold text-white">+{userGainedPoints}</span>
+          ) : isCorrect ? (
+            <CheckCircle className="w-3.5 h-3.5 text-white" />
+          ) : (
+            <XCircle className="w-3.5 h-3.5 text-white" />
+          )}
         </div>
 
         <div className="flex-1 min-w-0">
@@ -67,19 +92,25 @@ function QuestionCard({
                 : 'bg-rose-100 text-rose-700'}`}>
               {question.category}
             </span>
+            
             {selected ? (
               <span className={`text-xs font-semibold px-2 py-0.5 rounded-md
-                ${isCorrect ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-600'}`}>
-                Jawaban Anda: {selected}
+                ${isTKP 
+                  ? 'bg-amber-100 text-amber-800' 
+                  : isCorrect ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-600'}`}>
+                Jawaban Anda: {selected} {isTKP && `(${userGainedPoints} Poin)`}
               </span>
             ) : (
               <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-gray-100 text-gray-500">
                 Tidak dijawab
               </span>
             )}
-            <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-[#1e3a8a]/10 text-[#1e3a8a]">
-              Kunci: {question.correct_answer}
-            </span>
+
+            {!isTKP && (
+              <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-[#1e3a8a]/10 text-[#1e3a8a]">
+                Kunci: {question.correct_answer}
+              </span>
+            )}
           </div>
         </div>
 
@@ -106,30 +137,51 @@ function QuestionCard({
                   className="mt-3 max-h-48 rounded-xl border border-gray-100 object-contain w-full"
                 />
               )}
+              
               {question.option_type === 'image' ? (
-                // Figural review: image grid
+                /* ==================== 1. OPSI TIPE GAMBAR ==================== */
                 <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-2.5">
                   {OPTIONS.map((opt) => {
                     const imgUrl = question[`option_${opt.toLowerCase()}` as keyof typeof question] as string;
-                    const isKey = opt === question.correct_answer;
+                    const pts = getOptionPoints(opt);
+                    
+                    const isKey = !isTKP && opt === question.correct_answer;
                     const isChosen = selected === opt;
-                    const isWrongChoice = isChosen && !isKey;
+                    const isWrongChoice = !isTKP && isChosen && !isKey;
+
+                    // Style border box untuk TKP vs Non-TKP
+                    let borderClass = 'border-gray-200';
+                    if (isTKP) {
+                      if (isChosen) borderClass = 'border-amber-500 ring-2 ring-amber-200';
+                      else if (pts === 5) borderClass = 'border-emerald-300 border-dashed';
+                    } else {
+                      if (isKey) borderClass = 'border-emerald-400 ring-2 ring-emerald-200';
+                      if (isWrongChoice) borderClass = 'border-red-400 ring-2 ring-red-200';
+                    }
+
                     return (
-                      <div
-                        key={opt}
-                        className={`relative rounded-2xl border-2 overflow-hidden
-                          ${isKey ? 'border-emerald-400 ring-2 ring-emerald-200'
-                            : isWrongChoice ? 'border-red-400 ring-2 ring-red-200'
-                            : 'border-gray-200'}`}
-                      >
+                      <div key={opt} className={`relative rounded-2xl border-2 overflow-hidden ${borderClass}`}>
+                        {/* Badge Huruf Opsi */}
                         <div className={`absolute top-1.5 left-1.5 z-10 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shadow
-                          ${isKey ? 'bg-emerald-500 text-white'
+                          ${isTKP
+                            ? isChosen ? 'bg-amber-500 text-white' : 'bg-white/90 text-gray-500 border border-gray-200'
+                            : isKey ? 'bg-emerald-500 text-white'
                             : isWrongChoice ? 'bg-red-500 text-white'
                             : 'bg-white/90 text-gray-500 border border-gray-200'}`}>
                           {opt}
                         </div>
-                        {isKey && <CheckCircle className="absolute top-1.5 right-1.5 z-10 w-4 h-4 text-emerald-500 drop-shadow" />}
-                        {isWrongChoice && <XCircle className="absolute top-1.5 right-1.5 z-10 w-4 h-4 text-red-400 drop-shadow" />}
+
+                        {/* Badge Poin TKP (Kanan Atas) */}
+                        {isTKP && (
+                          <div className={`absolute top-1.5 right-1.5 z-10 px-1.5 py-0.5 rounded-md text-[10px] font-bold shadow-sm
+                            ${pts === 5 ? 'bg-emerald-500 text-white' : 'bg-gray-100 text-gray-600'}`}>
+                            {pts} Pts
+                          </div>
+                        )}
+
+                        {!isTKP && isKey && <CheckCircle className="absolute top-1.5 right-1.5 z-10 w-4 h-4 text-emerald-500 drop-shadow" />}
+                        {!isTKP && isWrongChoice && <XCircle className="absolute top-1.5 right-1.5 z-10 w-4 h-4 text-red-400 drop-shadow" />}
+                        
                         <img
                           src={imgUrl}
                           alt={`Opsi ${opt}`}
@@ -140,48 +192,71 @@ function QuestionCard({
                   })}
                 </div>
               ) : (
-                // Text review options
+                /* ==================== 2. OPSI TIPE TEKS ==================== */
                 <div className="mt-3 space-y-2">
                   {OPTIONS.map((opt) => {
                     const text = question[`option_${opt.toLowerCase()}` as keyof typeof question] as string;
-                    const isKey = opt === question.correct_answer;
+                    const pts = getOptionPoints(opt);
+                    
+                    const isKey = !isTKP && opt === question.correct_answer;
                     const isChosen = selected === opt;
-                    const isWrongChoice = isChosen && !isKey;
+                    const isWrongChoice = !isTKP && isChosen && !isKey;
+
+                    // Tentukan warna background list item opsi
+                    let bgClass = 'bg-gray-50 border border-transparent';
+                    if (isTKP) {
+                      if (isChosen) bgClass = 'bg-amber-50/70 border border-amber-300';
+                      else if (pts === 5) bgClass = 'bg-emerald-50/30 border border-dashed border-emerald-200';
+                    } else {
+                      if (isKey) bgClass = 'bg-emerald-50 border border-emerald-200';
+                      if (isWrongChoice) bgClass = 'bg-red-50 border border-red-200';
+                    }
 
                     return (
-                      <div
-                        key={opt}
-                        className={`flex items-start gap-2.5 p-2.5 rounded-xl text-sm transition-colors
-                          ${isKey
-                            ? 'bg-emerald-50 border border-emerald-200'
-                            : isWrongChoice
-                              ? 'bg-red-50 border border-red-200'
-                              : 'bg-gray-50 border border-transparent'
-                          }`}
-                      >
+                      <div key={opt} className={`flex items-start gap-2.5 p-2.5 rounded-xl text-sm transition-colors ${bgClass}`}>
+                        {/* Lingkaran Huruf A-E */}
                         <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0
-                          ${isKey
-                            ? 'bg-emerald-500 text-white'
-                            : isWrongChoice
-                              ? 'bg-red-500 text-white'
-                              : 'bg-white border border-gray-200 text-gray-500'
-                          }`}>
+                          ${isTKP
+                            ? isChosen ? 'bg-amber-500 text-white' : 'bg-white border border-gray-200 text-gray-500'
+                            : isKey ? 'bg-emerald-500 text-white'
+                            : isWrongChoice ? 'bg-red-500 text-white'
+                            : 'bg-white border border-gray-200 text-gray-500'}`}>
                           {opt}
                         </div>
+
+                        {/* Isi Teks Jawaban */}
                         <span className={`leading-relaxed flex-1
-                          ${isKey ? 'text-emerald-800 font-medium'
+                          ${isTKP
+                            ? isChosen ? 'text-amber-900 font-medium' : 'text-gray-600'
+                            : isKey ? 'text-emerald-800 font-medium'
                             : isWrongChoice ? 'text-red-700'
                             : 'text-gray-600'}`}>
                           {text}
                         </span>
-                        {isKey && <CheckCircle className="w-4 h-4 text-emerald-500 flex-shrink-0 ml-auto mt-0.5" />}
-                        {isWrongChoice && <XCircle className="w-4 h-4 text-red-400 flex-shrink-0 ml-auto mt-0.5" />}
+
+                        {/* Indikator Poin / Status Icon di Ujung Kanan */}
+                        {isTKP ? (
+                          <span className={`text-xs font-bold px-2 py-0.5 rounded-lg flex-shrink-0 ml-auto self-center
+                            ${pts === 5 
+                              ? 'bg-emerald-100 text-emerald-700' 
+                              : isChosen 
+                                ? 'bg-amber-100 text-amber-700' 
+                                : 'bg-gray-100 text-gray-500'}`}>
+                            {pts} Poin
+                          </span>
+                        ) : (
+                          <>
+                            {isKey && <CheckCircle className="w-4 h-4 text-emerald-500 flex-shrink-0 ml-auto mt-0.5" />}
+                            {isWrongChoice && <XCircle className="w-4 h-4 text-red-400 flex-shrink-0 ml-auto mt-0.5" />}
+                          </>
+                        )}
                       </div>
                     );
                   })}
                 </div>
               )}
 
+              {/* Box Pembahasan */}
               {question.explanation ? (
                 <div className="mt-4 bg-[#1e3a8a]/5 border border-[#1e3a8a]/10 rounded-xl p-3.5">
                   <div className="flex items-center gap-1.5 mb-1.5">
