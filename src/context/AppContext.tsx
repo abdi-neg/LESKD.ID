@@ -105,7 +105,7 @@ function buildSession(
   const config = EXAM_CONFIGS[examType];
   const answers: ExamSession['answers'] = {};
   
-  // 🚀 MEMAKSA PEMETAAN ULANG: Menjamin tiap soal di dalam session membawa poinnya
+  // Mengunci data poin agar tidak hilang saat session ujian dibuat
   const securedQuestions = questions.map((q) => ({
     ...q,
     points_a: (q as any).points_a ?? 0,
@@ -124,7 +124,7 @@ function buildSession(
     packageId: pkg?.id,
     packageName: pkg?.name,
     examType,
-    questions: securedQuestions, // 👈 Menggunakan data soal yang poinnya sudah dikunci
+    questions: securedQuestions,
     answers,
     currentQuestionIndex: 0,
     timeRemaining: config.timeMinutes * 60,
