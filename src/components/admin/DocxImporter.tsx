@@ -17,6 +17,12 @@ interface ParsedQuestion {
   correct_answer: AnswerOption;
   explanation: string;
   package_id: string;
+  // Tambahan kolom poin opsional untuk TKP
+  points_a?: number | null;
+  points_b?: number | null;
+  points_c?: number | null;
+  points_d?: number | null;
+  points_e?: number | null;
 }
 
 // Which categories are valid for each package type
@@ -73,11 +79,11 @@ function parseDocxText(rawText: string, category: Category): { questions: Parsed
       };
 
       const question_text = block.split(/\[A\]/i)[0].trim();
-      const option_a = extract('A');
-      const option_b = extract('B');
-      const option_c = extract('C');
-      const option_d = extract('D');
-      const option_e = extract('E');
+      let rawA = extract('A');
+      let rawB = extract('B');
+      let rawC = extract('C');
+      let rawD = extract('D');
+      let rawE = extract('E');
       const rawKunci = extract('KUNCI').toUpperCase().trim();
       const explanation = extract('PEMBAHASAN');
 
@@ -85,25 +91,64 @@ function parseDocxText(rawText: string, category: Category): { questions: Parsed
         errors.push(`Soal #${lineNum}: teks soal tidak ditemukan.`);
         return;
       }
-      if (!option_a || !option_b || !option_c || !option_d || !option_e) {
+      if (!rawA || !rawB || !rawC || !rawD || !rawE) {
         errors.push(`Soal #${lineNum}: satu atau lebih pilihan jawaban (A-E) tidak lengkap.`);
         return;
       }
-      if (!['A', 'B', 'C', 'D', 'E'].includes(rawKunci)) {
-        errors.push(`Soal #${lineNum}: kunci jawaban "${rawKunci}" tidak valid. Gunakan A, B, C, D, atau E.`);
+
+      // Validasi kunci jawaban hanya mengikat secara ketat pada TIU dan TWK
+      if (category !== 'TKP' && !['A', 'B', 'C', 'D', 'E'].includes(rawKunci)) {
+        errors.push(`Soal #${lineNum}: kunci jawaban "${rawKunci}" tidak valid untuk TIU/TWK. Gunakan A, B, C, D, atau E.`);
         return;
+      }
+
+      // Inisialisasi poin kosong
+      let pA: number | null = null;
+      let pB: number | null = null;
+      let pC: number | null = null;
+      let pD: number | null = null;
+      let pE: number | null = null;
+
+      // MESIN PEMOTONG POIN OPSI (KHUSUS TKP)
+      if (category === 'TKP') {
+        const parseOpsiPoin = (rawOpsi: string, label: string) => {
+          if (rawOpsi.includes('|')) {
+            const parts = rawOpsi.split('|');
+            const teks = parts[0].trim();
+            // Mencari angka di dalam potongan string setelah tanda "|"
+            const matchPoin = parts[1].match(/\d+/);
+            const poin = matchPoin ? parseInt(matchPoin[0], 10) : 0;
+            return { teks, poin };
+          }
+          // Fallback jika admin lupa menulis "| Poin: X"
+          errors.push(`Soal #${lineNum} (Opsi ${label}): Format poin "|" tidak ditemukan. Diatur otomatis ke 0 poin.`);
+          return { teks: rawOpsi, poin: 0 };
+        };
+
+        const resA = parseOpsiPoin(rawA, 'A'); rawA = resA.teks; pA = resA.poin;
+        const resB = parseOpsiPoin(rawB, 'B'); rawB = resB.teks; pB = resB.poin;
+        const resC = parseOpsiPoin(rawC, 'C'); rawC = resC.teks; pC = resC.poin;
+        const resD = parseOpsiPoin(rawD, 'D'); rawD = resD.teks; pD = resD.poin;
+        const resE = parseOpsiPoin(rawE, 'E'); rawE = resE.teks; pE = resE.poin;
       }
 
       questions.push({
         category,
         question_text,
-        option_a,
-        option_b,
-        option_c,
-        option_d,
-        option_e,
-        correct_answer: rawKunci as AnswerOption,
+        option_a: rawA,
+        option_b: rawB,
+        option_c: rawC,
+        option_d: rawD,
+        option_e: rawE,
+        // Untuk TKP, kunci diisi default 'A' jika kolom [KUNCI] kosong di berkas template Word
+        correct_answer: (category === 'TKP' ? (rawKunci || 'A') : rawKunci) as AnswerOption,
         explanation,
+        package_id: '',
+        points_a: pA,
+        points_b: pB,
+        points_c: pC,
+        points_d: pD,
+        points_e: pE,
       });
     } catch {
       errors.push(`Soal #${lineNum}: gagal diparse.`);
@@ -155,8 +200,8 @@ const EXAMPLES: Record<Category, { q: string; opts: string[]; key: string; exp: 
     { q: 'Sila ke-3 Pancasila berbunyi...', opts: ['Ketuhanan Yang Maha Esa', 'Kemanusiaan yang Adil dan Beradab', 'Persatuan Indonesia', 'Kerakyatan yang Dipimpin oleh Hikmat', 'Keadilan Sosial'], key: 'C', exp: 'Sila ke-3 Pancasila adalah Persatuan Indonesia.' },
   ],
   TKP: [
-    { q: 'Atasan meminta Anda memalsukan laporan. Apa yang Anda lakukan?', opts: ['Langsung menolak dan melaporkan ke pihak berwajib', 'Menolak dengan sopan dan menjelaskan risikonya', 'Melaksanakan karena tidak ingin kehilangan pekerjaan', 'Pura-pura setuju tapi tidak melaksanakan', 'Mengajak rekan kerja untuk sama-sama menolak'], key: 'B', exp: 'Menolak dengan sopan menunjukkan integritas profesional tanpa konfrontatif.' },
-    { q: 'Rekan kerja selalu menunda pekerjaan sehingga menghambat tim. Sikap Anda?', opts: ['Melaporkan langsung ke atasan tanpa berbicara dengan rekan', 'Mengabaikan karena bukan urusan Anda', 'Berbicara baik-baik dan menawarkan bantuan', 'Membicarakannya kepada rekan lain', 'Mengerjakan semua tugasnya diam-diam'], key: 'C', exp: 'Berbicara baik-baik menunjukkan empati dan kerja sama yang konstruktif.' },
+    { q: 'Atasan meminta Anda memalsukan laporan keuangan demi kelancaran proyek perusahaan. Bagaimana tindakan Anda?', opts: ['Langsung menolak dengan keras dan mengancam akan melaporkan hal tersebut ke pihak berwajib | Poin: 2', 'Menolak dengan sopan serta menjelaskan risiko hukum dan dampak buruknya bagi perusahaan | Poin: 5', 'Melaksanakan instruksi tersebut demi menjaga loyalitas kerja dan posisi aman | Poin: 1', 'Pura-pura menyetujui hal tersebut tetapi sengaja menunda-nunda penyelesaian tugasnya | Poin: 3', 'Mengajak rekan kerja yang lain untuk bersama-sama melakukan protes kepada atasan | Poin: 4'], key: 'B', exp: 'Menolak secara sopan merefleksikan integritas kerja yang tinggi tanpa memicu gesekan destruktif.' },
+    { q: 'Seorang rekan dalam tim Anda tampak mengalami penurunan produktivitas yang mengganggu ritme kerja kelompok. Sikap Anda?', opts: ['Melaporkan penurunan kinerja tersebut langsung kepada atasan tanpa diskusi internal | Poin: 2', 'Mengabaikan kondisi tersebut karena merasa itu adalah urusan pribadi masing-masing | Poin: 1', 'Mengajak berbicara dari hati ke hati secara santun dan menawarkan solusi atau bantuan | Poin: 5', 'Membicarakan keluhan tersebut di belakangnya bersama dengan rekan kerja yang lain | Poin: 3', 'Membantu mengambil alih seluruh beban tugasnya secara diam-diam agar tim tetap aman | Poin: 4'], key: 'C', exp: 'Komunikasi persuasif interpersonal melambangkan kompetensi jejaring kerja dan kepedulian yang sehat.' },
   ],
 };
 
@@ -174,9 +219,9 @@ async function downloadTemplate(category: Category) {
 
   const guideRows = [
     { marker: '[SOAL]', desc: 'Awal setiap soal baru' },
-    { marker: '[A] hingga [E]', desc: 'Pilihan jawaban A sampai E' },
-    { marker: '[KUNCI]', desc: 'Huruf jawaban benar (A, B, C, D, atau E)' },
-    { marker: '[PEMBAHASAN]', desc: 'Penjelasan jawaban (opsional)' },
+    { marker: '[A] hingga [E]', desc: category === 'TKP' ? 'Isi jawaban diakhiri tanda pipa dan poin. Contoh: Teks Jawaban | Poin: 5' : 'Pilihan jawaban A sampai E biasa' },
+    { marker: '[KUNCI]', desc: category === 'TKP' ? 'Bisa diisi huruf opsi dengan poin tertinggi (Opsi formalitas)' : 'Huruf jawaban benar (A, B, C, D, atau E)' },
+    { marker: '[PEMBAHASAN]', desc: 'Penjelasan analisis soal (opsional)' },
   ];
 
   const tableRows = guideRows.map((row, i) => {
@@ -281,7 +326,6 @@ async function downloadTemplate(category: Category) {
 
 export default function DocxImporter({ packageId, packageType, onImported }: Props) {
   const allowedCategories = PKG_CATEGORIES[packageType];
-  // For FULL packages, user chooses category per upload; for mini, it's fixed
   const [category, setCategory] = useState<Category>(allowedCategories[0]);
   const [parsedQuestions, setParsedQuestions] = useState<ParsedQuestion[]>([]);
   const [parseErrors, setParseErrors] = useState<string[]>([]);
@@ -305,7 +349,7 @@ export default function DocxImporter({ packageId, packageType, onImported }: Pro
       const arrayBuffer = await file.arrayBuffer();
       const result = await mammoth.extractRawText({ arrayBuffer });
       const { questions, errors } = parseDocxText(result.value, category);
-      // Inject package_id into every parsed question
+      
       const withPkg = questions.map((q) => ({ ...q, package_id: packageId }));
       setParsedQuestions(withPkg);
       setParseErrors(errors);
@@ -354,7 +398,6 @@ export default function DocxImporter({ packageId, packageType, onImported }: Pro
         </div>
       </div>
 
-      {/* Category Selector (only shown for FULL packages) + Template Download */}
       <div className="flex flex-wrap items-center gap-3 mb-4">
         <div className="flex items-center gap-2">
           <Package className="w-4 h-4 text-gray-400" />
@@ -382,7 +425,6 @@ export default function DocxImporter({ packageId, packageType, onImported }: Pro
         </button>
       </div>
 
-      {/* Upload Area */}
       {!fileName ? (
         <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-2xl cursor-pointer hover:border-[#1e3a8a] hover:bg-blue-50/30 transition-colors">
           <Upload className="w-8 h-8 text-gray-300 mb-2" />
@@ -400,7 +442,6 @@ export default function DocxImporter({ packageId, packageType, onImported }: Pro
         </div>
       )}
 
-      {/* Parsing spinner */}
       {parsing && (
         <div className="flex items-center gap-2 mt-3 text-sm text-gray-500">
           <Loader2 className="w-4 h-4 animate-spin" />
@@ -408,7 +449,6 @@ export default function DocxImporter({ packageId, packageType, onImported }: Pro
         </div>
       )}
 
-      {/* Errors */}
       {parseErrors.length > 0 && (
         <div className="mt-3 bg-red-50 border border-red-200 rounded-2xl p-4 space-y-1">
           <div className="flex items-center gap-2 mb-2">
@@ -421,7 +461,6 @@ export default function DocxImporter({ packageId, packageType, onImported }: Pro
         </div>
       )}
 
-      {/* Success save notification */}
       {savedCount !== null && (
         <motion.div
           initial={{ opacity: 0, y: -10 }}
@@ -433,7 +472,6 @@ export default function DocxImporter({ packageId, packageType, onImported }: Pro
         </motion.div>
       )}
 
-      {/* Preview */}
       {parsedQuestions.length > 0 && (
         <div className="mt-4">
           <div className="flex items-center justify-between mb-3">
@@ -460,7 +498,7 @@ export default function DocxImporter({ packageId, packageType, onImported }: Pro
                   </span>
                   <p className="text-sm text-gray-700 font-medium flex-1 line-clamp-1">{q.question_text}</p>
                   <span className="text-xs font-bold bg-[#10b981] text-white px-2 py-0.5 rounded-md flex-shrink-0">
-                    {q.correct_answer}
+                    {category === 'TKP' ? 'TKP Poin' : q.correct_answer}
                   </span>
                   {expandedIdx === i
                     ? <ChevronUp className="w-4 h-4 text-gray-400 flex-shrink-0" />
@@ -478,11 +516,18 @@ export default function DocxImporter({ packageId, packageType, onImported }: Pro
                       <div className="px-3 pb-3 border-t border-gray-200 pt-2 space-y-1.5">
                         {(['A', 'B', 'C', 'D', 'E'] as AnswerOption[]).map((opt) => {
                           const val = q[`option_${opt.toLowerCase()}` as keyof ParsedQuestion] as string;
-                          const isCorrect = opt === q.correct_answer;
+                          const poinVal = q[`points_${opt.toLowerCase()}` as keyof ParsedQuestion];
+                          const isCorrect = category !== 'TKP' && opt === q.correct_answer;
+                          
                           return (
                             <div key={opt} className={`flex gap-2 text-xs p-2 rounded-lg ${isCorrect ? 'bg-emerald-50 text-emerald-800 font-semibold' : 'text-gray-600'}`}>
                               <span className={`font-bold w-4 flex-shrink-0 ${isCorrect ? 'text-[#10b981]' : 'text-gray-400'}`}>{opt}.</span>
-                              <span>{val}</span>
+                              <span className="flex-1">{val}</span>
+                              {category === 'TKP' && poinVal !== undefined && (
+                                <span className="bg-rose-50 text-rose-700 font-bold px-2 py-0.5 rounded border border-rose-200">
+                                  {poinVal} Poin
+                                </span>
+                              )}
                             </div>
                           );
                         })}
