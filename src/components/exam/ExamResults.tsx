@@ -261,6 +261,9 @@ export default function ExamResults() {
                       const isUnanswered = !ans?.selectedAnswer;
                       const isExpanded = expandedQuestion === q.id;
 
+                      // 🚀 Mengunci nomor urut asli berdasarkan array 'questions' global
+                      const originalIndex = questions.findIndex(item => item.id === q.id);
+
                       return (
                         <motion.div
                           key={q.id}
@@ -286,7 +289,7 @@ export default function ExamResults() {
                             </div>
                             <div className="flex-1 min-w-0">
                               <p className="text-sm font-medium text-gray-800 line-clamp-2">
-                                Soal {idx + 1}: {q.question_text}
+                                Soal {originalIndex !== -1 ? originalIndex + 1 : idx + 1}: {q.question_text}
                               </p>
                               {q.image_url && (
                                 <img
