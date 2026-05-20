@@ -41,6 +41,7 @@ export function packageTypeToExamType(pt: string): ExamType {
 }
 
 // Fetch questions for a package from Supabase, fallback to mockQuestions
+// Fetch questions for a package from Supabase, fallback to mockQuestions
 async function fetchQuestionsForExam(
   examType: ExamType,
   packageId?: string,
@@ -56,20 +57,40 @@ async function fetchQuestionsForExam(
 
     const { data } = await query;
     if (data && data.length > 0) {
+      // 🚀 MEMAKSA PEMETAAN: Memastikan poin_a s/d poin_e ikut disalin ke dalam object state
+      const mappedData = data.map((q) => ({
+        ...q,
+        points_a: q.points_a ?? 0,
+        points_b: q.points_b ?? 0,
+        points_c: q.points_c ?? 0,
+        points_d: q.points_d ?? 0,
+        points_e: q.points_e ?? 0,
+      })) as Question[];
+
       // Filter by category for non-FULL types
       const filtered = examType === 'FULL'
-        ? (data as Question[])
-        : (data as Question[]).filter((q) => q.category === examType);
+        ? mappedData
+        : mappedData.filter((q) => q.category === examType);
+        
       if (filtered.length > 0) return filtered.slice(0, config.questionCount);
     }
   }
 
-  // Fallback: mockQuestions
+  // Fallback: mockQuestions (Tambahkan proteksi poin juga untuk mock data jika ada)
   const mock = examType === 'FULL'
     ? mockQuestions
     : mockQuestions.filter((q) => q.category === examType);
 
-  let padded = mock;
+  const mappedMock = mock.map((q) => ({
+    ...q,
+    points_a: (q as any).points_a ?? 0,
+    points_b: (q as any).points_b ?? 0,
+    points_c: (q as any).points_c ?? 0,
+    points_d: (q as any).points_d ?? 0,
+    points_e: (q as any).points_e ?? 0,
+  })) as Question[];
+
+  let padded = mappedMock;
   while (padded.length < config.questionCount) {
     padded = [...padded, ...padded].slice(0, config.questionCount);
   }
