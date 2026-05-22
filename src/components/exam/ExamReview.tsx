@@ -311,7 +311,7 @@ export default function ExamReview() {
   }, [reviewResultId]);
 
   const handleBack = () => {
-    dispatch({ type: 'CLEAR_EXAM' });
+    dispatch({ type: 'SET_EXAM_STATUS', payload: 'RESULT' });
   };
 
   if (loading) {
