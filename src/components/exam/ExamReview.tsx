@@ -103,7 +103,7 @@ function QuestionCard({
             )}
 
             {!isTKP && (
-              <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-[#1e3a8a]/10 text-[#1e3a8a]">
+              <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-gray-100 text-gray-500">
                 Kunci: {question.correct_answer}
               </span>
             )}
@@ -273,9 +273,7 @@ export default function ExamReview() {
   const [activeCategory, setActiveCategory] = useState<string>('all');
 
   const reviewResultId = state.reviewResultId;
-  const isAdmin = state.profile?.role === 'admin' || state.profile?.role === 'super_admin';
 
-  // Ambil data snapshot secara cerdas dari Supabase Online / LocalStorage Cadangan
   useEffect(() => {
     async function fetchReviewData() {
       if (!reviewResultId) {
@@ -285,7 +283,6 @@ export default function ExamReview() {
       
       setLoading(true);
       try {
-        // 1. Ambil dari kolom database online Supabase
         const { data, error } = await supabase
           .from('exam_results')
           .select('review_snapshot')
@@ -295,7 +292,6 @@ export default function ExamReview() {
         if (data?.review_snapshot) {
           setSnapshot(data.review_snapshot);
         } else {
-          // 2. Jika di database kosong (ujian lama), ambil dari localStorage komputer lokal
           const localData = localStorage.getItem(`exam_review_snapshot_${reviewResultId}`);
           if (localData) {
             setSnapshot(JSON.parse(localData));
@@ -314,7 +310,6 @@ export default function ExamReview() {
     fetchReviewData();
   }, [reviewResultId]);
 
-  // Aksi tombol kembali pintar menyesuaikan Role Akun
   const handleBack = () => {
     dispatch({ type: 'CLEAR_EXAM' });
   };
@@ -412,7 +407,7 @@ export default function ExamReview() {
         </div>
       </header>
 
-      <div className="max-w-3xl mx-auto px-4 py-6 space-y-5">
+      <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
         {/* Score Summary */}
         <div className="grid grid-cols-3 gap-3">
           {[
@@ -420,15 +415,17 @@ export default function ExamReview() {
             { label: 'Salah', value: stats.wrong, color: 'text-red-500', bg: 'bg-red-50' },
             { label: 'Kosong', value: stats.unanswered, color: 'text-gray-500', bg: 'bg-gray-50' },
           ].map((s) => (
-            <div key={s.label} className={`${s.bg} rounded-2xl p-3 text-center border border-white`}>
+            <div key={s.label} className={`${s.bg} rounded-2xl p-3 text-center border border-white shadow-sm`}>
               <p className={`text-2xl font-extrabold ${s.color}`}>{s.value}</p>
               <p className="text-xs text-gray-500 mt-0.5">{s.label}</p>
             </div>
           ))}
         </div>
 
-        {/* Filters */}
-        <div className="space-y-2">
+        {/* Filters Group Container */}
+        <div className="mt-8 pt-4 border-t border-gray-100 space-y-3.5">
+          
+          {/* 1. Kategori Filter (TIU, TWK, TKP) */}
           {categories.length > 2 && (
             <div className="flex gap-2 overflow-x-auto pb-1 hide-scrollbar">
               {categories.map((cat) => (
@@ -446,17 +443,22 @@ export default function ExamReview() {
             </div>
           )}
 
-          <div className="flex gap-2 overflow-x-auto pb-1 hide-scrollbar">
-            <Filter className="w-4 h-4 text-gray-400 flex-shrink-0 self-center" />
+          {/* 2. Sub-Filter Status Jawaban (Semua, Benar, Salah, Kosong) */}
+          <div className="flex flex-wrap items-center gap-2 pb-1">
+            <div className="flex items-center gap-1 text-gray-400 mr-1 flex-shrink-0">
+              <Filter className="w-3.5 h-3.5" />
+              <span className="text-[11px] font-medium hidden sm:inline">Filter:</span>
+            </div>
+            
             {filterOptions.map((f) => (
               <button
                 key={f.key}
                 onClick={() => setFilter(f.key)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex-shrink-0 transition-colors flex items-center gap-1
+                className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex-shrink-0 transition-colors flex items-center gap-1.5
                   ${filter === f.key ? `${f.color} ring-2 ring-offset-1 ring-current` : 'bg-white border border-gray-200 text-gray-500 hover:bg-gray-50'}`}
               >
                 {f.label}
-                <span className={`px-1.5 py-0.5 rounded-full text-xs font-bold
+                <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold
                   ${filter === f.key ? 'bg-white/60' : 'bg-gray-100'}`}>
                   {f.count}
                 </span>
@@ -464,15 +466,15 @@ export default function ExamReview() {
             ))}
           </div>
 
-          {/* Search */}
-          <div className="relative">
+          {/* 3. Search Bar */}
+          <div className="relative pt-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Cari teks soal..."
-              className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/30 text-gray-800 placeholder-gray-400"
+              className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/30 text-gray-800 placeholder-gray-400 shadow-sm"
             />
           </div>
         </div>
