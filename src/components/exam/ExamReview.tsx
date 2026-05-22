@@ -1,11 +1,11 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowLeft, CheckCircle, XCircle, Target, BookOpen,
   ChevronDown, ChevronUp, Search, Filter,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { loadReviewSnapshot, ReviewSnapshot } from '../../lib/examPersistence';
+import { supabase } from '../../lib/supabase';
 import { AnswerOption } from '../../types';
 
 const OPTIONS: AnswerOption[] = ['A', 'B', 'C', 'D', 'E'];
@@ -17,25 +17,22 @@ function QuestionCard({
   answer,
   index,
 }: {
-  question: ReviewSnapshot['questions'][number];
-  answer: ReviewSnapshot['answers'][string] | undefined;
+  question: any;
+  answer: any | undefined;
   index: number;
 }) {
   const [expanded, setExpanded] = useState(false);
   const selected = answer?.selectedAnswer ?? null;
   const isTKP = question.category === 'TKP';
   
-  // Logika status untuk TIU/TWK
   const isCorrect = !isTKP && selected !== null && selected === question.correct_answer;
   const isUnanswered = selected === null;
 
-  // Fungsi helper untuk mengambil poin dari snapshot soal
   const getOptionPoints = (opt: AnswerOption) => {
     const key = `points_${opt.toLowerCase()}` as keyof typeof question;
     return (question[key] as number) ?? 0;
   };
 
-  // Mendapatkan skor yang diperoleh user di soal ini
   const userGainedPoints = selected ? getOptionPoints(selected as AnswerOption) : 0;
 
   return (
@@ -49,7 +46,6 @@ function QuestionCard({
         onClick={() => setExpanded((v) => !v)}
         className="w-full p-4 flex items-start gap-3 text-left hover:bg-gray-50/50 transition-colors"
       >
-        {/* Status badge */}
         <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5
           ${isUnanswered 
             ? 'bg-gray-100' 
@@ -247,7 +243,6 @@ function QuestionCard({
                 </div>
               )}
 
-              {/* Box Pembahasan */}
               {question.explanation ? (
                 <div className="mt-4 bg-[#1e3a8a]/5 border border-[#1e3a8a]/10 rounded-xl p-3.5">
                   <div className="flex items-center gap-1.5 mb-1.5">
@@ -271,13 +266,66 @@ function QuestionCard({
 
 export default function ExamReview() {
   const { state, dispatch } = useApp();
+  const [snapshot, setSnapshot] = useState<any | null>(null);
+  const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<FilterType>('all');
   const [search, setSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState<string>('all');
 
-  const snapshot = state.reviewResultId
-    ? loadReviewSnapshot(state.reviewResultId)
-    : null;
+  const reviewResultId = state.reviewResultId;
+  const isAdmin = state.profile?.role === 'admin' || state.profile?.role === 'super_admin';
+
+  // Ambil data snapshot secara cerdas dari Supabase Online / LocalStorage Cadangan
+  useEffect(() => {
+    async function fetchReviewData() {
+      if (!reviewResultId) {
+        setLoading(false);
+        return;
+      }
+      
+      setLoading(true);
+      try {
+        // 1. Ambil dari kolom database online Supabase
+        const { data, error } = await supabase
+          .from('exam_results')
+          .select('review_snapshot')
+          .eq('id', reviewResultId)
+          .maybeSingle();
+
+        if (data?.review_snapshot) {
+          setSnapshot(data.review_snapshot);
+        } else {
+          // 2. Jika di database kosong (ujian lama), ambil dari localStorage komputer lokal
+          const localData = localStorage.getItem(`exam_review_snapshot_${reviewResultId}`);
+          if (localData) {
+            setSnapshot(JSON.parse(localData));
+          } else {
+            setSnapshot(null);
+          }
+        }
+      } catch (err) {
+        console.error("Gagal memuat snapshot pembahasan:", err);
+        setSnapshot(null);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchReviewData();
+  }, [reviewResultId]);
+
+  // Aksi tombol kembali pintar menyesuaikan Role Akun
+  const handleBack = () => {
+    dispatch({ type: 'CLEAR_EXAM' });
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <div className="text-center text-gray-500 text-sm">Memuat dokumen pembahasan...</div>
+      </div>
+    );
+  }
 
   if (!snapshot) {
     return (
@@ -286,8 +334,8 @@ export default function ExamReview() {
           <BookOpen className="w-12 h-12 text-gray-300 mx-auto mb-3" />
           <p className="text-gray-500 font-medium">Data pembahasan tidak ditemukan</p>
           <button
-            onClick={() => dispatch({ type: 'SET_VIEW', payload: 'participant-dashboard' })}
-            className="mt-4 px-4 py-2 rounded-xl bg-[#1e3a8a] text-white text-sm font-semibold"
+            onClick={handleBack}
+            className="mt-4 px-4 py-2 rounded-xl bg-[#1e3a8a] text-white text-sm font-semibold shadow"
           >
             Kembali ke Dashboard
           </button>
@@ -302,37 +350,37 @@ export default function ExamReview() {
     ? ['all', 'TIU', 'TWK', 'TKP']
     : ['all', examType];
 
-  const filtered = useMemo(() => {
-    return questions.filter((q) => {
-      const ans = answers[q.id];
-      const selected = ans?.selectedAnswer ?? null;
-      const isCorrect = selected !== null && selected === q.correct_answer;
+  const filtered = questions ? questions.filter((q: any) => {
+    const ans = answers ? answers[q.id] : null;
+    const selected = ans?.selectedAnswer ?? null;
+    const isCorrect = selected !== null && selected === q.correct_answer;
 
-      if (activeCategory !== 'all' && q.category !== activeCategory) return false;
-      if (filter === 'correct' && !isCorrect) return false;
-      if (filter === 'wrong' && (selected === null || isCorrect)) return false;
-      if (filter === 'unanswered' && selected !== null) return false;
-      if (search.trim()) {
-        const q_lower = q.question_text.toLowerCase();
-        if (!q_lower.includes(search.toLowerCase())) return false;
-      }
-      return true;
-    });
-  }, [questions, answers, filter, search, activeCategory]);
+    if (activeCategory !== 'all' && q.category !== activeCategory) return false;
+    if (filter === 'correct' && !isCorrect) return false;
+    if (filter === 'wrong' && (selected === null || isCorrect)) return false;
+    if (filter === 'unanswered' && selected !== null) return false;
+    if (search.trim()) {
+      const q_lower = q.question_text.toLowerCase();
+      if (!q_lower.includes(search.toLowerCase())) return false;
+    }
+    return true;
+  }) : [];
 
-  const stats = useMemo(() => {
+  const stats = (() => {
     let correct = 0, wrong = 0, unanswered = 0;
-    questions.forEach((q) => {
-      const ans = answers[q.id];
-      if (!ans?.selectedAnswer) { unanswered++; return; }
-      if (ans.selectedAnswer === q.correct_answer) correct++;
-      else wrong++;
-    });
+    if (questions) {
+      questions.forEach((q: any) => {
+        const ans = answers ? answers[q.id] : null;
+        if (!ans?.selectedAnswer) { unanswered++; return; }
+        if (ans.selectedAnswer === q.correct_answer) correct++;
+        else wrong++;
+      });
+    }
     return { correct, wrong, unanswered };
-  }, [questions, answers]);
+  })();
 
   const filterOptions: { key: FilterType; label: string; count: number; color: string }[] = [
-    { key: 'all', label: 'Semua', count: questions.length, color: 'bg-gray-100 text-gray-700' },
+    { key: 'all', label: 'Semua', count: questions?.length || 0, color: 'bg-gray-100 text-gray-700' },
     { key: 'correct', label: 'Benar', count: stats.correct, color: 'bg-emerald-100 text-emerald-700' },
     { key: 'wrong', label: 'Salah', count: stats.wrong, color: 'bg-red-100 text-red-600' },
     { key: 'unanswered', label: 'Kosong', count: stats.unanswered, color: 'bg-gray-100 text-gray-500' },
@@ -344,7 +392,7 @@ export default function ExamReview() {
       <header className="bg-[#1e3a8a] sticky top-0 z-40 shadow-lg">
         <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
           <button
-            onClick={() => dispatch({ type: 'SET_VIEW', payload: 'exam-results' })}
+            onClick={handleBack}
             className="w-9 h-9 bg-white/10 hover:bg-white/20 rounded-xl flex items-center justify-center transition-colors flex-shrink-0"
           >
             <ArrowLeft className="w-4 h-4 text-white" />
@@ -354,8 +402,8 @@ export default function ExamReview() {
               Pembahasan — {packageName ?? examType}
             </p>
             <p className="text-blue-200 text-xs">
-              {new Date(completedAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
-              {' · '}Skor: <span className="font-bold text-white">{scores.total}</span>
+              {completedAt ? new Date(completedAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '-'}
+              {' · '}Skor: <span className="font-bold text-white">{scores?.total ?? 0}</span>
             </p>
           </div>
           <div className="flex-shrink-0 text-right">
@@ -381,7 +429,6 @@ export default function ExamReview() {
 
         {/* Filters */}
         <div className="space-y-2">
-          {/* Category tabs */}
           {categories.length > 2 && (
             <div className="flex gap-2 overflow-x-auto pb-1 hide-scrollbar">
               {categories.map((cat) => (
@@ -399,7 +446,6 @@ export default function ExamReview() {
             </div>
           )}
 
-          {/* Status filter chips */}
           <div className="flex gap-2 overflow-x-auto pb-1 hide-scrollbar">
             <Filter className="w-4 h-4 text-gray-400 flex-shrink-0 self-center" />
             {filterOptions.map((f) => (
@@ -439,11 +485,11 @@ export default function ExamReview() {
           </div>
         ) : (
           <div className="space-y-3">
-            {filtered.map((q, i) => (
+            {filtered.map((q: any, i: number) => (
               <QuestionCard
                 key={q.id}
                 question={q}
-                answer={answers[q.id]}
+                answer={answers ? answers[q.id] : undefined}
                 index={questions.indexOf(q)}
               />
             ))}
