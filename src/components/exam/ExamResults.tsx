@@ -331,7 +331,7 @@ export default function ExamResults() {
               </div>
 
               <p className="text-gray-500 text-sm leading-relaxed">
-                Token sebelumnya sudah kedaluwarsa karena Anda telah menyelesaikan ujian. Silakan masukkan **Token Baru** dari pengawas untuk memulai ulang.
+                Token sebelumnya sudah kedaluwarsa karena Anda telah menyelesaikan ujian. Silakan masukkan Token Baru dari pengawas untuk memulai ulang.
               </p>
 
               <form onSubmit={handleVerifyTokenAndRepeat} className="space-y-3">
