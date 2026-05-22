@@ -12,6 +12,7 @@ import MasterResults from './MasterResults';
 import PackageManager from './PackageManager';
 import ManageAdmins from './ManageAdmins';
 import ManageParticipants from './ManageParticipants';
+import ExamReview from '../exam/ExamReview'; // 👈 Import komponen review agar bisa dirender terisolasi
 
 type Tab = 'overview' | 'questions' | 'live' | 'results' | 'packages' | 'admins' | 'participants';
 
@@ -30,6 +31,11 @@ export default function AdminDashboard() {
 
   const profile = state.profile;
   const isSuperAdmin = profile?.role === 'super_admin';
+
+  // 👈 JIKA SEDANG MEMBUKA DETAIL PEMBAHASAN (reviewResultId ada), AMANKAN TAMPILAN
+  if (state.reviewResultId) {
+    return <ExamReview />;
+  }
 
   const allTabs: { id: Tab; label: string; icon: React.ElementType; superAdminOnly?: boolean }[] = [
     { id: 'overview', label: 'Ringkasan', icon: LayoutDashboard },
@@ -122,26 +128,35 @@ function AdminOverview({ onNavigate, isSuperAdmin }: { onNavigate: (tab: Tab) =>
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let isMounted = true;
     async function load() {
-      const [q, p, r, pa, pp] = await Promise.all([
-        supabase.from('questions').select('id', { count: 'exact', head: true }),
-        supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'participant').eq('is_approved', true),
-        supabase.from('exam_results').select('id', { count: 'exact', head: true }),
-        isSuperAdmin
-          ? supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'admin').eq('is_approved', false)
-          : Promise.resolve({ count: 0 }),
-        supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'participant').eq('is_approved', false),
-      ]);
-      setStats({
-        totalQuestions: q.count ?? 0,
-        totalParticipants: p.count ?? 0,
-        totalResults: r.count ?? 0,
-        pendingAdmins: pa.count ?? 0,
-        pendingParticipants: pp.count ?? 0,
-      });
-      setLoading(false);
+      try {
+        const [q, p, r, pa, pp] = await Promise.all([
+          supabase.from('questions').select('id', { count: 'exact', head: true }),
+          supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'participant').eq('is_approved', true),
+          supabase.from('exam_results').select('id', { count: 'exact', head: true }),
+          isSuperAdmin
+            ? supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'admin').eq('is_approved', false)
+            : Promise.resolve({ count: 0 }),
+          supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'participant').eq('is_approved', false),
+        ]);
+        
+        if (isMounted) {
+          setStats({
+            totalQuestions: q.count ?? 0,
+            totalParticipants: p.count ?? 0,
+            totalResults: r.count ?? 0,
+            pendingAdmins: pa.count ?? 0,
+            pendingParticipants: pp.count ?? 0,
+          });
+          setLoading(false);
+        }
+      } catch (err) {
+        console.error("Gagal memperbarui ringkasan:", err);
+      }
     }
     load();
+    return () => { isMounted = false; };
   }, [isSuperAdmin]);
 
   const statCards = [
