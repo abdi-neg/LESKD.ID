@@ -245,7 +245,6 @@ function appReducer(state: AppState, action: AppAction): AppState {
       if (newTime <= 0) {
         const scores = calculateScores(state.examSession);
         
-        // 🚀 Hapus pelacak sesi aktif di HP jika waktu pengerjaan habis otomatis
         localStorage.removeItem('active_exam_session_id');
 
         return {
@@ -261,7 +260,6 @@ function appReducer(state: AppState, action: AppAction): AppState {
       if (!state.examSession) return state;
       const scores = calculateScores(state.examSession);
 
-      // 🚀 Hapus sesi aktif dari localStorage agar saat masuk halaman skor, tidak terkunci saat refresh
       localStorage.removeItem('active_exam_session_id');
 
       return {
@@ -272,7 +270,6 @@ function appReducer(state: AppState, action: AppAction): AppState {
     }
 
     case 'CLEAR_EXAM': {
-      // 🚀 Bersihkan total pelacak sesi dari localStorage saat user keluar sesi / back ke dashboard
       localStorage.removeItem('active_exam_session_id');
 
       const isAdmin = state.profile?.role === 'admin' || state.profile?.role === 'super_admin';
@@ -400,7 +397,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const session = state.examSession;
     if (!session) return;
 
-    if (session.status === 'in_progress' || session.status === 'completed') {
+    // 🚀 FIXED: Hanya save progress jika status ujian memang 'in_progress'
+    if (session.status === 'in_progress') {
       saveExamProgress(session);
     }
   }, [state.examSession]);
