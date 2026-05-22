@@ -6,6 +6,7 @@ import {
   saveExamProgress,
   loadExamProgress,
   getActiveSessionId,
+  clearExamProgress, // 🚀 IMPORT: Ambil fungsi pembersih bawaan asli
 } from '../lib/examPersistence';
 
 type AppAction =
@@ -176,6 +177,8 @@ function appReducer(state: AppState, action: AppAction): AppState {
     }
 
     case 'LOGOUT':
+      // 🚀 Bersihkan token pelacak aktif saat logout paksa akun
+      localStorage.removeItem('exam_active_session_id');
       return { ...initialState, authLoading: false };
 
     case 'SET_VIEW':
@@ -245,7 +248,8 @@ function appReducer(state: AppState, action: AppAction): AppState {
       if (newTime <= 0) {
         const scores = calculateScores(state.examSession);
         
-        localStorage.removeItem('active_exam_session_id');
+        // 🚀 Bersihkan sesi menggunakan fungsi bawaan asli yang benar
+        clearExamProgress(state.examSession.id);
 
         return {
           ...state,
@@ -260,7 +264,8 @@ function appReducer(state: AppState, action: AppAction): AppState {
       if (!state.examSession) return state;
       const scores = calculateScores(state.examSession);
 
-      localStorage.removeItem('active_exam_session_id');
+      // 🚀 Bersihkan sesi menggunakan fungsi bawaan asli yang benar
+      clearExamProgress(state.examSession.id);
 
       return {
         ...state,
@@ -270,7 +275,12 @@ function appReducer(state: AppState, action: AppAction): AppState {
     }
 
     case 'CLEAR_EXAM': {
-      localStorage.removeItem('active_exam_session_id');
+      // 🚀 Jika masih ada sisa id examSession, bersihkan dengan kunci yang benar
+      if (state.examSession) {
+        clearExamProgress(state.examSession.id);
+      } else {
+        localStorage.removeItem('exam_active_session_id');
+      }
 
       const isAdmin = state.profile?.role === 'admin' || state.profile?.role === 'super_admin';
       return { 
