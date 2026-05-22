@@ -6,7 +6,6 @@ import {
   saveExamProgress,
   loadExamProgress,
   getActiveSessionId,
-  clearExamProgress,
 } from '../lib/examPersistence';
 
 type AppAction =
@@ -23,7 +22,8 @@ type AppAction =
   | { type: 'RESTORE_TIMER'; payload: number }
   | { type: 'SUBMIT_EXAM' }
   | { type: 'CLEAR_EXAM' }
-  | { type: 'OPEN_REVIEW'; payload: string };
+  | { type: 'OPEN_REVIEW'; payload: string }
+  | { type: 'DELETE_EXAM_RESULT'; payload: string }; // 🚀 REGISTERED: Aksi hapus riwayat
 
 const initialState: AppState = {
   profile: null,
@@ -40,8 +40,6 @@ export function packageTypeToExamType(pt: string): ExamType {
   return 'FULL';
 }
 
-// Fetch questions for a package from Supabase, fallback to mockQuestions
-// Fetch questions for a package from Supabase, fallback to mockQuestions
 async function fetchQuestionsForExam(
   examType: ExamType,
   packageId?: string,
@@ -57,7 +55,6 @@ async function fetchQuestionsForExam(
 
     const { data } = await query;
     if (data && data.length > 0) {
-      // 🚀 MEMAKSA PEMETAAN: Memastikan poin_a s/d poin_e ikut disalin ke dalam object state
       const mappedData = data.map((q) => ({
         ...q,
         points_a: q.points_a ?? 0,
@@ -67,7 +64,6 @@ async function fetchQuestionsForExam(
         points_e: q.points_e ?? 0,
       })) as Question[];
 
-      // Filter by category for non-FULL types
       const filtered = examType === 'FULL'
         ? mappedData
         : mappedData.filter((q) => q.category === examType);
@@ -76,7 +72,6 @@ async function fetchQuestionsForExam(
     }
   }
 
-  // Fallback: mockQuestions (Tambahkan proteksi poin juga untuk mock data jika ada)
   const mock = examType === 'FULL'
     ? mockQuestions
     : mockQuestions.filter((q) => q.category === examType);
@@ -105,7 +100,6 @@ function buildSession(
   const config = EXAM_CONFIGS[examType];
   const answers: ExamSession['answers'] = {};
   
-  // Mengunci data poin agar tidak hilang saat session ujian dibuat
   const securedQuestions = questions.map((q) => ({
     ...q,
     points_a: (q as any).points_a ?? 0,
@@ -140,10 +134,8 @@ function calculateScores(session: ExamSession) {
     if (!answer?.selectedAnswer) return;
     
     if (q.category === 'TKP') {
-      // MESIN KALKULASI BARU: Membaca poin dinamis yang diinput admin dari Supabase
-      const selected = answer.selectedAnswer.toLowerCase(); // menjamin huruf kecil ('a','b','c','d','e')
+      const selected = answer.selectedAnswer.toLowerCase();
       
-      // Ambil nilai poin dari kolom terkait, jika kosong/null otomatis dianggap 0 poin
       let points = 0;
       if (selected === 'a') points = Number(q.points_a ?? 0);
       else if (selected === 'b') points = Number(q.points_b ?? 0);
@@ -189,7 +181,6 @@ function appReducer(state: AppState, action: AppAction): AppState {
     case 'SET_VIEW':
       return { ...state, currentView: action.payload };
 
-    // Kept for edge cases; normal flow goes through async startExam()
     case 'START_EXAM': {
       const { examType, pkg } = action.payload;
       const config = EXAM_CONFIGS[examType];
@@ -278,6 +269,14 @@ function appReducer(state: AppState, action: AppAction): AppState {
     case 'OPEN_REVIEW':
       return { ...state, reviewResultId: action.payload, currentView: 'exam-review' };
 
+    case 'DELETE_EXAM_RESULT': {
+      // Membersihkan ID review aktif jika riwayat tersebut sedang dibuka/dihapus
+      if (state.reviewResultId === action.payload) {
+        return { ...state, reviewResultId: null };
+      }
+      return state;
+    }
+
     default:
       return state;
   }
@@ -289,6 +288,7 @@ interface AppContextType {
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
   startExam: (examType: ExamType, pkg?: ExamPackage) => Promise<void>;
+  deleteHistory: (resultId: string) => Promise<boolean>; // 🚀 REGISTERED: Method kontraktual
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -314,11 +314,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  // Primary entry point for starting an exam — fetches real questions from Supabase
   async function startExam(examType: ExamType, pkg?: ExamPackage) {
     const questions = await fetchQuestionsForExam(examType, pkg?.id);
     const session = buildSession(examType, questions, pkg);
     dispatch({ type: 'RESUME_EXAM', payload: session });
+  }
+
+  // 🚀 CORE FUNCTION: Fungsi eksekutor penghapus riwayat ujian
+  async function deleteHistory(resultId: string): Promise<boolean> {
+    try {
+      const { deleteExamResult } = await import('../lib/examPersistence');
+      const res = await deleteExamResult(resultId);
+      if (res.success) {
+        dispatch({ type: 'DELETE_EXAM_RESULT', payload: resultId });
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
   }
 
   useEffect(() => {
@@ -328,9 +342,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (savedId) {
           const saved = loadExamProgress(savedId);
           if (saved) {
-            // Re-fetch real questions from Supabase to restore the session correctly
             fetchQuestionsForExam(saved.examType, saved.packageId).then((questions) => {
-              // Merge with saved answers (questions may have same IDs)
               const restoredSession: ExamSession = {
                 id: saved.sessionId,
                 packageId: saved.packageId,
@@ -368,17 +380,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Auto-save answers + timeRemaining on every state change during exam
-  // Auto-save answers + timeRemaining on every state change during exam
-useEffect(() => {
-  const session = state.examSession;
-  if (!session) return;
+  useEffect(() => {
+    const session = state.examSession;
+    if (!session) return;
 
-  // Mengunci data agar halaman Review Cepat tidak kehilangan acuan data soal
-  if (session.status === 'in_progress' || session.status === 'completed') {
-    saveExamProgress(session);
-  }
-}, [state.examSession]);
+    if (session.status === 'in_progress' || session.status === 'completed') {
+      saveExamProgress(session);
+    }
+  }, [state.examSession]);
 
   async function signOut() {
     await supabase.auth.signOut();
@@ -386,7 +395,7 @@ useEffect(() => {
   }
 
   return (
-    <AppContext.Provider value={{ state, dispatch, signOut, refreshProfile, startExam }}>
+    <AppContext.Provider value={{ state, dispatch, signOut, refreshProfile, startExam, deleteHistory }}>
       {children}
     </AppContext.Provider>
   );
