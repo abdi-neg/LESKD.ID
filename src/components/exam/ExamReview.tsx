@@ -56,7 +56,7 @@ function QuestionCard({
             : isTKP 
               ? userGainedPoints === 5 
                 ? 'bg-emerald-500' 
-                : 'bg-amber-500' // TKP jika tidak poin maksimal diberi warna amber/orange hangat
+                : 'bg-amber-500'
               : isCorrect 
                 ? 'bg-emerald-500' 
                 : 'bg-red-500'
@@ -139,7 +139,6 @@ function QuestionCard({
               )}
               
               {question.option_type === 'image' ? (
-                /* ==================== 1. OPSI TIPE GAMBAR ==================== */
                 <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-2.5">
                   {OPTIONS.map((opt) => {
                     const imgUrl = question[`option_${opt.toLowerCase()}` as keyof typeof question] as string;
@@ -149,7 +148,6 @@ function QuestionCard({
                     const isChosen = selected === opt;
                     const isWrongChoice = !isTKP && isChosen && !isKey;
 
-                    // Style border box untuk TKP vs Non-TKP
                     let borderClass = 'border-gray-200';
                     if (isTKP) {
                       if (isChosen) borderClass = 'border-amber-500 ring-2 ring-amber-200';
@@ -161,7 +159,6 @@ function QuestionCard({
 
                     return (
                       <div key={opt} className={`relative rounded-2xl border-2 overflow-hidden ${borderClass}`}>
-                        {/* Badge Huruf Opsi */}
                         <div className={`absolute top-1.5 left-1.5 z-10 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shadow
                           ${isTKP
                             ? isChosen ? 'bg-amber-500 text-white' : 'bg-white/90 text-gray-500 border border-gray-200'
@@ -171,7 +168,6 @@ function QuestionCard({
                           {opt}
                         </div>
 
-                        {/* Badge Poin TKP (Kanan Atas) */}
                         {isTKP && (
                           <div className={`absolute top-1.5 right-1.5 z-10 px-1.5 py-0.5 rounded-md text-[10px] font-bold shadow-sm
                             ${pts === 5 ? 'bg-emerald-500 text-white' : 'bg-gray-100 text-gray-600'}`}>
@@ -192,7 +188,6 @@ function QuestionCard({
                   })}
                 </div>
               ) : (
-                /* ==================== 2. OPSI TIPE TEKS ==================== */
                 <div className="mt-3 space-y-2">
                   {OPTIONS.map((opt) => {
                     const text = question[`option_${opt.toLowerCase()}` as keyof typeof question] as string;
@@ -202,7 +197,6 @@ function QuestionCard({
                     const isChosen = selected === opt;
                     const isWrongChoice = !isTKP && isChosen && !isKey;
 
-                    // Tentukan warna background list item opsi
                     let bgClass = 'bg-gray-50 border border-transparent';
                     if (isTKP) {
                       if (isChosen) bgClass = 'bg-amber-50/70 border border-amber-300';
@@ -214,7 +208,6 @@ function QuestionCard({
 
                     return (
                       <div key={opt} className={`flex items-start gap-2.5 p-2.5 rounded-xl text-sm transition-colors ${bgClass}`}>
-                        {/* Lingkaran Huruf A-E */}
                         <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0
                           ${isTKP
                             ? isChosen ? 'bg-amber-500 text-white' : 'bg-white border border-gray-200 text-gray-500'
@@ -224,7 +217,6 @@ function QuestionCard({
                           {opt}
                         </div>
 
-                        {/* Isi Teks Jawaban */}
                         <span className={`leading-relaxed flex-1
                           ${isTKP
                             ? isChosen ? 'text-amber-900 font-medium' : 'text-gray-600'
@@ -234,7 +226,6 @@ function QuestionCard({
                           {text}
                         </span>
 
-                        {/* Indikator Poin / Status Icon di Ujung Kanan */}
                         {isTKP ? (
                           <span className={`text-xs font-bold px-2 py-0.5 rounded-lg flex-shrink-0 ml-auto self-center
                             ${pts === 5 
@@ -353,7 +344,6 @@ export default function ExamReview() {
       <header className="bg-[#1e3a8a] sticky top-0 z-40 shadow-lg">
         <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
           <button
-            {/* 🚀 Perubahan di bawah ini: mengarah ke 'RESULTS' (Halaman Rekapan Nilai) */}
             onClick={() => dispatch({ type: 'SET_VIEW', payload: 'RESULTS' })}
             className="w-9 h-9 bg-white/10 hover:bg-white/20 rounded-xl flex items-center justify-center transition-colors flex-shrink-0"
           >
