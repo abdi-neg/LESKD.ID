@@ -47,7 +47,10 @@ export default function ExamResults() {
     };
 
     (async () => {
-      // 1. Simpan hasil ujian ke Supabase
+      // 1. Ambil data snapshot pembahasan terlebih dahulu
+      const snapshot = buildReviewSnapshot(session);
+
+      // 2. Simpan hasil ujian ke Supabase beserta snapshot-nya
       const { data, error } = await supabase.from('exam_results').insert({
         participant_id: profile.id,
         package_id: packageId ?? null,
@@ -62,6 +65,7 @@ export default function ExamResults() {
         passed,
         duration_seconds: durationSeconds,
         completed_at: (completedAt ?? new Date()).toISOString(),
+        review_snapshot: snapshot // 👈 Ini baris baru yang ditambahkan
       }).select('id').maybeSingle();
 
       if (error) {
