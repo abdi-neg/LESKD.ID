@@ -344,7 +344,7 @@ export default function ExamReview() {
       <header className="bg-[#1e3a8a] sticky top-0 z-40 shadow-lg">
         <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
           <button
-            onClick={() => dispatch({ type: 'SET_VIEW', payload: 'RESULTS' })}
+            onClick={() => dispatch({ type: 'SET_VIEW', payload: 'exam-results' })}
             className="w-9 h-9 bg-white/10 hover:bg-white/20 rounded-xl flex items-center justify-center transition-colors flex-shrink-0"
           >
             <ArrowLeft className="w-4 h-4 text-white" />
