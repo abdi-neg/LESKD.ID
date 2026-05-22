@@ -32,29 +32,53 @@ export default function MasterResults() {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<string>('ALL');
 
-  // Load data riwayat ujian dari Supabase
+  // Load data riwayat ujian dari Supabase dengan teknik penggabungan manual yang aman
   async function loadResults() {
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      // 1. Ambil semua data dari tabel exam_results terlebih dahulu
+      const { data: examData, error: examError } = await supabase
         .from('exam_results')
-        .select(`
-          id,
-          user_id,
-          package_id,
-          exam_type,
-          score_tiu,
-          score_twk,
-          score_tkp,
-          score_total,
-          created_at,
-          profiles (full_name, email),
-          exam_packages (name)
-        `)
+        .select('*')
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
-      setResults((data as any) || []);
+      if (examError) throw examError;
+
+      if (examData && examData.length > 0) {
+        // 2. Ambil semua data profil sekaligus untuk digabungkan
+        const { data: profileData } = await supabase
+          .from('profiles')
+          .select('id, full_name, email');
+
+        // 3. Ambil semua data paket ujian untuk nama paketnya
+        const { data: packageData } = await supabase
+          .from('exam_packages')
+          .select('id, name');
+
+        // 4. Petakan dan gabungkan datanya secara manual di aplikasi backend (Aman dari error Foreign Key)
+        const formatted = examData.map((result: any) => {
+          const matchedProfile = profileData?.find((p) => p.id === result.user_id);
+          const matchedPackage = packageData?.find((pkg) => pkg.id === result.package_id);
+
+          return {
+            id: result.id,
+            user_id: result.user_id,
+            package_id: result.package_id,
+            exam_type: result.exam_type,
+            score_tiu: result.score_tiu || 0,
+            score_twk: result.score_twk || 0,
+            score_tkp: result.score_tkp || 0,
+            score_total: result.score_total || 0,
+            created_at: result.created_at,
+            profiles: matchedProfile ? { full_name: matchedProfile.full_name, email: matchedProfile.email } : null,
+            exam_packages: matchedPackage ? { name: matchedPackage.name } : null
+          };
+        });
+
+        setResults(formatted);
+      } else {
+        setResults([]);
+      }
     } catch (err) {
       console.error('Gagal memuat riwayat ujian:', err);
     } finally {
