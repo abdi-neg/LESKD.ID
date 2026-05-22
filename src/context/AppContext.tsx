@@ -23,7 +23,7 @@ type AppAction =
   | { type: 'SUBMIT_EXAM' }
   | { type: 'CLEAR_EXAM' }
   | { type: 'OPEN_REVIEW'; payload: string }
-  | { type: 'DELETE_EXAM_RESULT'; payload: string }; // 🚀 REGISTERED: Aksi hapus riwayat
+  | { type: 'DELETE_EXAM_RESULT'; payload: string };
 
 const initialState: AppState = {
   profile: null,
@@ -244,6 +244,10 @@ function appReducer(state: AppState, action: AppAction): AppState {
       const newTime = state.examSession.timeRemaining - 1;
       if (newTime <= 0) {
         const scores = calculateScores(state.examSession);
+        
+        // 🚀 Hapus pelacak sesi aktif di HP jika waktu pengerjaan habis otomatis
+        localStorage.removeItem('active_exam_session_id');
+
         return {
           ...state,
           currentView: 'exam-results',
@@ -256,6 +260,10 @@ function appReducer(state: AppState, action: AppAction): AppState {
     case 'SUBMIT_EXAM': {
       if (!state.examSession) return state;
       const scores = calculateScores(state.examSession);
+
+      // 🚀 Hapus sesi aktif dari localStorage agar saat masuk halaman skor, tidak terkunci saat refresh
+      localStorage.removeItem('active_exam_session_id');
+
       return {
         ...state,
         currentView: 'exam-results',
@@ -264,13 +272,15 @@ function appReducer(state: AppState, action: AppAction): AppState {
     }
 
     case 'CLEAR_EXAM': {
-      // Cek peran user yang sedang login saat ini
+      // 🚀 Bersihkan total pelacak sesi dari localStorage saat user keluar sesi / back ke dashboard
+      localStorage.removeItem('active_exam_session_id');
+
       const isAdmin = state.profile?.role === 'admin' || state.profile?.role === 'super_admin';
       return { 
         ...state, 
         examSession: null, 
-        reviewResultId: null, // sekalian bersihkan id review-nya
-        currentView: isAdmin ? 'admin-dashboard' : 'participant-dashboard' // 👈 Kembali ke tempat yang benar!
+        reviewResultId: null, 
+        currentView: isAdmin ? 'admin-dashboard' : 'participant-dashboard'
       };
     }
 
@@ -278,7 +288,6 @@ function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, reviewResultId: action.payload, currentView: 'exam-review' };
 
     case 'DELETE_EXAM_RESULT': {
-      // Membersihkan ID review aktif jika riwayat tersebut sedang dibuka/dihapus
       if (state.reviewResultId === action.payload) {
         return { ...state, reviewResultId: null };
       }
@@ -296,7 +305,7 @@ interface AppContextType {
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
   startExam: (examType: ExamType, pkg?: ExamPackage) => Promise<void>;
-  deleteHistory: (resultId: string) => Promise<boolean>; // 🚀 REGISTERED: Method kontraktual
+  deleteHistory: (resultId: string) => Promise<boolean>;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -328,7 +337,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'RESUME_EXAM', payload: session });
   }
 
-  // 🚀 CORE FUNCTION: Fungsi eksekutor penghapus riwayat ujian
   async function deleteHistory(resultId: string): Promise<boolean> {
     try {
       const { deleteExamResult } = await import('../lib/examPersistence');
