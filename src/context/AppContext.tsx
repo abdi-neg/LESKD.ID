@@ -263,8 +263,16 @@ function appReducer(state: AppState, action: AppAction): AppState {
       };
     }
 
-    case 'CLEAR_EXAM':
-      return { ...state, examSession: null, currentView: 'participant-dashboard' };
+    case 'CLEAR_EXAM': {
+      // Cek peran user yang sedang login saat ini
+      const isAdmin = state.profile?.role === 'admin' || state.profile?.role === 'super_admin';
+      return { 
+        ...state, 
+        examSession: null, 
+        reviewResultId: null, // sekalian bersihkan id review-nya
+        currentView: isAdmin ? 'admin-dashboard' : 'participant-dashboard' // 👈 Kembali ke tempat yang benar!
+      };
+    }
 
     case 'OPEN_REVIEW':
       return { ...state, reviewResultId: action.payload, currentView: 'exam-review' };
