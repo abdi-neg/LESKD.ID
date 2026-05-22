@@ -311,7 +311,7 @@ export default function ExamReview() {
   }, [reviewResultId]);
 
   const handleBack = () => {
-    dispatch({ type: ''SET_VIEW', payload: 'exam-results' });
+    dispatch({ type: 'SET_VIEW', payload: 'exam-results' });
   };
 
   if (loading) {
