@@ -1,204 +1,227 @@
-import { useEffect, useState } from 'react';
-import { motion } from 'framer-motion';
-import { RefreshCw, Search, BarChart3, CheckCircle, XCircle, Clock, Filter } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { useApp } from '../../context/AppContext';
 import { supabase } from '../../lib/supabase';
-import { ExamResult, PackageType } from '../../types';
+import { 
+  History, Search, Calendar, Award, CheckCircle, 
+  XCircle, Clock, FileText, ChevronRight, Trash2 
+} from 'lucide-react';
 
-const PKG_LABELS: Record<PackageType, string> = {
-  MINI_TIU: 'Mini TIU',
-  MINI_TWK: 'Mini TWK',
-  MINI_TKP: 'Mini TKP',
-  FULL: 'Full CAT',
-};
-
-const PKG_COLORS: Record<PackageType, string> = {
-  MINI_TIU: 'bg-blue-100 text-blue-700',
-  MINI_TWK: 'bg-emerald-100 text-emerald-700',
-  MINI_TKP: 'bg-rose-100 text-rose-700',
-  FULL: 'bg-slate-100 text-slate-700',
-};
-
-function formatDuration(seconds: number) {
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return `${m}m ${s}s`;
+interface ExamResultRow {
+  id: string;
+  user_id: string;
+  package_id: string | null;
+  exam_type: 'TIU' | 'TWK' | 'TKP' | 'FULL';
+  score_tiu: number;
+  score_twk: number;
+  score_tkp: number;
+  score_total: number;
+  created_at: string;
+  profiles: {
+    full_name: string;
+    email: string;
+  } | null;
+  exam_packages: {
+    name: string;
+  } | null;
 }
 
 export default function MasterResults() {
-  const [results, setResults] = useState<ExamResult[]>([]);
+  const { dispatch, deleteHistory } = useApp();
+  const [results, setResults] = useState<ExamResultRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  const [packageFilter, setPackageFilter] = useState<PackageType | 'ALL'>('ALL');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterType, setFilterType] = useState<string>('ALL');
 
+  // Load data riwayat ujian dari Supabase
   async function loadResults() {
     setLoading(true);
-    const { data } = await supabase
-      .from('exam_results')
-      .select(`
-        *,
-        profiles:participant_id (full_name)
-      `)
-      .order('completed_at', { ascending: false });
+    try {
+      const { data, error } = await supabase
+        .from('exam_results')
+        .select(`
+          id,
+          user_id,
+          package_id,
+          exam_type,
+          score_tiu,
+          score_twk,
+          score_tkp,
+          score_total,
+          created_at,
+          profiles (full_name, email),
+          exam_packages (name)
+        `)
+        .order('created_at', { ascending: false });
 
-    if (data) {
-      const mapped = data.map((r: ExamResult & { profiles: { full_name: string } | null }) => ({
-        ...r,
-        participant_name: r.profiles?.full_name ?? 'Unknown',
-      }));
-      setResults(mapped);
+      if (error) throw error;
+      setResults((data as any) || []);
+    } catch (err) {
+      console.error('Gagal memuat riwayat ujian:', err);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }
 
-  useEffect(() => { loadResults(); }, []);
+  useEffect(() => {
+    loadResults();
+  }, []);
 
-  const filtered = results.filter((r) => {
-    const name = r.participant_name?.toLowerCase() ?? '';
-    const pkg = r.package_name?.toLowerCase() ?? '';
-    const matchSearch = name.includes(search.toLowerCase()) || pkg.includes(search.toLowerCase());
-    const matchPkg = packageFilter === 'ALL' || r.package_type === packageFilter;
-    return matchSearch && matchPkg;
+  // 🚀 LOGIKA UTAMA: Fungsi hapus riwayat ujian
+  const handleDeleteResult = async (resultId: string, participantName: string) => {
+    const confirmDelete = window.confirm(
+      `Apakah Anda yakin ingin menghapus riwayat ujian dari "${participantName}"?\n\nTindakan ini bersifat permanen dan akan menghapus data di database serta berkas lokal.`
+    );
+
+    if (!confirmDelete) return;
+
+    const success = await deleteHistory(resultId);
+    if (success) {
+      alert("Riwayat ujian berhasil dihapus secara permanen!");
+      // Filter out data dari state agar baris tabel langsung hilang otomatis
+      setResults((prev) => prev.filter((item) => item.id !== resultId));
+    } else {
+      alert("Gagal menghapus data riwayat. Silakan coba kembali.");
+    }
+  };
+
+  // Filter pencarian dan kategori
+  const filteredResults = results.filter((r) => {
+    const fullName = r.profiles?.full_name?.toLowerCase() ?? '';
+    const email = r.profiles?.email?.toLowerCase() ?? '';
+    const packageName = r.exam_packages?.name?.toLowerCase() ?? '';
+    const matchesSearch = 
+      fullName.includes(searchTerm.toLowerCase()) || 
+      email.includes(searchTerm.toLowerCase()) ||
+      packageName.includes(searchTerm.toLowerCase());
+
+    const matchesType = filterType === 'ALL' || r.exam_type === filterType;
+
+    return matchesSearch && matchesType;
   });
 
-  const totalPassed = filtered.filter((r) => r.passed).length;
-  const totalFailed = filtered.filter((r) => !r.passed).length;
-  const avgScore = filtered.length > 0
-    ? Math.round(filtered.reduce((sum, r) => sum + r.total_score, 0) / filtered.length)
-    : 0;
+  const formatDate = (dateStr: string) => {
+    const d = new Date(dateStr);
+    return d.toLocaleDateString('id-ID', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-800">Hasil Ujian Peserta</h1>
-          <p className="text-gray-500 text-sm mt-0.5">Rekap seluruh hasil ujian dari semua peserta</p>
-        </div>
-        <button onClick={loadResults} className="text-gray-400 hover:text-gray-600 transition-colors">
-          <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
-        </button>
+      <div>
+        <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
+          <History className="w-6 h-6 text-[#1e3a8a]" />
+          Master Hasil Ujian Peserta
+        </h1>
+        <p className="text-gray-500 text-sm mt-1">Daftar rekapitulasi nilai dan lembar review jawaban seluruh peserta</p>
       </div>
 
-      {/* Summary Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        {[
-          { label: 'Total Ujian', value: filtered.length, color: 'text-[#1e3a8a]', bg: 'bg-blue-50' },
-          { label: 'Lulus', value: totalPassed, color: 'text-[#10b981]', bg: 'bg-emerald-50' },
-          { label: 'Belum Lulus', value: totalFailed, color: 'text-red-500', bg: 'bg-red-50' },
-          { label: 'Rata-rata Skor', value: avgScore, color: 'text-amber-600', bg: 'bg-amber-50' },
-        ].map((s, i) => (
-          <div key={i} className={`${s.bg} rounded-2xl p-4`}>
-            <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
-            <p className="text-gray-600 text-xs mt-0.5">{s.label}</p>
-          </div>
-        ))}
-      </div>
-
-      {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+      {/* Kontrol Filter & Pencarian */}
+      <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm flex flex-col sm:flex-row gap-3">
+        <div className="flex-1 relative">
+          <Search className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            placeholder="Cari nama peserta atau paket..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/20 focus:border-[#1e3a8a]"
+            placeholder="Cari nama peserta, email, atau paket ujian..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:border-[#1e3a8a] focus:bg-white transition-all"
           />
         </div>
-        <div className="flex items-center gap-2">
-          <Filter className="w-4 h-4 text-gray-400 flex-shrink-0" />
+        <div className="w-full sm:w-48">
           <select
-            value={packageFilter}
-            onChange={(e) => setPackageFilter(e.target.value as PackageType | 'ALL')}
-            className="border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/20 focus:border-[#1e3a8a] bg-white"
+            value={filterType}
+            onChange={(e) => setFilterType(e.target.value)}
+            className="w-full px-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:border-[#1e3a8a] focus:bg-white transition-all"
           >
-            <option value="ALL">Semua Paket</option>
-            <option value="MINI_TIU">Mini TIU</option>
-            <option value="MINI_TWK">Mini TWK</option>
-            <option value="MINI_TKP">Mini TKP</option>
-            <option value="FULL">Full CAT</option>
+            <option value="ALL">Semua Jenis</option>
+            <option value="FULL">Tryout SKD Full</option>
+            <option value="TIU">Mini Tryout TIU</option>
+            <option value="TWK">Mini Tryout TWK</option>
+            <option value="TKP">Mini Tryout TKP</option>
           </select>
         </div>
       </div>
 
-      {/* Table */}
-      {loading ? (
-        <div className="space-y-3">
-          {[1, 2, 3, 4, 5].map((i) => (
-            <div key={i} className="bg-gray-100 rounded-2xl h-16 animate-pulse" />
-          ))}
-        </div>
-      ) : filtered.length === 0 ? (
-        <div className="text-center py-12 bg-gray-50 rounded-2xl border border-dashed border-gray-300">
-          <BarChart3 className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-          <p className="text-gray-500 font-medium">Belum ada hasil ujian</p>
-          <p className="text-gray-400 text-sm mt-1">Data akan muncul setelah peserta menyelesaikan ujian</p>
-        </div>
-      ) : (
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      {/* Tabel Data Riwayat */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        {loading ? (
+          <div className="p-12 text-center text-gray-500 text-sm">Memuat data hasil ujian...</div>
+        ) : filteredResults.length === 0 ? (
+          <div className="p-12 text-center text-gray-500 text-sm">Tidak ada riwayat hasil ujian yang cocok.</div>
+        ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="border-b border-gray-100 bg-gray-50">
-                  <th className="text-left px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">Peserta</th>
-                  <th className="text-left px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">Paket</th>
-                  <th className="text-center px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">TIU</th>
-                  <th className="text-center px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">TWK</th>
-                  <th className="text-center px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">TKP</th>
-                  <th className="text-center px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">Total</th>
-                  <th className="text-center px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">Status</th>
-                  <th className="text-center px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">Durasi</th>
-                  <th className="text-right px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">Tanggal</th>
+                <tr className="bg-gray-50 border-b border-gray-100 text-xs font-bold text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-4">Peserta</th>
+                  <th className="px-6 py-4">Paket / Jenis</th>
+                  <th className="px-6 py-4 text-center">TIU</th>
+                  <th className="px-6 py-4 text-center">TWK</th>
+                  <th className="px-6 py-4 text-center">TKP</th>
+                  <th className="px-6 py-4 text-center">Total</th>
+                  <th className="px-6 py-4">Waktu Selesai</th>
+                  <th className="px-6 py-4 text-center">Aksi</th>
                 </tr>
               </thead>
-              <tbody>
-                {filtered.map((r, i) => (
-                  <motion.tr
-                    key={r.id}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: i * 0.03 }}
-                    className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors"
-                  >
-                    <td className="px-4 py-3">
-                      <p className="font-medium text-gray-800 whitespace-nowrap">{r.participant_name}</p>
+              <tbody className="divide-y divide-gray-50 text-sm text-gray-700">
+                {filteredResults.map((row) => (
+                  <tr key={row.id} className="hover:bg-gray-50/70 transition-colors">
+                    <td className="px-6 py-4">
+                      <div className="font-semibold text-gray-800">{row.profiles?.full_name ?? 'Peserta Terhapus'}</div>
+                      <div className="text-xs text-gray-400 mt-0.5">{row.profiles?.email ?? '-'}</div>
                     </td>
-                    <td className="px-4 py-3">
-                      <span className={`text-xs font-semibold px-2.5 py-1 rounded-full whitespace-nowrap ${PKG_COLORS[r.package_type] ?? 'bg-gray-100 text-gray-700'}`}>
-                        {PKG_LABELS[r.package_type] ?? r.package_name}
+                    <td className="px-6 py-4">
+                      <span className="font-medium text-gray-700">
+                        {row.exam_packages?.name ?? `Mini Tryout ${row.exam_type}`}
+                      </span>
+                      <div className="text-xs text-blue-600 font-medium mt-0.5">{row.exam_type} Module</div>
+                    </td>
+                    <td className="px-6 py-4 text-center font-medium">{row.score_tiu}</td>
+                    <td className="px-6 py-4 text-center font-medium">{row.score_twk}</td>
+                    <td className="px-6 py-4 text-center font-medium text-emerald-600">{row.score_tkp}</td>
+                    <td className="px-6 py-4 text-center">
+                      <span className="inline-flex items-center justify-center px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 font-bold text-xs">
+                        {row.score_total}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-center font-mono font-semibold text-gray-700">{r.score_tiu}</td>
-                    <td className="px-4 py-3 text-center font-mono font-semibold text-gray-700">{r.score_twk}</td>
-                    <td className="px-4 py-3 text-center font-mono font-semibold text-gray-700">{r.score_tkp}</td>
-                    <td className="px-4 py-3 text-center font-mono font-bold text-[#1e3a8a]">{r.total_score}</td>
-                    <td className="px-4 py-3 text-center">
-                      {r.passed ? (
-                        <span className="flex items-center justify-center gap-1 text-xs font-semibold text-[#10b981]">
-                          <CheckCircle className="w-3.5 h-3.5" /> Lulus
-                        </span>
-                      ) : (
-                        <span className="flex items-center justify-center gap-1 text-xs font-semibold text-red-500">
-                          <XCircle className="w-3.5 h-3.5" /> Belum
-                        </span>
-                      )}
+                    <td className="px-6 py-4 text-xs text-gray-500 flex items-center gap-1.5 h-full pt-6">
+                      <Calendar className="w-3.5 h-3.5 text-gray-400" />
+                      {formatDate(row.created_at)}
                     </td>
-                    <td className="px-4 py-3 text-center">
-                      <span className="flex items-center justify-center gap-1 text-xs text-gray-500">
-                        <Clock className="w-3 h-3" />
-                        {formatDuration(r.duration_seconds)}
-                      </span>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center justify-center gap-2">
+                        {/* Tombol Tinjau Jawaban */}
+                        <button
+                          onClick={() => dispatch({ type: 'OPEN_REVIEW', payload: row.id })}
+                          className="flex items-center gap-1 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-[#1e3a8a] text-xs font-semibold rounded-xl transition-all"
+                          title="Tinjau Jawaban Peserta"
+                        >
+                          <FileText className="w-3.5 h-3.5" />
+                          Detail
+                        </button>
+
+                        {/* Tombol Hapus Riwayat Permanen */}
+                        <button
+                          onClick={() => handleDeleteResult(row.id, row.profiles?.full_name ?? 'Peserta')}
+                          className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors"
+                          title="Hapus Riwayat Ujian"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </td>
-                    <td className="px-4 py-3 text-right text-xs text-gray-500 whitespace-nowrap">
-                      {new Date(r.completed_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
-                    </td>
-                  </motion.tr>
+                  </tr>
                 ))}
               </tbody>
             </table>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
