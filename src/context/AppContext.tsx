@@ -6,7 +6,7 @@ import {
   saveExamProgress,
   loadExamProgress,
   getActiveSessionId,
-  clearExamProgress, // 🚀 IMPORT: Ambil fungsi pembersih bawaan asli
+  clearExamProgress,
 } from '../lib/examPersistence';
 
 type AppAction =
@@ -177,7 +177,6 @@ function appReducer(state: AppState, action: AppAction): AppState {
     }
 
     case 'LOGOUT':
-      // 🚀 Bersihkan token pelacak aktif saat logout paksa akun
       localStorage.removeItem('exam_active_session_id');
       return { ...initialState, authLoading: false };
 
@@ -199,7 +198,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
     }
 
     case 'RESUME_EXAM':
-      return { ...state, examSession: action.payload, currentView: 'exam-engine' };
+      return { ...state, examSession: action.payload, currentView: action.payload.status === 'completed' ? 'exam-results' : 'exam-engine' };
 
     case 'ANSWER_QUESTION': {
       if (!state.examSession) return state;
@@ -247,8 +246,6 @@ function appReducer(state: AppState, action: AppAction): AppState {
       const newTime = state.examSession.timeRemaining - 1;
       if (newTime <= 0) {
         const scores = calculateScores(state.examSession);
-        
-        // 🚀 Bersihkan sesi menggunakan fungsi bawaan asli yang benar
         clearExamProgress(state.examSession.id);
 
         return {
@@ -263,8 +260,6 @@ function appReducer(state: AppState, action: AppAction): AppState {
     case 'SUBMIT_EXAM': {
       if (!state.examSession) return state;
       const scores = calculateScores(state.examSession);
-
-      // 🚀 Bersihkan sesi menggunakan fungsi bawaan asli yang benar
       clearExamProgress(state.examSession.id);
 
       return {
@@ -275,7 +270,6 @@ function appReducer(state: AppState, action: AppAction): AppState {
     }
 
     case 'CLEAR_EXAM': {
-      // 🚀 Jika masih ada sisa id examSession, bersihkan dengan kunci yang benar
       if (state.examSession) {
         clearExamProgress(state.examSession.id);
       } else {
@@ -364,7 +358,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const savedId = getActiveSessionId();
         if (savedId) {
           const saved = loadExamProgress(savedId);
-          if (saved) {
+          
+          // 🚀 SEKARANG DIPERKETAT: Hanya restore jika data ada DAN statusnya bukan 'completed'
+          if (saved && (saved as any).status !== 'completed') {
             fetchQuestionsForExam(saved.examType, saved.packageId).then((questions) => {
               const restoredSession: ExamSession = {
                 id: saved.sessionId,
@@ -380,6 +376,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
               };
               dispatch({ type: 'RESUME_EXAM', payload: restoredSession });
             });
+          } else {
+            // Bersihkan sisa token aktif dari memori browser jika statusnya sudah kelar
+            localStorage.removeItem('exam_active_session_id');
           }
         }
         refreshProfile();
@@ -407,7 +406,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const session = state.examSession;
     if (!session) return;
 
-    // 🚀 FIXED: Hanya save progress jika status ujian memang 'in_progress'
     if (session.status === 'in_progress') {
       saveExamProgress(session);
     }
