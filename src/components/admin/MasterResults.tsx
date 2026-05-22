@@ -3,25 +3,24 @@ import { useApp } from '../../context/AppContext';
 import { supabase } from '../../lib/supabase';
 import { 
   History, Search, Calendar, Award, CheckCircle, 
-  XCircle, Clock, FileText, ChevronRight, Trash2 
+  XCircle, Clock, FileText, Trash2 
 } from 'lucide-react';
 
 interface ExamResultRow {
   id: string;
-  user_id: string;
+  participant_id: string; // 👈 Sesuai DB
   package_id: string | null;
-  exam_type: 'TIU' | 'TWK' | 'TKP' | 'FULL';
+  package_name: string; // 👈 Sesuai DB
+  package_type: string; // 👈 Sesuai DB
   score_tiu: number;
   score_twk: number;
   score_tkp: number;
-  score_total: number;
+  total_score: number; // 👈 Sesuai DB
   created_at: string;
+  completed_at: string; // 👈 Sesuai DB
   profiles: {
     full_name: string;
     email: string;
-  } | null;
-  exam_packages: {
-    name: string;
   } | null;
 }
 
@@ -32,46 +31,41 @@ export default function MasterResults() {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<string>('ALL');
 
-  // Load data riwayat ujian dari Supabase dengan teknik penggabungan manual yang aman
+  // Load data riwayat ujian dari Supabase dengan nama kolom yang benar
   async function loadResults() {
     setLoading(true);
     try {
-      // 1. Ambil semua data dari tabel exam_results terlebih dahulu
+      // 1. Ambil data dari tabel exam_results menggunakan urutan completed_at karena created_at mungkin tidak ada/berbeda
       const { data: examData, error: examError } = await supabase
         .from('exam_results')
         .select('*')
-        .order('created_at', { ascending: false });
+        .order('completed_at', { ascending: false });
 
       if (examError) throw examError;
 
       if (examData && examData.length > 0) {
-        // 2. Ambil semua data profil sekaligus untuk digabungkan
+        // 2. Ambil data profil untuk dicocokkan manual
         const { data: profileData } = await supabase
           .from('profiles')
           .select('id, full_name, email');
 
-        // 3. Ambil semua data paket ujian untuk nama paketnya
-        const { data: packageData } = await supabase
-          .from('exam_packages')
-          .select('id, name');
-
-        // 4. Petakan dan gabungkan datanya secara manual di aplikasi backend (Aman dari error Foreign Key)
+        // 3. Gabungkan data berdasarkan participant_id
         const formatted = examData.map((result: any) => {
-          const matchedProfile = profileData?.find((p) => p.id === result.user_id);
-          const matchedPackage = packageData?.find((pkg) => pkg.id === result.package_id);
+          const matchedProfile = profileData?.find((p) => p.id === result.participant_id); // 👈 pakai participant_id
 
           return {
             id: result.id,
-            user_id: result.user_id,
+            participant_id: result.participant_id,
             package_id: result.package_id,
-            exam_type: result.exam_type,
+            package_name: result.package_name || 'Tanpa Nama Paket',
+            package_type: result.package_type || 'FULL',
             score_tiu: result.score_tiu || 0,
             score_twk: result.score_twk || 0,
             score_tkp: result.score_tkp || 0,
-            score_total: result.score_total || 0,
-            created_at: result.created_at,
-            profiles: matchedProfile ? { full_name: matchedProfile.full_name, email: matchedProfile.email } : null,
-            exam_packages: matchedPackage ? { name: matchedPackage.name } : null
+            total_score: result.total_score || 0, // 👈 pakai total_score
+            created_at: result.completed_at || result.created_at, 
+            completed_at: result.completed_at,
+            profiles: matchedProfile ? { full_name: matchedProfile.full_name, email: matchedProfile.email } : null
           };
         });
 
@@ -90,7 +84,7 @@ export default function MasterResults() {
     loadResults();
   }, []);
 
-  // 🚀 LOGIKA UTAMA: Fungsi hapus riwayat ujian
+  // Fungsi hapus riwayat ujian
   const handleDeleteResult = async (resultId: string, participantName: string) => {
     const confirmDelete = window.confirm(
       `Apakah Anda yakin ingin menghapus riwayat ujian dari "${participantName}"?\n\nTindakan ini bersifat permanen dan akan menghapus data di database serta berkas lokal.`
@@ -101,29 +95,30 @@ export default function MasterResults() {
     const success = await deleteHistory(resultId);
     if (success) {
       alert("Riwayat ujian berhasil dihapus secara permanen!");
-      // Filter out data dari state agar baris tabel langsung hilang otomatis
       setResults((prev) => prev.filter((item) => item.id !== resultId));
     } else {
       alert("Gagal menghapus data riwayat. Silakan coba kembali.");
     }
   };
 
-  // Filter pencarian dan kategori
+  // Filter pencarian dan kategori module
   const filteredResults = results.filter((r) => {
     const fullName = r.profiles?.full_name?.toLowerCase() ?? '';
     const email = r.profiles?.email?.toLowerCase() ?? '';
-    const packageName = r.exam_packages?.name?.toLowerCase() ?? '';
+    const packageName = r.package_name.toLowerCase();
+    
     const matchesSearch = 
       fullName.includes(searchTerm.toLowerCase()) || 
       email.includes(searchTerm.toLowerCase()) ||
       packageName.includes(searchTerm.toLowerCase());
 
-    const matchesType = filterType === 'ALL' || r.exam_type === filterType;
+    const matchesType = filterType === 'ALL' || r.package_type === filterType;
 
     return matchesSearch && matchesType;
   });
 
   const formatDate = (dateStr: string) => {
+    if (!dateStr) return '-';
     const d = new Date(dateStr);
     return d.toLocaleDateString('id-ID', {
       day: '2-digit',
@@ -200,22 +195,22 @@ export default function MasterResults() {
                       <div className="text-xs text-gray-400 mt-0.5">{row.profiles?.email ?? '-'}</div>
                     </td>
                     <td className="px-6 py-4">
-                      <span className="font-medium text-gray-700">
-                        {row.exam_packages?.name ?? `Mini Tryout ${row.exam_type}`}
-                      </span>
-                      <div className="text-xs text-blue-600 font-medium mt-0.5">{row.exam_type} Module</div>
+                      <span className="font-medium text-gray-700">{row.package_name}</span>
+                      <div className="text-xs text-blue-600 font-medium mt-0.5">{row.package_type} Module</div>
                     </td>
                     <td className="px-6 py-4 text-center font-medium">{row.score_tiu}</td>
                     <td className="px-6 py-4 text-center font-medium">{row.score_twk}</td>
                     <td className="px-6 py-4 text-center font-medium text-emerald-600">{row.score_tkp}</td>
                     <td className="px-6 py-4 text-center">
                       <span className="inline-flex items-center justify-center px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 font-bold text-xs">
-                        {row.score_total}
+                        {row.total_score}
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-xs text-gray-500 flex items-center gap-1.5 h-full pt-6">
-                      <Calendar className="w-3.5 h-3.5 text-gray-400" />
-                      {formatDate(row.created_at)}
+                    <td className="px-6 py-4 text-xs text-gray-500">
+                      <div className="flex items-center gap-1.5 whitespace-nowrap">
+                        <Calendar className="w-3.5 h-3.5 text-gray-400" />
+                        {formatDate(row.created_at)}
+                      </div>
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center justify-center gap-2">
