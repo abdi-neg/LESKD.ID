@@ -139,3 +139,35 @@ export function buildReviewSnapshot(session: ExamSession): ReviewSnapshot {
     scores: session.scores ?? { tiu: 0, twk: 0, tkp: 0, total: 0 },
   };
 }
+/**
+ * Menghapus riwayat ujian dari database Supabase dan membersihkan snapshot dari localStorage
+ */
+export async function deleteExamResult(resultId: string): Promise<{ success: boolean; error: any }> {
+  try {
+    // Memuat instance supabase secara dinamis dari library projek Anda
+    const { supabase } = await import('./supabase'); 
+
+    const { error } = await supabase
+      .from('exam_results') // 👈 Sesuaikan dengan nama tabel hasil/riwayat ujian di Supabase Anda jika berbeda
+      .delete()
+      .eq('id', resultId);
+
+    if (error) throw error;
+
+    // Bersihkan snapshot review dari LocalStorage agar tidak memenuhi kuota browser
+    localStorage.removeItem(REVIEW_KEY(resultId));
+
+    // Perbarui daftar index riwayat review di LocalStorage jika ada
+    const rawIndex = localStorage.getItem(REVIEW_INDEX_KEY);
+    if (rawIndex) {
+      const index: string[] = JSON.parse(rawIndex);
+      const updatedIndex = index.filter((id) => id !== resultId);
+      localStorage.setItem(REVIEW_INDEX_KEY, JSON.stringify(updatedIndex));
+    }
+
+    return { success: true, error: null };
+  } catch (err) {
+    console.error('Gagal menghapus riwayat ujian:', err);
+    return { success: false, error: err };
+  }
+}
