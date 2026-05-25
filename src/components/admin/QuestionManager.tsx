@@ -38,6 +38,7 @@ const emptyForm = {
   correct_answer: 'A' as AnswerOption,
   explanation: '',
   image_url: null as string | null,
+  explanation_image_url: null as string | null, // 🚀 TAMBAHAN: State database kolom gambar pembahasan
   option_type: 'text' as OptionType,
   points_a: 0,
   points_b: 0,
@@ -52,7 +53,6 @@ const catColors: Record<string, string> = {
   TKP: 'bg-rose-100 text-rose-700',
 };
 
-// Dummy subcomponent to fix undefined PackageCompletenessCard
 function PackageCompletenessCard({ counts, requirements }: { pkg: ExamPackage; counts: any; requirements: any }) {
   return (
     <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100 text-xs text-gray-500 flex gap-4">
@@ -79,10 +79,18 @@ export default function QuestionManager() {
   const [filterCat, setFilterCat] = useState<Category | 'ALL'>('ALL');
   const [search, setSearch] = useState('');
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  
+  // State untuk Gambar Soal
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [uploadingImage, setUploadingImage] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // 🚀 TAMBAHAN: State khusus untuk Gambar Pembahasan
+  const [expImageFile, setExpImageFile] = useState<File | null>(null);
+  const [expImagePreview, setExpImagePreview] = useState<string | null>(null);
+  const expFileInputRef = useRef<HTMLInputElement>(null);
+
+  const [uploadingImage, setUploadingImage] = useState(false);
 
   useEffect(() => {
     async function loadPackages() {
@@ -110,14 +118,13 @@ export default function QuestionManager() {
     setLoading(false);
   }
 
- useEffect(() => {
+  useEffect(() => {
     if (selectedPkg) {
       setQuestions([]);
       setSearch('');
       setFilterCat('ALL');
       loadQuestions();
       
-      // LOGIKA PINTAR BARU: Otomatis set kategori form berdasarkan jenis paket
       if (selectedPkg.package_type === 'MINI_TIU') {
         setForm(prev => ({ ...prev, category: 'TIU' }));
       } else if (selectedPkg.package_type === 'MINI_TWK') {
@@ -125,7 +132,7 @@ export default function QuestionManager() {
       } else if (selectedPkg.package_type === 'MINI_TKP') {
         setForm(prev => ({ ...prev, category: 'TKP' }));
       } else {
-        setForm(prev => ({ ...prev, category: 'TIU' })); // Bawaan untuk paket FULL
+        setForm(prev => ({ ...prev, category: 'TIU' }));
       }
     } else {
       setQuestions([]);
@@ -160,6 +167,22 @@ export default function QuestionManager() {
     if (fileInputRef.current) fileInputRef.current.value = '';
   }
 
+  // 🚀 TAMBAHAN: Handler perubahan gambar pembahasan
+  function handleExpImageChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setExpImageFile(file);
+    setExpImagePreview(URL.createObjectURL(file));
+  }
+
+  // 🚀 TAMBAHAN: Handler hapus gambar pembahasan
+  function removeExpImage() {
+    setExpImageFile(null);
+    setExpImagePreview(null);
+    setForm({ ...form, explanation_image_url: null });
+    if (expFileInputRef.current) expFileInputRef.current.value = '';
+  }
+
   async function uploadImage(file: File): Promise<string | null> {
     const ext = file.name.split('.').pop();
     const path = `${crypto.randomUUID()}.${ext}`;
@@ -177,13 +200,28 @@ export default function QuestionManager() {
     setSaving(true);
 
     let imageUrl = form.image_url;
+    let explanationImageUrl = form.explanation_image_url;
+
+    // Proses unggah gambar soal jika ada
     if (imageFile) {
       setUploadingImage(true);
       imageUrl = await uploadImage(imageFile);
       setUploadingImage(false);
     }
 
-    const payload = { ...form, image_url: imageUrl, package_id: selectedPkg.id };
+    // 🚀 TAMBAHAN: Proses unggah gambar pembahasan jika ada
+    if (expImageFile) {
+      setUploadingImage(true);
+      explanationImageUrl = await uploadImage(expImageFile);
+      setUploadingImage(false);
+    }
+
+    const payload = { 
+      ...form, 
+      image_url: imageUrl, 
+      explanation_image_url: explanationImageUrl, // Masuk ke payload database
+      package_id: selectedPkg.id 
+    };
 
     if (editId) {
       await supabase.from('questions').update(payload).eq('id', editId);
@@ -208,6 +246,7 @@ export default function QuestionManager() {
       correct_answer: q.correct_answer,
       explanation: q.explanation,
       image_url: q.image_url ?? null,
+      explanation_image_url: q.explanation_image_url ?? null, // Ambil data lama jika sedang mode edit
       option_type: q.option_type ?? 'text',
       points_a: q.points_a ?? 0,
       points_b: q.points_b ?? 0,
@@ -217,6 +256,11 @@ export default function QuestionManager() {
     });
     setImageFile(null);
     setImagePreview(q.image_url ?? null);
+    
+    // Sinkronisasi data edit gambar pembahasan
+    setExpImageFile(null);
+    setExpImagePreview(q.explanation_image_url ?? null);
+
     setEditId(q.id);
     setShowForm(true);
     setShowImporter(false);
@@ -236,6 +280,11 @@ export default function QuestionManager() {
     setImageFile(null);
     setImagePreview(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
+    
+    // Reset state gambar pembahasan saat batal
+    setExpImageFile(null);
+    setExpImagePreview(null);
+    if (expFileInputRef.current) expFileInputRef.current.value = '';
   }
 
   return (
@@ -353,15 +402,17 @@ export default function QuestionManager() {
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
               onClick={() => { 
-  // Menghapus data form kecuali kategori yang sudah ditebak otomatis
-  setForm(prev => ({ ...emptyForm, category: prev.category }));
-  setEditId(null);
-  setImageFile(null);
-  setImagePreview(null);
-  if (fileInputRef.current) fileInputRef.current.value = '';
-  setShowForm(true); 
-  setShowImporter(false); 
-}}
+                setForm(prev => ({ ...emptyForm, category: prev.category }));
+                setEditId(null);
+                setImageFile(null);
+                setImagePreview(null);
+                setExpImageFile(null);
+                setExpImagePreview(null);
+                if (fileInputRef.current) fileInputRef.current.value = '';
+                if (expFileInputRef.current) expFileInputRef.current.value = '';
+                setShowForm(true); 
+                setShowImporter(false); 
+              }}
               className="flex items-center gap-2 bg-[#1e3a8a] hover:bg-[#1e40af] text-white font-semibold px-4 py-2.5 rounded-xl transition-colors text-sm"
             >
               <Plus className="w-4 h-4" />
@@ -399,21 +450,21 @@ export default function QuestionManager() {
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                     <div>
-  <label className="block text-sm font-medium text-gray-700 mb-1.5">Kategori</label>
-  <select
-    value={form.category}
-    onChange={(e) => setForm({ ...form, category: e.target.value as Category })}
-    disabled={selectedPkg?.package_type !== 'FULL'}
-    className={`w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/30 focus:border-[#1e3a8a] ${
-      selectedPkg?.package_type !== 'FULL' ? 'bg-gray-100 text-gray-500 cursor-not-allowed font-semibold' : 'bg-white text-gray-800'
-    }`}
-  >
-    {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-  </select>
-  {selectedPkg?.package_type !== 'FULL' && (
-    <p className="text-[11px] text-gray-400 mt-1">Kategori dikunci otomatis sesuai jenis paket mini tryout.</p>
-  )}
-</div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1.5">Kategori</label>
+                      <select
+                        value={form.category}
+                        onChange={(e) => setForm({ ...form, category: e.target.value as Category })}
+                        disabled={selectedPkg?.package_type !== 'FULL'}
+                        className={`w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/30 focus:border-[#1e3a8a] ${
+                          selectedPkg?.package_type !== 'FULL' ? 'bg-gray-100 text-gray-500 cursor-not-allowed font-semibold' : 'bg-white text-gray-800'
+                        }`}
+                      >
+                        {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                      {selectedPkg?.package_type !== 'FULL' && (
+                        <p className="text-[11px] text-gray-400 mt-1">Kategori dikunci otomatis sesuai jenis paket mini tryout.</p>
+                      )}
+                    </div>
                     {form.category !== 'TKP' && (
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1.5">Jawaban Benar</label>
@@ -440,6 +491,7 @@ export default function QuestionManager() {
                     />
                   </div>
 
+                  {/* Upload Gambar Soal */}
                   <div className="mb-4">
                     <label className="block text-sm font-medium text-gray-700 mb-1.5">Gambar Soal (opsional)</label>
                     {imagePreview ? (
@@ -512,7 +564,8 @@ export default function QuestionManager() {
                     })}
                   </div>
 
-                  <div className="mb-6">
+                  {/* Input Teks Pembahasan */}
+                  <div className="mb-4">
                     <label className="block text-sm font-medium text-gray-700 mb-1.5">Pembahasan / Penjelasan Jawaban</label>
                     <textarea
                       value={form.explanation}
@@ -523,9 +576,27 @@ export default function QuestionManager() {
                     />
                   </div>
 
+                  {/* 🚀 TAMBAHAN: Komponen Upload Gambar Pembahasan */}
+                  <div className="mb-6">
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Gambar Pembahasan (opsional - Sangat cocok untuk TIU)</label>
+                    {expImagePreview ? (
+                      <div className="relative inline-block">
+                        <img src={expImagePreview} alt="Preview pembahasan" className="max-h-48 max-w-full rounded-xl border border-gray-200 object-contain" />
+                        <button type="button" onClick={removeExpImage} className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center shadow-md"><X className="w-3.5 h-3.5" /></button>
+                      </div>
+                    ) : (
+                      <label className="flex flex-col items-center justify-center w-full h-24 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:border-amber-500 hover:bg-amber-50/20">
+                        <Image className="w-6 h-6 text-gray-300 mb-1" />
+                        <span className="text-xs text-gray-500">Klik untuk upload bagan, rumus, atau gambar penjelasan</span>
+                        <input ref={expFileInputRef} type="file" accept="image/*" onChange={handleExpImageChange} className="hidden" />
+                      </label>
+                    )}
+                  </div>
+
                   <div className="flex gap-3 justify-end">
                     <button type="button" onClick={cancelForm} className="px-5 py-2.5 rounded-xl border border-gray-200 text-gray-600 font-medium text-sm">Batal</button>
-                    <button type="submit" disabled={saving} className="px-5 py-2.5 rounded-xl bg-[#10b981] text-white font-semibold text-sm disabled:opacity-60">
+                    <button type="submit" disabled={saving || uploadingImage} className="px-5 py-2.5 rounded-xl bg-[#10b981] text-white font-semibold text-sm disabled:opacity-60 flex items-center gap-1.5">
+                      {(saving || uploadingImage) && <Loader2 className="w-4 h-4 animate-spin" />}
                       {saving ? 'Menyimpan...' : editId ? 'Simpan Perubahan' : 'Tambah Soal'}
                     </button>
                   </div>
