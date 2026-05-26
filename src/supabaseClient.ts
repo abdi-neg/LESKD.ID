@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient } from '@supabase/supabase-js'; // 🚀 Sudah disinkronkan dengan package.json gais
 
 // Ambil URL dan Anon Key dari environment variable (.env)
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
