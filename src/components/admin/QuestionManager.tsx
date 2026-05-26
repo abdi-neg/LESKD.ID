@@ -1,6 +1,7 @@
 import React, { useState, ChangeEvent } from 'react';
-import { supabase } from '../../supabaseClient'; // Sesuaikan dengan jalur file konfigurasi Supabase Anda
-import { Question, Category } from '../../types'; // Sesuaikan dengan jalur file tipe data Anda
+// 👇 Baris awal sudah disesuaikan secara eksplisit menuju folder src gais
+import { supabase } from '../../supabaseClient.ts'; 
+import { Question, Category } from '../../types.ts'; 
 
 interface QuestionManagerProps {
   onQuestionAdded?: () => void;
@@ -137,7 +138,7 @@ export default function QuestionManager({ onQuestionAdded }: QuestionManagerProp
 
     } catch (err: any) {
       alert(`Waduh error gais: ${err.message || err}`);
-    } finally {
+    } fillly {
       setLoading(false);
     }
   };
