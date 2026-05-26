@@ -1,6 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-// 🚀 IKON AMAN: TrendingUp sudah didaftarkan di sini
 import { Activity, Users, CheckCircle, Clock, Trophy, RefreshCw, Wifi, BarChart3, Award, TrendingUp } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { ExamResult, PackageType } from '../../types';
@@ -33,23 +32,46 @@ export default function LiveScoreMonitor() {
   const [lastUpdated, setLastUpdated] = useState(new Date());
   const [isRealtime, setIsRealtime] = useState(true);
 
-  // 1. Fungsi Fetch Data Awal (Mengambil data berdasarkan created_at agar status ON_PROGRESS ikut tertarik)
+  // 1. Fungsi Fetch Data Awal dengan Strategi Fallback Nama Lapangan
   const loadInitialData = useCallback(async () => {
     setLoading(true);
     const since = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
     
-    const { data, error } = await supabase
+    // Tarik data mentah exam_results terlebih dahulu agar tidak nge-blank akibat gagal join relational
+    const { data: examData, error: examError } = await supabase
       .from('exam_results')
-      .select(`*, profiles:participant_id (full_name)`)
-      .gte('created_at', since); // 🚀 FIX: Menggunakan created_at supaya mendeteksi peserta sejak klik 'Mulai'
+      .select('*')
+      .gte('created_at', since);
 
-    if (!error && data) {
-      const mapped = (data as (ExamResult & { profiles: { full_name: string } | null })[]).map((r) => ({
-        ...r,
-        participant_name: r.profiles?.full_name ?? 'Unknown',
-      }));
-      setResults(mapped);
+    if (examError || !examData) {
+      setLoading(false);
+      return;
     }
+
+    // Ambil semua unik participant_id untuk ditarik namanya secara kolektif (Solusi anti-gagal join)
+    const participantIds = Array.from(new Set(examData.map(r => r.participant_id).filter(Boolean)));
+    
+    let nameMap: Record<string, string> = {};
+    if (participantIds.length > 0) {
+      const { data: profileData } = await supabase
+        .from('profiles')
+        .select('id, full_name')
+        .in('id', participantIds);
+      
+      if (profileData) {
+        profileData.forEach(p => {
+          nameMap[p.id] = p.full_name;
+        });
+      }
+    }
+
+    // Pasangkan nama ke baris hasil ujian masing-masing
+    const mapped = examData.map((r) => ({
+      ...r,
+      participant_name: nameMap[r.participant_id] || r.participant_name || 'Peserta SKD',
+    }));
+
+    setResults(mapped);
     setLastUpdated(new Date());
     setLoading(false);
   }, []);
@@ -58,7 +80,7 @@ export default function LiveScoreMonitor() {
     loadInitialData();
   }, [loadInitialData]);
 
-  // 2. Berlangganan Stream Realtime Supabase (Menangkap mutasi INSERT & UPDATE skor tiap klik)
+  // 2. Berlangganan Stream Realtime Supabase (Query Profil Manual Tiap Transaksi Baru)
   useEffect(() => {
     if (!isRealtime) return;
 
@@ -75,15 +97,16 @@ export default function LiveScoreMonitor() {
           const newRow = payload.new as ExamResult;
 
           if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+            // Tarik nama profil peserta secara manual menggunakan ID baris data aktif
             const { data: profData } = await supabase
               .from('profiles')
               .select('full_name')
               .eq('id', newRow.participant_id)
-              .single();
+              .maybeSingle();
 
             const updatedResult: ResultWithName = {
               ...newRow,
-              participant_name: profData?.full_name ?? 'Unknown',
+              participant_name: profData?.full_name || 'Peserta SKD',
             };
 
             setResults((prev) => {
@@ -246,7 +269,6 @@ export default function LiveScoreMonitor() {
                         </span>
                       </td>
 
-                      {/* 🚀 PERBAIKAN STATUS KELULUSAN / PROGRESS SECARA REALTIME */}
                       <td className="px-5 py-3.5 text-right">
                         {r.completed_at ? (
                           <span className={`inline-flex items-center gap-1 text-xs font-bold px-2.5 py-0.5 rounded-md border
