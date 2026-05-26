@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-client';
+import { createClient } from '@supabase/supabase-js';
 
 // Ambil URL dan Anon Key dari environment variable (.env)
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
