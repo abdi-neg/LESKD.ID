@@ -1,7 +1,8 @@
 import React, { useState, ChangeEvent } from 'react';
-// 👇 Baris awal sudah disesuaikan secara eksplisit menuju folder src gais
-import { supabase } from '../../supabaseClient.ts'; 
-import { Question, Category } from '../../types.ts'; 
+import { motion, AnimatePresence } from 'framer-motion';
+import { Image, Upload, CheckCircle2, AlertTriangle, BookOpen, Layers, Check } from 'lucide-react';
+import { supabase } from '../../supabaseClient.ts';
+import { Category } from '../../types.ts';
 
 interface QuestionManagerProps {
   onQuestionAdded?: () => void;
@@ -16,9 +17,7 @@ export default function QuestionManager({ onQuestionAdded }: QuestionManagerProp
   const [isFiguralOptions, setIsFiguralOptions] = useState<boolean>(false);
 
   // State untuk Opsi Teks (A-E)
-  const [options, setOptions] = useState({
-    A: '', B: '', C: '', D: '', E: ''
-  });
+  const [options, setOptions] = useState({ A: '', B: '', C: '', D: '', E: '' });
 
   // State untuk File Gambar Fisik
   const [questionImage, setQuestionImage] = useState<File | null>(null);
@@ -27,7 +26,7 @@ export default function QuestionManager({ onQuestionAdded }: QuestionManagerProp
     A: null, B: null, C: null, D: null, E: null
   });
 
-  // State untuk Live Preview Gambar (URL Blob lokal)
+  // State untuk Live Preview Gambar
   const [qImagePreview, setQImagePreview] = useState<string | null>(null);
   const [expImagePreview, setExpImagePreview] = useState<string | null>(null);
   const [optPreviews, setOptPreviews] = useState<{ [key: string]: string | null }>({
@@ -36,12 +35,10 @@ export default function QuestionManager({ onQuestionAdded }: QuestionManagerProp
 
   const [loading, setLoading] = useState<boolean>(false);
 
-  // Handle Perubahan Input Teks Opsi
   const handleOptionTextChange = (e: ChangeEvent<HTMLInputElement>, key: string) => {
     setOptions({ ...options, [key]: e.target.value });
   };
 
-  // Handle Pilihan Gambar (Soal, Pembahasan, Opsi)
   const handleImageChange = (e: ChangeEvent<HTMLInputElement>, type: 'question' | 'explanation' | 'option', optionKey?: string) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
@@ -60,7 +57,6 @@ export default function QuestionManager({ onQuestionAdded }: QuestionManagerProp
     }
   };
 
-  // Fungsi Pembantu untuk Upload File ke Supabase Storage Bucket 'question-images'
   const uploadToStorage = async (file: File, prefix: string): Promise<string> => {
     const fileExt = file.name.split('.').pop();
     const fileName = `${prefix}_${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
@@ -79,7 +75,6 @@ export default function QuestionManager({ onQuestionAdded }: QuestionManagerProp
     return data.publicUrl;
   };
 
-  // Handle Submit Form Simpan Soal
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -87,33 +82,27 @@ export default function QuestionManager({ onQuestionAdded }: QuestionManagerProp
     try {
       let finalQuestionImageUrl = null;
       let finalExplanationImageUrl = null;
-      
-      // Objek penampung teks akhir untuk opsi A-E (bisa berupa teks biasa atau URL hasil upload)
       let finalOptions = { ...options };
 
-      // 1. Upload Gambar Soal jika ada
       if (questionImage) {
         finalQuestionImageUrl = await uploadToStorage(questionImage, 'soal');
       }
 
-      // 2. Upload Gambar Pembahasan jika ada
       if (explanationImage) {
         finalExplanationImageUrl = await uploadToStorage(explanationImage, 'pembahasan');
       }
 
-      // 3. Jika Tipe Opsi adalah Gambar (Figural), upload gambar opsi satu per satu
       if (isFiguralOptions) {
         for (const key of ['A', 'B', 'C', 'D', 'E']) {
           const optFile = optionImages[key];
           if (!optFile) {
-            throw new Error(`Gambar untuk Opsi ${key} wajib diunggah gais jika memilih tipe Figural!`);
+            throw new Error(`Gambar untuk Opsi ${key} wajib diunggah gais!`);
           }
           const uploadedUrl = await uploadToStorage(optFile, `opsi_${key}`);
           finalOptions[key as keyof typeof finalOptions] = uploadedUrl;
         }
       }
 
-      // 4. Kirim Payload Data Lengkap ke Tabel 'questions'
       const { error } = await supabase.from('questions').insert([
         {
           category,
@@ -143,7 +132,6 @@ export default function QuestionManager({ onQuestionAdded }: QuestionManagerProp
     }
   };
 
-  // Fungsi Reset State Form setelah Berhasil Simpan
   const resetForm = () => {
     setQuestionText('');
     setExplanation('');
@@ -158,111 +146,172 @@ export default function QuestionManager({ onQuestionAdded }: QuestionManagerProp
   };
 
   return (
-    <div style={{ maxWidth: '700px', margin: '0 auto', padding: '20px', fontFamily: 'Arial, sans-serif' }}>
-      <h2 style={{ borderBottom: '2px solid #3b82f6', paddingBottom: '8px', color: '#1e3a8a' }}>Tambah Soal Baru</h2>
-      
-      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '15px' }}>
-        
+    <div className="max-w-3xl mx-auto bg-white p-8 rounded-2xl shadow-xl border border-slate-100 font-sans my-6">
+      <div className="flex items-center gap-3 border-b border-slate-100 pb-5 mb-6">
+        <div className="p-2.5 bg-blue-50 text-blue-600 rounded-xl">
+          <BookOpen className="w-6 h-6" />
+        </div>
+        <div>
+          <h2 className="text-xl font-bold text-slate-800">Manajemen Bank Soal</h2>
+          <p className="text-xs text-slate-500">Form pembuatan modul simulasi dan tryout premium</p>
+        </div>
+      </div>
+
+      <form onSubmit={handleSubmit} className="space-y-6">
         {/* Kategori */}
         <div>
-          <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Kategori Soal:</label>
-          <select value={category} onChange={(e) => setCategory(e.target.value as Category)} style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}>
-            <option value="TWK">Tes Wawasan Kebangsaan (TWK)</option>
-            <option value="TIU">Tes Inteligensia Umum (TIU)</option>
-            <option value="TKP">Tes Karakteristik Pribadi (TKP)</option>
-          </select>
+          <label className="block text-sm font-semibold text-slate-700 mb-2">Kategori SKD:</label>
+          <div className="relative">
+            <select 
+              value={category} 
+              onChange={(e) => setCategory(e.target.value as Category)} 
+              className="w-full bg-slate-50 text-slate-800 border border-slate-200 rounded-xl px-4 py-3 appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all font-medium"
+            >
+              <option value="TWK">Tes Wawasan Kebangsaan (TWK)</option>
+              <option value="TIU">Tes Inteligensia Umum (TIU)</option>
+              <option value="TKP">Tes Karakteristik Pribadi (TKP)</option>
+            </select>
+          </div>
         </div>
 
         {/* Teks Pertanyaan */}
         <div>
-          <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Teks Soal / Pertanyaan:</label>
-          <textarea value={questionText} onChange={(e) => setQuestionText(e.target.value)} rows={4} placeholder="Ketikkan teks pertanyaan di sini..." style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }} required />
+          <label className="block text-sm font-semibold text-slate-700 mb-2">Butir Pertanyaan:</label>
+          <textarea 
+            value={questionText} 
+            onChange={(e) => setQuestionText(e.target.value)} 
+            rows={4} 
+            placeholder="Tuliskan narasi atau teks soal di sini..." 
+            className="w-full bg-slate-50 text-slate-800 border border-slate-200 rounded-xl p-4 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+            required 
+          />
         </div>
 
         {/* Gambar Pertanyaan */}
-        <div style={{ backgroundColor: '#f3f4f6', padding: '10px', borderRadius: '6px' }}>
-          <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Gambar Soal (Opsional / untuk Figural):</label>
-          <input type="file" accept="image/*" onChange={(e) => handleImageChange(e, 'question')} style={{ fontSize: '14px' }} />
+        <div className="bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl p-5 hover:border-blue-400 transition-all group">
+          <label className="flex flex-col items-center justify-center cursor-pointer text-slate-500 group-hover:text-blue-600">
+            <Upload className="w-8 h-8 mb-2 transition-transform group-hover:-translate-y-0.5" />
+            <span className="text-sm font-medium">Unggah Gambar Soal <span className="text-xs text-slate-400">(Opsional/Figural)</span></span>
+            <input type="file" accept="image/*" onChange={(e) => handleImageChange(e, 'question')} className="hidden" />
+          </label>
           {qImagePreview && (
-            <div style={{ marginTop: '10px' }}>
-              <p style={{ fontSize: '12px', margin: '0 0 5px 0', color: '#666' }}>Preview Gambar Soal:</p>
-              <img src={qImagePreview} alt="Preview Soal" style={{ maxHeight: '150px', borderRadius: '4px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }} />
-            </div>
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mt-4 p-2 bg-white rounded-xl border border-slate-100 shadow-sm inline-block">
+              <img src={qImagePreview} alt="Preview Soal" className="max-h-40 max-w-full rounded-lg object-contain" />
+            </motion.div>
           )}
         </div>
 
-        {/* Toggle Tipe Opsi Jawaban */}
+        {/* Toggle Tipe Opsi */}
         <div>
-          <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Tipe Pilihan Jawaban (A-E):</label>
-          <div style={{ display: 'flex', gap: '15px' }}>
-            <label style={{ cursor: 'pointer' }}>
-              <input type="radio" checked={!isFiguralOptions} onChange={() => setIsFiguralOptions(false)} style={{ marginRight: '5px' }} />
-              Teks Biasa
-            </label>
-            <label style={{ cursor: 'pointer', color: '#2563eb', fontWeight: isFiguralOptions ? 'bold' : 'normal' }}>
-              <input type="radio" checked={isFiguralOptions} onChange={() => setIsFiguralOptions(true)} style={{ marginRight: '5px' }} />
-              Gambar (Figural) 🚀
-            </label>
+          <label className="block text-sm font-semibold text-slate-700 mb-2">Format Pilihan Jawaban (A-E):</label>
+          <div className="grid grid-cols-2 gap-4 bg-slate-50 p-1.5 rounded-xl border border-slate-200">
+            <button 
+              type="button"
+              onClick={() => setIsFiguralOptions(false)}
+              className={`flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium transition-all ${!isFiguralOptions ? 'bg-white text-slate-800 shadow-sm font-semibold' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              <Layers className="w-4 h-4" /> Teks Standar
+            </button>
+            <button 
+              type="button"
+              onClick={() => setIsFiguralOptions(true)}
+              className={`flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium transition-all ${isFiguralOptions ? 'bg-blue-600 text-white shadow-md shadow-blue-100 font-semibold' : 'text-slate-500 hover:text-blue-600'}`}
+            >
+              <Image className="w-4 h-4" /> Gambar (Figural)
+            </button>
           </div>
         </div>
 
-        {/* Bagian Input Opsi A-E (Dinamis Berdasarkan Tipe) */}
-        <div style={{ border: '1px solid #e5e7eb', padding: '15px', borderRadius: '6px', backgroundColor: '#fafafa' }}>
-          <span style={{ fontWeight: 'bold', display: 'block', marginBottom: '10px', color: '#374151' }}>Daftar Pilihan Jawaban:</span>
+        {/* Input Opsi A-E */}
+        <div className="p-6 bg-slate-50/50 rounded-2xl border border-slate-200/60 space-y-4">
+          <span className="text-sm font-bold text-slate-800 flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-500" /> Konfigurasi Pilihan Jawaban
+          </span>
           
           {['A', 'B', 'C', 'D', 'E'].map((key) => (
-            <div key={key} style={{ marginBottom: '12px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
-              <span style={{ fontWeight: 'bold', color: '#4b5563' }}>Opsi {key}</span>
+            <div key={key} className="flex flex-col md:flex-row md:items-center gap-3 bg-white p-3.5 rounded-xl border border-slate-200/70 shadow-sm">
+              <span className="w-10 h-10 flex items-center justify-center bg-slate-100 text-slate-700 font-bold rounded-lg shrink-0 border border-slate-200/50">
+                {key}
+              </span>
               
-              {isFiguralOptions ? (
-                // JIKA TIPE GAMBAR (FIGURAL)
-                <div style={{ display: 'flex', alignItems: 'center', gap: '15px', backgroundColor: '#fff', padding: '8px', border: '1px dashed #cbd5e1', borderRadius: '4px' }}>
-                  <input type="file" accept="image/*" onChange={(e) => handleImageChange(e, 'option', key)} style={{ fontSize: '13px' }} required={!optPreviews[key]} />
-                  {optPreviews[key] && (
-                    <img src={optPreviews[key]!} alt={`Preview Opsi ${key}`} style={{ height: '50px', width: '50px', objectFit: 'contain', border: '1px solid #ddd', borderRadius: '4px' }} />
-                  )}
-                </div>
-              ) : (
-                // JIKA TIPE TEKS BIASA
-                <input type="text" value={options[key as keyof typeof options]} onChange={(e) => handleOptionTextChange(e, key)} placeholder={`Masukkan teks jawaban untuk opsi ${key}`} style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }} required={!isFiguralOptions} />
-              )}
+              <div className="w-full">
+                {isFiguralOptions ? (
+                  <div className="flex items-center gap-4 w-full">
+                    <label className="flex items-center gap-2 px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer transition-all">
+                      <Upload className="w-3.5 h-3.5" /> Pilih Gambar Opsi {key}
+                      <input type="file" accept="image/*" onChange={(e) => handleImageChange(e, 'option', key)} className="hidden" required={!optPreviews[key]} />
+                    </label>
+                    {optPreviews[key] && (
+                      <motion.img initial={{ scale: 0.8 }} animate={{ scale: 1 }} src={optPreviews[key]!} alt={`Preview Opsi ${key}`} className="h-10 w-10 object-contain rounded border border-slate-100 shadow-inner" />
+                    )}
+                  </div>
+                ) : (
+                  <input 
+                    type="text" 
+                    value={options[key as keyof typeof options]} 
+                    onChange={(e) => handleOptionTextChange(e, key)} 
+                    placeholder={`Ketik teks jawaban alternatif ${key}...`} 
+                    className="w-full bg-slate-50/70 text-slate-800 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                    required={!isFiguralOptions} 
+                  />
+                )}
+              </div>
             </div>
           ))}
         </div>
 
-        {/* Kunci Jawaban Benar */}
+        {/* Kunci Jawaban */}
         <div>
-          <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Kunci Jawaban yang Benar:</label>
-          <select value={correctAnswer} onChange={(e) => setCorrectAnswer(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc', backgroundColor: '#e0f2fe', fontWeight: 'bold', color: '#0369a1' }}>
-            <option value="A">A</option>
-            <option value="B">B</option>
-            <option value="C">C</option>
-            <option value="D">D</option>
-            <option value="E">E</option>
-          </select>
+          <label className="block text-sm font-semibold text-slate-700 mb-2">Kunci Jawaban Benar:</label>
+          <div className="flex justify-between bg-slate-50 p-2 rounded-xl border border-slate-200">
+            {['A', 'B', 'C', 'D', 'E'].map((key) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setCorrectAnswer(key)}
+                className={`w-12 h-12 rounded-lg font-bold text-sm transition-all flex items-center justify-center gap-0.5 relative ${correctAnswer === key ? 'bg-emerald-600 text-white shadow-md shadow-emerald-100 scale-105' : 'bg-white text-slate-600 border border-slate-200 hover:border-slate-300'}`}
+              >
+                {key}
+                {correctAnswer === key && <Check className="w-3 h-3 absolute bottom-1 right-1" />}
+              </button>
+            ))}
+          </div>
         </div>
 
-        {/* Teks Penjelasan/Pembahasan */}
+        {/* Teks Penjelasan */}
         <div>
-          <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Teks Pembahasan / Penjelasan:</label>
-          <textarea value={explanation} onChange={(e) => setExplanation(e.target.value)} rows={4} placeholder="Ketikkan teks pembahasan analisis soal di sini..." style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }} required />
+          <label className="block text-sm font-semibold text-slate-700 mb-2">Analisis & Pembahasan Soal:</label>
+          <textarea 
+            value={explanation} 
+            onChange={(e) => setExplanation(e.target.value)} 
+            rows={4} 
+            placeholder="Tuliskan kunci pembahasan logika jawaban di sini..." 
+            className="w-full bg-slate-50 text-slate-800 border border-slate-200 rounded-xl p-4 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+            required 
+          />
         </div>
 
-        {/* Gambar Penjelasan/Pembahasan */}
-        <div style={{ backgroundColor: '#f3f4f6', padding: '10px', borderRadius: '6px' }}>
-          <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Gambar Pembahasan (Opsional):</label>
-          <input type="file" accept="image/*" onChange={(e) => handleImageChange(e, 'explanation')} style={{ fontSize: '14px' }} />
+        {/* Gambar Penjelasan */}
+        <div className="bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl p-5 hover:border-blue-400 transition-all group">
+          <label className="flex flex-col items-center justify-center cursor-pointer text-slate-500 group-hover:text-blue-600">
+            <Upload className="w-8 h-8 mb-2 transition-transform group-hover:-translate-y-0.5" />
+            <span className="text-sm font-medium">Unggah Gambar Solusi/Bagan Pembahasan <span className="text-xs text-slate-400">(Opsional)</span></span>
+            <input type="file" accept="image/*" onChange={(e) => handleImageChange(e, 'explanation')} className="hidden" />
+          </label>
           {expImagePreview && (
-            <div style={{ marginTop: '10px' }}>
-              <p style={{ fontSize: '12px', margin: '0 0 5px 0', color: '#666' }}>Preview Gambar Pembahasan:</p>
-              <img src={expImagePreview} alt="Preview Pembahasan" style={{ maxHeight: '150px', borderRadius: '4px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }} />
-            </div>
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mt-4 p-2 bg-white rounded-xl border border-slate-100 shadow-sm inline-block">
+              <img src={expImagePreview} alt="Preview Pembahasan" className="max-h-40 max-w-full rounded-lg object-contain" />
+            </motion.div>
           )}
         </div>
 
         {/* Tombol Submit */}
-        <button type="submit" disabled={loading} style={{ padding: '12px', borderRadius: '6px', border: 'none', backgroundColor: loading ? '#9ca3af' : '#2563eb', color: 'white', fontWeight: 'bold', fontSize: '16px', cursor: loading ? 'not-allowed' : 'pointer', boxShadow: '0 4px 6px -1px rgba(37, 99, 235, 0.2)', transition: 'background-color 0.2s' }}>
-          {loading ? 'Sedang Mengunggah & Menyimpan...' : 'Simpan Soal Sekarang'}
+        <button 
+          type="submit" 
+          disabled={loading} 
+          className={`w-full py-3.5 rounded-xl text-white font-bold text-base transition-all shadow-lg ${loading ? 'bg-slate-400 cursor-not-allowed shadow-none' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-600/20 hover:shadow-xl'}`}
+        >
+          {loading ? 'Menyinkronkan Data & File...' : 'Simpan ke Bank Soal'}
         </button>
 
       </form>
