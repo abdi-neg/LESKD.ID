@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Activity, Users, CheckCircle, Clock, Trophy, RefreshCw, Wifi, BarChart3, Award } from 'lucide-react';
+// 🚀 PERBAIKAN: Menambahkan TrendingUp ke dalam daftar import ikon
+import { Activity, Users, CheckCircle, Clock, Trophy, RefreshCw, Wifi, BarChart3, Award, TrendingUp } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { ExamResult, PackageType } from '../../types';
 
@@ -57,7 +58,7 @@ export default function LiveScoreMonitor() {
     loadInitialData();
   }, [loadInitialData]);
 
-  // 2. Berlangganan Stream Realtime Supabase (Menggantikan sistem interval 15 detik)
+  // 2. Berlangganan Stream Realtime Supabase
   useEffect(() => {
     if (!isRealtime) return;
 
@@ -66,7 +67,7 @@ export default function LiveScoreMonitor() {
       .on(
         'postgres_changes',
         {
-          event: '*', // Menangkap INSERT (peserta baru selesai) maupun UPDATE (jika ada perubahan nilai)
+          event: '*', 
           schema: 'public',
           table: 'exam_results',
         },
@@ -74,7 +75,6 @@ export default function LiveScoreMonitor() {
           const newRow = payload.new as ExamResult;
 
           if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-            // Ambil data nama profil untuk baris data yang baru masuk/berubah
             const { data: profData } = await supabase
               .from('profiles')
               .select('full_name')
@@ -87,7 +87,6 @@ export default function LiveScoreMonitor() {
             };
 
             setResults((prev) => {
-              // Hapus data lama jika sudah ada (mencegah duplikasi saat UPDATE)
               const filtered = prev.filter((item) => item.id !== updatedResult.id);
               return [...filtered, updatedResult];
             });
@@ -104,19 +103,15 @@ export default function LiveScoreMonitor() {
 
   // 3. ALGORITMA UTAMA: BREAK-THE-TIE RANKING SYSTEM (STANDAR BKN CPNS)
   const sortedResults = [...results].sort((a, b) => {
-    // Prioritas 1: Total Skor Tertinggi
     if (b.total_score !== a.total_score) {
       return b.total_score - a.total_score;
     }
-    // Prioritas 2: Nilai TKP Tertinggi jika total skor sama
     if (b.score_tkp !== a.score_tkp) {
       return b.score_tkp - a.score_tkp;
     }
-    // Prioritas 3: Nilai TIU Tertinggi jika TKP masih sama
     if (b.score_tiu !== a.score_tiu) {
       return b.score_tiu - a.score_tiu;
     }
-    // Prioritas 4: Nilai TWK Tertinggi jika TIU masih sama
     return b.score_twk - a.score_twk;
   });
 
@@ -207,14 +202,13 @@ export default function LiveScoreMonitor() {
                   return (
                     <motion.tr
                       key={r.id}
-                      layout // 🚀 KUNCI UTAMA: MEMBUAT BARIS BERGULIR NAIK-TURUN SECARA HALUS SAAT TUKAR POSISI
+                      layout
                       initial={{ opacity: 0, y: 12 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0 }}
                       transition={{ type: 'spring', stiffness: 350, damping: 35 }}
                       className="hover:bg-slate-900/30 transition-colors duration-150"
                     >
-                      {/* Posisi Peringkat */}
                       <td className="px-5 py-3.5 text-center">
                         <span className={`w-6 h-6 rounded-md font-black font-mono text-xs inline-flex items-center justify-center ${
                           isTopThree ? rankBadges[index] : 'bg-slate-800 text-slate-400'
@@ -223,33 +217,28 @@ export default function LiveScoreMonitor() {
                         </span>
                       </td>
 
-                      {/* Nama Peserta */}
                       <td className="px-5 py-3.5">
                         <p className="font-bold text-slate-200 uppercase tracking-wide truncate max-w-[180px]">
                           {r.participant_name}
                         </p>
                       </td>
 
-                      {/* Kode Paket */}
                       <td className="px-5 py-3.5">
                         <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-md whitespace-nowrap ${PKG_COLORS[r.package_type] ?? 'bg-slate-800 text-slate-400'}`}>
                           {PKG_LABELS[r.package_type] ?? r.package_name}
                         </span>
                       </td>
 
-                      {/* Komponen Nilai (Diurutkan Berdasarkan Bobot Terbesar CPNS BKN) */}
                       <td className="px-5 py-3.5 text-center font-mono font-bold text-slate-300 bg-rose-950/5">{r.score_tkp}</td>
                       <td className="px-5 py-3.5 text-center font-mono font-bold text-slate-300 bg-blue-950/5">{r.score_tiu}</td>
                       <td className="px-5 py-3.5 text-center font-mono font-bold text-slate-300 bg-emerald-950/5">{r.score_twk}</td>
 
-                      {/* Total Akumulasi Skor */}
                       <td className="px-5 py-3.5 text-center">
                         <span className="inline-flex items-center justify-center px-3 py-1 bg-amber-500/10 border border-amber-500/20 rounded-xl font-mono font-black text-amber-400 text-sm shadow-inner w-20">
                           {r.total_score}
                         </span>
                       </td>
 
-                      {/* Kecepatan Pengerjaan */}
                       <td className="px-5 py-3.5 text-center">
                         <span className="inline-flex items-center gap-1 text-xs text-slate-400 bg-slate-900 px-2 py-1 rounded-md font-mono">
                           <Clock className="w-3 h-3 text-slate-500" />
@@ -257,7 +246,6 @@ export default function LiveScoreMonitor() {
                         </span>
                       </td>
 
-                      {/* Status Kelulusan Passing Score */}
                       <td className="px-5 py-3.5 text-right">
                         <span className={`inline-flex items-center gap-1 text-xs font-bold px-2.5 py-0.5 rounded-md border
                           ${r.passed 
