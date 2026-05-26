@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Activity, Users, CheckCircle, Clock, Trophy, RefreshCw, Wifi, BarChart3, Award, TrendingUp } from 'lucide-react';
+import { Activity, Users, CheckCircle, Clock, Trophy, RefreshCw, BarChart3, Award, TrendingUp } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { ExamResult, PackageType } from '../../types';
 
@@ -32,11 +32,9 @@ export default function LiveScoreMonitor() {
   const [lastUpdated, setLastUpdated] = useState(new Date());
   const [isRealtime, setIsRealtime] = useState(true);
 
-  // 1. Fungsi Fetch Data Awal (Modifikasi Tanpa Filter Waktu untuk Pengujian)
-  const loadInitialData = useCallback(async () => {
-    setLoading(true);
-    
-    // Tarik 100 data ujian terbaru tanpa memedulikan batasan jam UTC
+  // 1. Fungsi Utama Sinkronisasi Data (Mengambil data & menggabungkan nama secara aman)
+  const syncLiveMonitorData = useCallback(async () => {
+    // Ambil data ujian tanpa filter waktu yang ketat agar tidak terkendala Timezone UTC/Lokal
     const { data: examData, error: examError } = await supabase
       .from('exam_results')
       .select('*')
@@ -48,6 +46,7 @@ export default function LiveScoreMonitor() {
       return;
     }
 
+    // Ambil daftar ID peserta yang unik
     const participantIds = Array.from(new Set(examData.map(r => r.participant_id).filter(Boolean)));
     
     let nameMap: Record<string, string> = {};
@@ -64,6 +63,7 @@ export default function LiveScoreMonitor() {
       }
     }
 
+    // Gabungkan data ujian dengan nama dari profiles
     const mapped = examData.map((r) => ({
       ...r,
       participant_name: nameMap[r.participant_id] || 'Peserta SKD',
@@ -74,11 +74,13 @@ export default function LiveScoreMonitor() {
     setLoading(false);
   }, []);
 
+  // Jalankan sync saat pertama kali komponen dimuat
   useEffect(() => {
-    loadInitialData();
-  }, [loadInitialData]);
+    setLoading(true);
+    syncLiveMonitorData();
+  }, [syncLiveMonitorData]);
 
-  // 2. Berlangganan Stream Realtime Supabase (Query Profil Manual Tiap Transaksi Baru)
+  // 2. Berlangganan Stream Realtime (Memicu sinkronisasi otomatis tiap ada ketukan perubahan data)
   useEffect(() => {
     if (!isRealtime) return;
 
@@ -91,28 +93,9 @@ export default function LiveScoreMonitor() {
           schema: 'public',
           table: 'exam_results',
         },
-        async (payload) => {
-          const newRow = payload.new as ExamResult;
-
-          if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-            // Tarik nama profil peserta secara manual menggunakan ID baris data aktif
-            const { data: profData } = await supabase
-              .from('profiles')
-              .select('full_name')
-              .eq('id', newRow.participant_id)
-              .maybeSingle();
-
-            const updatedResult: ResultWithName = {
-              ...newRow,
-              participant_name: profData?.full_name || 'Peserta SKD',
-            };
-
-            setResults((prev) => {
-              const filtered = prev.filter((item) => item.id !== updatedResult.id);
-              return [...filtered, updatedResult];
-            });
-            setLastUpdated(new Date());
-          }
+        () => {
+          // Begitu ada INSERT atau UPDATE dari peserta, jalankan sinkronisasi data terbaru
+          syncLiveMonitorData();
         }
       )
       .subscribe();
@@ -120,7 +103,7 @@ export default function LiveScoreMonitor() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [isRealtime]);
+  }, [isRealtime, syncLiveMonitorData]);
 
   // 3. ALGORITMA BREAK-THE-TIE RANKING SYSTEM (STANDAR RESMI BKN CPNS)
   const sortedResults = [...results].sort((a, b) => {
@@ -165,7 +148,7 @@ export default function LiveScoreMonitor() {
             {isRealtime ? 'STREAM LIVE' : 'PAUSED'}
           </button>
           <button
-            onClick={loadInitialData}
+            onClick={syncLiveMonitorData}
             className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-slate-900 border border-slate-800 text-slate-300 hover:bg-slate-800 transition-colors"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
