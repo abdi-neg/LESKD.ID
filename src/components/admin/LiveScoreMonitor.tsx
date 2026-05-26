@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Activity, Users, CheckCircle, Clock, Trophy, RefreshCw, BarChart3, Award, TrendingUp } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
@@ -31,17 +31,20 @@ export default function LiveScoreMonitor() {
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(new Date());
   const [isRealtime, setIsRealtime] = useState(true);
+  
+  // Menggunakan useRef untuk menghindari infinite loop pada callback realtime
+  const syncRef = useRef<() => Promise<void>>(async () => {});
 
-  // 1. Fungsi Utama Sinkronisasi Data (Mengambil data & menggabungkan nama secara aman)
+  // 1. Fungsi Utama Sinkronisasi Data (Tanpa mengandalkan kolom created_at)
   const syncLiveMonitorData = useCallback(async () => {
-    // Ambil data ujian tanpa filter waktu yang ketat agar tidak terkendala Timezone UTC/Lokal
+    // Ambil data mentah tanpa .order('created_at') untuk menghindari Error 400
     const { data: examData, error: examError } = await supabase
       .from('exam_results')
       .select('*')
-      .order('created_at', { ascending: false })
-      .limit(100);
+      .limit(150);
 
     if (examError || !examData) {
+      console.error("Supabase Fetch Error:", examError);
       setLoading(false);
       return;
     }
@@ -74,13 +77,18 @@ export default function LiveScoreMonitor() {
     setLoading(false);
   }, []);
 
+  // Simpan fungsi ke dalam ref agar ringkas dan tidak memicu trigger useEffect realtime secara liar
+  useEffect(() => {
+    syncRef.current = syncLiveMonitorData;
+  }, [syncLiveMonitorData]);
+
   // Jalankan sync saat pertama kali komponen dimuat
   useEffect(() => {
     setLoading(true);
     syncLiveMonitorData();
   }, [syncLiveMonitorData]);
 
-  // 2. Berlangganan Stream Realtime (Memicu sinkronisasi otomatis tiap ada ketukan perubahan data)
+  // 2. Berlangganan Stream Realtime (Aman & Bebas Infinite Loop)
   useEffect(() => {
     if (!isRealtime) return;
 
@@ -94,8 +102,8 @@ export default function LiveScoreMonitor() {
           table: 'exam_results',
         },
         () => {
-          // Begitu ada INSERT atau UPDATE dari peserta, jalankan sinkronisasi data terbaru
-          syncLiveMonitorData();
+          // Panggil fungsi sinkronisasi lewat ref secara aman
+          syncRef.current();
         }
       )
       .subscribe();
@@ -103,9 +111,9 @@ export default function LiveScoreMonitor() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [isRealtime, syncLiveMonitorData]);
+  }, [isRealtime]);
 
-  // 3. ALGORITMA BREAK-THE-TIE RANKING SYSTEM (STANDAR RESMI BKN CPNS)
+  // 3. ALGORITMA RANKING + BREAK-THE-TIE (Urutan: Total Skor -> TKP -> TIU -> TWK)
   const sortedResults = [...results].sort((a, b) => {
     if (b.total_score !== a.total_score) {
       return b.total_score - a.total_score;
@@ -148,7 +156,7 @@ export default function LiveScoreMonitor() {
             {isRealtime ? 'STREAM LIVE' : 'PAUSED'}
           </button>
           <button
-            onClick={syncLiveMonitorData}
+            onClick={() => { setLoading(true); syncLiveMonitorData(); }}
             className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-slate-900 border border-slate-800 text-slate-300 hover:bg-slate-800 transition-colors"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
@@ -160,7 +168,7 @@ export default function LiveScoreMonitor() {
       {/* Summary Stats Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { icon: Users, label: 'Total Peserta', value: totalCount, color: 'text-blue-400', bg: 'bg-blue-500/5 border border-blue-500/10' },
+          { icon: Users, label: 'Total Sesi', value: totalCount, color: 'text-blue-400', bg: 'bg-blue-500/5 border border-blue-500/10' },
           { icon: CheckCircle, label: 'Lulus Batas PG', value: passedCount, color: 'text-emerald-400', bg: 'bg-emerald-500/5 border border-emerald-500/10' },
           { icon: Activity, label: 'Tidak Lulus PG', value: failedCount, color: 'text-rose-400', bg: 'bg-rose-500/5 border border-rose-500/10' },
           { icon: TrendingUp, label: 'Rata-rata Nilai', value: avgScore, color: 'text-amber-400', bg: 'bg-amber-500/5 border border-amber-500/10' },
