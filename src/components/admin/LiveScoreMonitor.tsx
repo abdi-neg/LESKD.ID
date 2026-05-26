@@ -32,23 +32,22 @@ export default function LiveScoreMonitor() {
   const [lastUpdated, setLastUpdated] = useState(new Date());
   const [isRealtime, setIsRealtime] = useState(true);
 
-  // 1. Fungsi Fetch Data Awal dengan Strategi Fallback Nama Lapangan
+  // 1. Fungsi Fetch Data Awal (Modifikasi Tanpa Filter Waktu untuk Pengujian)
   const loadInitialData = useCallback(async () => {
     setLoading(true);
-    const since = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
     
-    // Tarik data mentah exam_results terlebih dahulu agar tidak nge-blank akibat gagal join relational
+    // Tarik 100 data ujian terbaru tanpa memedulikan batasan jam UTC
     const { data: examData, error: examError } = await supabase
       .from('exam_results')
       .select('*')
-      .gte('created_at', since);
+      .order('created_at', { ascending: false })
+      .limit(100);
 
     if (examError || !examData) {
       setLoading(false);
       return;
     }
 
-    // Ambil semua unik participant_id untuk ditarik namanya secara kolektif (Solusi anti-gagal join)
     const participantIds = Array.from(new Set(examData.map(r => r.participant_id).filter(Boolean)));
     
     let nameMap: Record<string, string> = {};
@@ -65,10 +64,9 @@ export default function LiveScoreMonitor() {
       }
     }
 
-    // Pasangkan nama ke baris hasil ujian masing-masing
     const mapped = examData.map((r) => ({
       ...r,
-      participant_name: nameMap[r.participant_id] || r.participant_name || 'Peserta SKD',
+      participant_name: nameMap[r.participant_id] || 'Peserta SKD',
     }));
 
     setResults(mapped);
