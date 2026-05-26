@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-// 🚀 PERBAIKAN: Menambahkan TrendingUp ke dalam daftar import ikon
+// 🚀 IKON AMAN: TrendingUp sudah didaftarkan di sini
 import { Activity, Users, CheckCircle, Clock, Trophy, RefreshCw, Wifi, BarChart3, Award, TrendingUp } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { ExamResult, PackageType } from '../../types';
@@ -33,7 +33,7 @@ export default function LiveScoreMonitor() {
   const [lastUpdated, setLastUpdated] = useState(new Date());
   const [isRealtime, setIsRealtime] = useState(true);
 
-  // 1. Fungsi Fetch Data Awal (Mengambil data 2 jam terakhir)
+  // 1. Fungsi Fetch Data Awal (Mengambil data berdasarkan created_at agar status ON_PROGRESS ikut tertarik)
   const loadInitialData = useCallback(async () => {
     setLoading(true);
     const since = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
@@ -41,7 +41,7 @@ export default function LiveScoreMonitor() {
     const { data, error } = await supabase
       .from('exam_results')
       .select(`*, profiles:participant_id (full_name)`)
-      .gte('completed_at', since);
+      .gte('created_at', since); // 🚀 FIX: Menggunakan created_at supaya mendeteksi peserta sejak klik 'Mulai'
 
     if (!error && data) {
       const mapped = (data as (ExamResult & { profiles: { full_name: string } | null })[]).map((r) => ({
@@ -58,7 +58,7 @@ export default function LiveScoreMonitor() {
     loadInitialData();
   }, [loadInitialData]);
 
-  // 2. Berlangganan Stream Realtime Supabase
+  // 2. Berlangganan Stream Realtime Supabase (Menangkap mutasi INSERT & UPDATE skor tiap klik)
   useEffect(() => {
     if (!isRealtime) return;
 
@@ -101,7 +101,7 @@ export default function LiveScoreMonitor() {
     };
   }, [isRealtime]);
 
-  // 3. ALGORITMA UTAMA: BREAK-THE-TIE RANKING SYSTEM (STANDAR BKN CPNS)
+  // 3. ALGORITMA BREAK-THE-TIE RANKING SYSTEM (STANDAR RESMI BKN CPNS)
   const sortedResults = [...results].sort((a, b) => {
     if (b.total_score !== a.total_score) {
       return b.total_score - a.total_score;
@@ -116,8 +116,8 @@ export default function LiveScoreMonitor() {
   });
 
   const totalCount = results.length;
-  const passedCount = results.filter((r) => r.passed).length;
-  const failedCount = results.filter((r) => !r.passed).length;
+  const passedCount = results.filter((r) => r.completed_at && r.passed).length;
+  const failedCount = results.filter((r) => r.completed_at && !r.passed).length;
   const avgScore = totalCount > 0
     ? Math.round(results.reduce((s, r) => s + r.total_score, 0) / totalCount)
     : 0;
@@ -157,8 +157,8 @@ export default function LiveScoreMonitor() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
           { icon: Users, label: 'Total Peserta', value: totalCount, color: 'text-blue-400', bg: 'bg-blue-500/5 border border-blue-500/10' },
-          { icon: CheckCircle, label: 'Lulus Batas', value: passedCount, color: 'text-emerald-400', bg: 'bg-emerald-500/5 border border-emerald-500/10' },
-          { icon: Activity, label: 'Belum Lulus', value: failedCount, color: 'text-rose-400', bg: 'bg-rose-500/5 border border-rose-500/10' },
+          { icon: CheckCircle, label: 'Lulus Batas PG', value: passedCount, color: 'text-emerald-400', bg: 'bg-emerald-500/5 border border-emerald-500/10' },
+          { icon: Activity, label: 'Tidak Lulus PG', value: failedCount, color: 'text-rose-400', bg: 'bg-rose-500/5 border border-rose-500/10' },
           { icon: TrendingUp, label: 'Rata-rata Nilai', value: avgScore, color: 'text-amber-400', bg: 'bg-amber-500/5 border border-amber-500/10' },
         ].map((stat, i) => (
           <div key={i} className={`rounded-2xl p-4 ${stat.bg}`}>
@@ -242,18 +242,26 @@ export default function LiveScoreMonitor() {
                       <td className="px-5 py-3.5 text-center">
                         <span className="inline-flex items-center gap-1 text-xs text-slate-400 bg-slate-900 px-2 py-1 rounded-md font-mono">
                           <Clock className="w-3 h-3 text-slate-500" />
-                          {formatDuration(r.duration_seconds)}
+                          {formatDuration(r.duration_seconds || 0)}
                         </span>
                       </td>
 
+                      {/* 🚀 PERBAIKAN STATUS KELULUSAN / PROGRESS SECARA REALTIME */}
                       <td className="px-5 py-3.5 text-right">
-                        <span className={`inline-flex items-center gap-1 text-xs font-bold px-2.5 py-0.5 rounded-md border
-                          ${r.passed 
-                            ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' 
-                            : 'bg-rose-500/10 text-rose-400 border-rose-500/20'}`}>
-                          <Award className="w-3.5 h-3.5" />
-                          {r.passed ? 'MEMENUHI SYARAT' : 'TIDAK LULUS PG'}
-                        </span>
+                        {r.completed_at ? (
+                          <span className={`inline-flex items-center gap-1 text-xs font-bold px-2.5 py-0.5 rounded-md border
+                            ${r.passed 
+                              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' 
+                              : 'bg-rose-500/10 text-rose-400 border-rose-500/20'}`}>
+                            <Award className="w-3.5 h-3.5" />
+                            {r.passed ? 'MEMENUHI SYARAT' : 'TIDAK LULUS PG'}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-0.5 rounded-md border bg-amber-500/10 text-amber-400 border-amber-500/20 animate-pulse">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
+                            ON PROGRESS
+                          </span>
+                        )}
                       </td>
                     </motion.tr>
                   );
