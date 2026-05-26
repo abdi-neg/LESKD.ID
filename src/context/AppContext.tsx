@@ -184,6 +184,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, currentView: action.payload };
 
     case 'START_EXAM': {
+      // Catatan: Fungsi pemanggilan START_EXAM statis sekarang dialihkan lewat async function startExam() di Provider
       const { examType, pkg } = action.payload;
       const config = EXAM_CONFIGS[examType];
       const mock = examType === 'FULL'
@@ -248,6 +249,22 @@ function appReducer(state: AppState, action: AppAction): AppState {
         const scores = calculateScores(state.examSession);
         clearExamProgress(state.examSession.id);
 
+        // Auto-submit saat waktu habis ke Supabase
+        const resultId = (state.examSession as any).resultId;
+        if (resultId) {
+          supabase
+            .from('exam_results')
+            .update({
+              score_tiu: scores.tiu,
+              score_twk: scores.twk,
+              score_tkp: scores.tkp,
+              total_score: scores.total,
+              status: 'COMPLETED',
+              completed_at: new Date().toISOString()
+            })
+            .eq('id', resultId);
+        }
+
         return {
           ...state,
           currentView: 'exam-results',
@@ -261,6 +278,25 @@ function appReducer(state: AppState, action: AppAction): AppState {
       if (!state.examSession) return state;
       const scores = calculateScores(state.examSession);
       clearExamProgress(state.examSession.id);
+
+      // 🚀 REAL-TIME COUPLING: Perbarui data yang sudah di-insert di awal menjadi COMPLETED
+      const resultId = (state.examSession as any).resultId;
+      if (resultId) {
+        supabase
+          .from('exam_results')
+          .update({
+            score_tiu: scores.tiu,
+            score_twk: scores.twk,
+            score_tkp: scores.tkp,
+            total_score: scores.total,
+            status: 'COMPLETED',
+            completed_at: new Date().toISOString()
+          })
+          .eq('id', resultId)
+          .then(({ error }) => {
+            if (error) console.error("Gagal memperbarui status akhir ujian:", error);
+          });
+      }
 
       return {
         ...state,
@@ -332,10 +368,51 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  // 🚀 REAL-TIME COUPLING: Fungsi memicu pembuatan baris baru di Supabase sejak awal klik mulai ujian
   async function startExam(examType: ExamType, pkg?: ExamPackage) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      alert("Sesi login tidak valid. Silakan login kembali.");
+      return;
+    }
+
     const questions = await fetchQuestionsForExam(examType, pkg?.id);
     const session = buildSession(examType, questions, pkg);
-    dispatch({ type: 'RESUME_EXAM', payload: session });
+
+    try {
+      const { data: insertedData, error } = await supabase
+        .from('exam_results')
+        .insert({
+          user_id: user.id,
+          user_name: state.profile?.full_name || user.email, 
+          exam_type: examType,
+          package_id: pkg?.id || null,
+          package_name: pkg?.name || 'Mini Tryout',
+          score_tiu: 0,
+          score_twk: 0,
+          score_tkp: 0,
+          total_score: 0,
+          status: 'ON_PROGRESS', 
+          started_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Sematkan resultId database ke dalam session sebelum dikirim ke engine
+      const sessionWithResultId = {
+        ...session,
+        resultId: insertedData.id,
+      };
+
+      dispatch({ type: 'RESUME_EXAM', payload: sessionWithResultId });
+
+    } catch (err) {
+      console.error("Gagal menginisialisasi sesi ujian di database:", err);
+      // Fallback jika database bermasalah agar ujian tetap berjalan lokal
+      dispatch({ type: 'RESUME_EXAM', payload: session });
+    }
   }
 
   async function deleteHistory(resultId: string): Promise<boolean> {
@@ -359,7 +436,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (savedId) {
           const saved = loadExamProgress(savedId);
           
-          // 🚀 SEKARANG DIPERKETAT: Hanya restore jika data ada DAN statusnya bukan 'completed'
           if (saved && (saved as any).status !== 'completed') {
             fetchQuestionsForExam(saved.examType, saved.packageId).then((questions) => {
               const restoredSession: ExamSession = {
@@ -373,11 +449,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 timeRemaining: saved.timeRemaining,
                 status: 'in_progress',
                 startedAt: new Date(saved.startedAt),
-              };
+                // Pertahankan resultId jika sesi dipulihkan dari localStorage
+                resultId: (saved as any).resultId || undefined
+              } as any;
               dispatch({ type: 'RESUME_EXAM', payload: restoredSession });
             });
           } else {
-            // Bersihkan sisa token aktif dari memori browser jika statusnya sudah kelar
             localStorage.removeItem('exam_active_session_id');
           }
         }
