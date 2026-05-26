@@ -578,7 +578,7 @@ export default function QuestionManager() {
 
                   {/* 🚀 TAMBAHAN: Komponen Upload Gambar Pembahasan */}
                   <div className="mb-6">
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Gambar Pembahasan (opsional - Sangat cocok untuk TIU)</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Gambar Pembahasan (opsional)</label>
                     {expImagePreview ? (
                       <div className="relative inline-block">
                         <img src={expImagePreview} alt="Preview pembahasan" className="max-h-48 max-w-full rounded-xl border border-gray-200 object-contain" />
