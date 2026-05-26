@@ -60,6 +60,7 @@ export interface QuestionAnswer {
 
 export interface ExamSession {
   id: string;
+  resultId?: string; // 🚀 BERHASIL DITAMBAHKAN: Penghubung UUID hasil ujian dari database Supabase
   packageId?: string;
   packageName?: string;
   examType: ExamType;
