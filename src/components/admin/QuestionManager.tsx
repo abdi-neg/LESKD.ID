@@ -138,7 +138,7 @@ export default function QuestionManager({ onQuestionAdded }: QuestionManagerProp
 
     } catch (err: any) {
       alert(`Waduh error gais: ${err.message || err}`);
-    } fillly {
+    } finally {
       setLoading(false);
     }
   };
