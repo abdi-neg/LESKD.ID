@@ -1,14 +1,14 @@
 import { useEffect, useState, useCallback } from 'react';
-import { motion } from 'framer-motion';
-import { Activity, Users, CheckCircle, Clock, TrendingUp, RefreshCw, Wifi, BarChart3 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Activity, Users, CheckCircle, Clock, Trophy, RefreshCw, Wifi, BarChart3, Award } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { ExamResult, PackageType } from '../../types';
 
 const PKG_COLORS: Record<PackageType, string> = {
-  MINI_TIU: 'bg-blue-100 text-blue-700',
-  MINI_TWK: 'bg-emerald-100 text-emerald-700',
-  MINI_TKP: 'bg-rose-100 text-rose-700',
-  FULL: 'bg-[#1e3a8a]/10 text-[#1e3a8a]',
+  MINI_TIU: 'bg-blue-500/10 text-blue-400 border border-blue-500/20',
+  MINI_TWK: 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20',
+  MINI_TKP: 'bg-rose-500/10 text-rose-400 border border-rose-500/20',
+  FULL: 'bg-amber-500/10 text-amber-400 border border-amber-500/20',
 };
 
 const PKG_LABELS: Record<PackageType, string> = {
@@ -30,18 +30,19 @@ export default function LiveScoreMonitor() {
   const [results, setResults] = useState<ResultWithName[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(new Date());
-  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [isRealtime, setIsRealtime] = useState(true);
 
-  const load = useCallback(async () => {
+  // 1. Fungsi Fetch Data Awal (Mengambil data 2 jam terakhir)
+  const loadInitialData = useCallback(async () => {
+    setLoading(true);
     const since = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
-    const { data } = await supabase
+    
+    const { data, error } = await supabase
       .from('exam_results')
       .select(`*, profiles:participant_id (full_name)`)
-      .gte('completed_at', since)
-      .order('completed_at', { ascending: false })
-      .limit(50);
+      .gte('completed_at', since);
 
-    if (data) {
+    if (!error && data) {
       const mapped = (data as (ExamResult & { profiles: { full_name: string } | null })[]).map((r) => ({
         ...r,
         participant_name: r.profiles?.full_name ?? 'Unknown',
@@ -53,14 +54,71 @@ export default function LiveScoreMonitor() {
   }, []);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    loadInitialData();
+  }, [loadInitialData]);
 
+  // 2. Berlangganan Stream Realtime Supabase (Menggantikan sistem interval 15 detik)
   useEffect(() => {
-    if (!autoRefresh) return;
-    const interval = setInterval(load, 15000);
-    return () => clearInterval(interval);
-  }, [autoRefresh, load]);
+    if (!isRealtime) return;
+
+    const channel = supabase
+      .channel('bkn-broadcast-channel')
+      .on(
+        'postgres_changes',
+        {
+          event: '*', // Menangkap INSERT (peserta baru selesai) maupun UPDATE (jika ada perubahan nilai)
+          schema: 'public',
+          table: 'exam_results',
+        },
+        async (payload) => {
+          const newRow = payload.new as ExamResult;
+
+          if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+            // Ambil data nama profil untuk baris data yang baru masuk/berubah
+            const { data: profData } = await supabase
+              .from('profiles')
+              .select('full_name')
+              .eq('id', newRow.participant_id)
+              .single();
+
+            const updatedResult: ResultWithName = {
+              ...newRow,
+              participant_name: profData?.full_name ?? 'Unknown',
+            };
+
+            setResults((prev) => {
+              // Hapus data lama jika sudah ada (mencegah duplikasi saat UPDATE)
+              const filtered = prev.filter((item) => item.id !== updatedResult.id);
+              return [...filtered, updatedResult];
+            });
+            setLastUpdated(new Date());
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [isRealtime]);
+
+  // 3. ALGORITMA UTAMA: BREAK-THE-TIE RANKING SYSTEM (STANDAR BKN CPNS)
+  const sortedResults = [...results].sort((a, b) => {
+    // Prioritas 1: Total Skor Tertinggi
+    if (b.total_score !== a.total_score) {
+      return b.total_score - a.total_score;
+    }
+    // Prioritas 2: Nilai TKP Tertinggi jika total skor sama
+    if (b.score_tkp !== a.score_tkp) {
+      return b.score_tkp - a.score_tkp;
+    }
+    // Prioritas 3: Nilai TIU Tertinggi jika TKP masih sama
+    if (b.score_tiu !== a.score_tiu) {
+      return b.score_tiu - a.score_tiu;
+    }
+    // Prioritas 4: Nilai TWK Tertinggi jika TIU masih sama
+    return b.score_twk - a.score_twk;
+  });
 
   const totalCount = results.length;
   const passedCount = results.filter((r) => r.passed).length;
@@ -70,148 +128,160 @@ export default function LiveScoreMonitor() {
     : 0;
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+    <div className="space-y-6 p-6 bg-slate-950 text-slate-100 rounded-3xl border border-slate-900 shadow-2xl font-sans">
+      {/* Header Ala Monitor Broadcast BKN */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b border-slate-900 pb-5 gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-gray-800">Monitor Live</h2>
-          <p className="text-gray-500 text-sm mt-0.5">
-            Hasil ujian 2 jam terakhir &mdash; diperbarui {lastUpdated.toLocaleTimeString('id-ID')}
+          <h2 className="text-2xl font-black uppercase tracking-wider text-amber-400 flex items-center gap-2">
+            <Trophy className="w-7 h-7 text-amber-500" /> LIVE MONITOR MONITORING SKD
+          </h2>
+          <p className="text-slate-400 text-xs mt-1">
+            Aturan Perangkingan: Total Skor &rarr; TKP &rarr; TIU &rarr; TWK &bull; Sinkronisasi: {lastUpdated.toLocaleTimeString('id-ID')}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 self-end sm:self-center">
           <button
-            onClick={() => setAutoRefresh(!autoRefresh)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-colors
-              ${autoRefresh ? 'bg-[#10b981] text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+            onClick={() => setIsRealtime(!isRealtime)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold tracking-wide uppercase transition-colors
+              ${isRealtime ? 'bg-emerald-500 text-slate-950 shadow-lg shadow-emerald-500/20' : 'bg-slate-900 text-slate-400 border border-slate-800'}`}
           >
-            <Wifi className="w-4 h-4" />
-            {autoRefresh ? 'Live' : 'Paused'}
+            <span className={`w-2 h-2 rounded-full ${isRealtime ? 'bg-slate-950 animate-pulse' : 'bg-slate-500'}`} />
+            {isRealtime ? 'STREAM LIVE' : 'PAUSED'}
           </button>
           <button
-            onClick={load}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
+            onClick={loadInitialData}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-slate-900 border border-slate-800 text-slate-300 hover:bg-slate-800 transition-colors"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-            Refresh
+            Re-Sync
           </button>
         </div>
       </div>
 
-      {/* Summary Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      {/* Summary Stats Grid */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { icon: Users, label: 'Total Ujian', value: totalCount, color: 'text-[#1e3a8a]', bg: 'bg-blue-50' },
-          { icon: Activity, label: 'Lulus', value: passedCount, color: 'text-[#10b981]', bg: 'bg-emerald-50' },
-          { icon: CheckCircle, label: 'Belum Lulus', value: failedCount, color: 'text-red-500', bg: 'bg-red-50' },
-          { icon: TrendingUp, label: 'Rata-rata Skor', value: avgScore, color: 'text-amber-600', bg: 'bg-amber-50' },
+          { icon: Users, label: 'Total Peserta', value: totalCount, color: 'text-blue-400', bg: 'bg-blue-500/5 border border-blue-500/10' },
+          { icon: CheckCircle, label: 'Lulus Batas', value: passedCount, color: 'text-emerald-400', bg: 'bg-emerald-500/5 border border-emerald-500/10' },
+          { icon: Activity, label: 'Belum Lulus', value: failedCount, color: 'text-rose-400', bg: 'bg-rose-500/5 border border-rose-500/10' },
+          { icon: TrendingUp, label: 'Rata-rata Nilai', value: avgScore, color: 'text-amber-400', bg: 'bg-amber-500/5 border border-amber-500/10' },
         ].map((stat, i) => (
-          <motion.div
-            key={i}
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.08 }}
-            className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4"
-          >
-            <div className={`w-10 h-10 ${stat.bg} rounded-xl flex items-center justify-center mb-3`}>
+          <div key={i} className={`rounded-2xl p-4 ${stat.bg}`}>
+            <div className={`w-9 h-9 rounded-xl flex items-center justify-center mb-2 bg-slate-900`}>
               <stat.icon className={`w-5 h-5 ${stat.color}`} />
             </div>
-            <p className="text-2xl font-bold text-gray-800">{stat.value}</p>
-            <p className="text-gray-500 text-xs mt-0.5">{stat.label}</p>
-          </motion.div>
+            <p className="text-2xl font-black font-mono text-slate-100">{stat.value}</p>
+            <p className="text-slate-400 text-xs mt-0.5 font-medium">{stat.label}</p>
+          </div>
         ))}
       </div>
 
-      {/* Results Table */}
-      <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
-        <div className="p-5 border-b border-gray-50 flex items-center justify-between">
-          <h3 className="font-bold text-gray-800">Hasil Ujian Terkini</h3>
-          <div className="flex items-center gap-2">
-            <motion.div
-              animate={{ opacity: autoRefresh ? [1, 0.3, 1] : 1 }}
-              transition={{ repeat: Infinity, duration: 1.5 }}
-              className={`w-2.5 h-2.5 rounded-full ${autoRefresh ? 'bg-[#10b981]' : 'bg-gray-300'}`}
-            />
-            <span className="text-xs text-gray-500 font-medium">{autoRefresh ? 'Auto-refresh 15s' : 'Paused'}</span>
-          </div>
-        </div>
+      {/* Papan Peringkat Utama */}
+      <div className="bg-slate-900/40 rounded-2xl border border-slate-900 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-slate-900/90 text-slate-400 text-xs uppercase tracking-wider font-bold border-b border-slate-800">
+                <th className="px-5 py-3.5 text-center w-20">Rank</th>
+                <th className="px-5 py-3.5">Nama Kontestan</th>
+                <th className="px-5 py-3.5">Jenis Paket</th>
+                <th className="px-5 py-3.5 text-center bg-rose-950/20 text-rose-400 w-20">TKP</th>
+                <th className="px-5 py-3.5 text-center bg-blue-950/20 text-blue-400 w-20">TIU</th>
+                <th className="px-5 py-3.5 text-center bg-emerald-950/20 text-emerald-400 w-20">TWK</th>
+                <th className="px-5 py-3.5 text-center text-amber-400 font-black w-28">TOTAL</th>
+                <th className="px-5 py-3.5 text-center">Durasi</th>
+                <th className="px-5 py-3.5 text-right">Status Kelulusan</th>
+              </tr>
+            </thead>
+            
+            <tbody className="divide-y divide-slate-900/60 font-medium text-sm">
+              <AnimatePresence initial={false}>
+                {sortedResults.map((r, index) => {
+                  const isTopThree = index < 3;
+                  const rankBadges = [
+                    'bg-amber-400 text-slate-950 ring-4 ring-amber-500/20',
+                    'bg-slate-300 text-slate-950 ring-4 ring-slate-400/20',
+                    'bg-amber-700 text-white ring-4 ring-amber-800/20'
+                  ];
 
-        {loading ? (
-          <div className="space-y-3 p-5">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="bg-gray-100 rounded-xl h-12 animate-pulse" />
-            ))}
-          </div>
-        ) : results.length === 0 ? (
-          <div className="text-center py-16">
-            <BarChart3 className="w-12 h-12 text-gray-200 mx-auto mb-3" />
-            <p className="text-gray-500 font-medium">Belum ada ujian dalam 2 jam terakhir</p>
-            <p className="text-gray-400 text-sm mt-1">Data akan muncul secara otomatis saat peserta menyelesaikan ujian</p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="bg-gray-50 text-left">
-                  <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase">Peserta</th>
-                  <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase">Paket</th>
-                  <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase text-center">TIU</th>
-                  <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase text-center">TWK</th>
-                  <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase text-center">TKP</th>
-                  <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase text-center">Total</th>
-                  <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase text-center">Durasi</th>
-                  <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase">Status</th>
-                  <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase text-right">Waktu</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {results.map((r, i) => (
-                  <motion.tr
-                    key={r.id}
-                    initial={{ opacity: 0, y: 6 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: i * 0.03 }}
-                    className="hover:bg-gray-50/50 transition-colors"
-                  >
-                    <td className="px-5 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 bg-gradient-to-br from-[#1e3a8a] to-blue-600 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-                          {r.participant_name.charAt(0).toUpperCase()}
-                        </div>
-                        <p className="text-sm font-medium text-gray-800 whitespace-nowrap">{r.participant_name}</p>
-                      </div>
-                    </td>
-                    <td className="px-5 py-4">
-                      <span className={`text-xs font-semibold px-2.5 py-1 rounded-full whitespace-nowrap ${PKG_COLORS[r.package_type] ?? 'bg-gray-100 text-gray-700'}`}>
-                        {PKG_LABELS[r.package_type] ?? r.package_name}
-                      </span>
-                    </td>
-                    <td className="px-5 py-4 text-center font-mono font-semibold text-sm text-gray-700">{r.score_tiu}</td>
-                    <td className="px-5 py-4 text-center font-mono font-semibold text-sm text-gray-700">{r.score_twk}</td>
-                    <td className="px-5 py-4 text-center font-mono font-semibold text-sm text-gray-700">{r.score_tkp}</td>
-                    <td className="px-5 py-4 text-center font-mono font-bold text-sm text-[#1e3a8a]">{r.total_score}</td>
-                    <td className="px-5 py-4 text-center">
-                      <span className="flex items-center justify-center gap-1 text-xs text-gray-500">
-                        <Clock className="w-3 h-3" />
-                        {formatDuration(r.duration_seconds)}
-                      </span>
-                    </td>
-                    <td className="px-5 py-4">
-                      <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full
-                        ${r.passed ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-600'}`}>
-                        {r.passed ? <CheckCircle className="w-3 h-3" /> : <Activity className="w-3 h-3" />}
-                        {r.passed ? 'Lulus' : 'Belum'}
-                      </span>
-                    </td>
-                    <td className="px-5 py-4 text-right text-xs text-gray-400 whitespace-nowrap">
-                      {new Date(r.completed_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
-                    </td>
-                  </motion.tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+                  return (
+                    <motion.tr
+                      key={r.id}
+                      layout // 🚀 KUNCI UTAMA: MEMBUAT BARIS BERGULIR NAIK-TURUN SECARA HALUS SAAT TUKAR POSISI
+                      initial={{ opacity: 0, y: 12 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ type: 'spring', stiffness: 350, damping: 35 }}
+                      className="hover:bg-slate-900/30 transition-colors duration-150"
+                    >
+                      {/* Posisi Peringkat */}
+                      <td className="px-5 py-3.5 text-center">
+                        <span className={`w-6 h-6 rounded-md font-black font-mono text-xs inline-flex items-center justify-center ${
+                          isTopThree ? rankBadges[index] : 'bg-slate-800 text-slate-400'
+                        }`}>
+                          {index + 1}
+                        </span>
+                      </td>
+
+                      {/* Nama Peserta */}
+                      <td className="px-5 py-3.5">
+                        <p className="font-bold text-slate-200 uppercase tracking-wide truncate max-w-[180px]">
+                          {r.participant_name}
+                        </p>
+                      </td>
+
+                      {/* Kode Paket */}
+                      <td className="px-5 py-3.5">
+                        <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-md whitespace-nowrap ${PKG_COLORS[r.package_type] ?? 'bg-slate-800 text-slate-400'}`}>
+                          {PKG_LABELS[r.package_type] ?? r.package_name}
+                        </span>
+                      </td>
+
+                      {/* Komponen Nilai (Diurutkan Berdasarkan Bobot Terbesar CPNS BKN) */}
+                      <td className="px-5 py-3.5 text-center font-mono font-bold text-slate-300 bg-rose-950/5">{r.score_tkp}</td>
+                      <td className="px-5 py-3.5 text-center font-mono font-bold text-slate-300 bg-blue-950/5">{r.score_tiu}</td>
+                      <td className="px-5 py-3.5 text-center font-mono font-bold text-slate-300 bg-emerald-950/5">{r.score_twk}</td>
+
+                      {/* Total Akumulasi Skor */}
+                      <td className="px-5 py-3.5 text-center">
+                        <span className="inline-flex items-center justify-center px-3 py-1 bg-amber-500/10 border border-amber-500/20 rounded-xl font-mono font-black text-amber-400 text-sm shadow-inner w-20">
+                          {r.total_score}
+                        </span>
+                      </td>
+
+                      {/* Kecepatan Pengerjaan */}
+                      <td className="px-5 py-3.5 text-center">
+                        <span className="inline-flex items-center gap-1 text-xs text-slate-400 bg-slate-900 px-2 py-1 rounded-md font-mono">
+                          <Clock className="w-3 h-3 text-slate-500" />
+                          {formatDuration(r.duration_seconds)}
+                        </span>
+                      </td>
+
+                      {/* Status Kelulusan Passing Score */}
+                      <td className="px-5 py-3.5 text-right">
+                        <span className={`inline-flex items-center gap-1 text-xs font-bold px-2.5 py-0.5 rounded-md border
+                          ${r.passed 
+                            ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' 
+                            : 'bg-rose-500/10 text-rose-400 border-rose-500/20'}`}>
+                          <Award className="w-3.5 h-3.5" />
+                          {r.passed ? 'MEMENUHI SYARAT' : 'TIDAK LULUS PG'}
+                        </span>
+                      </td>
+                    </motion.tr>
+                  );
+                })}
+              </AnimatePresence>
+            </tbody>
+          </table>
+          
+          {sortedResults.length === 0 && (
+            <div className="text-center py-20 bg-slate-950/40">
+              <BarChart3 className="w-12 h-12 text-slate-800 mx-auto mb-3 animate-pulse" />
+              <p className="text-slate-400 font-bold uppercase tracking-wider text-sm">Belum Ada Sesi Ujian Berakhir</p>
+              <p className="text-slate-500 text-xs mt-1">Papan skor akan otomatis bergeser begitu peserta mengirimkan jawaban mereka</p>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
