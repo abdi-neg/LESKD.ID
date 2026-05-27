@@ -381,7 +381,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         .from('exam_results')
         .insert({
           participant_id: user.id, 
-          user_name: state.profile?.full_name || user.email, 
+          user_name: state.profile?.full_name || user.email, // 🔥 DIUBAH ke user_name sesuai schema cache Supabase
           package_type: pkg?.package_type || examType, 
           package_id: pkg?.id || null,
           package_name: pkg?.name || 'Mini Tryout',
@@ -390,7 +390,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           score_tkp: 0,
           total_score: 0,
           status: 'ON_PROGRESS', 
-          // 🚀 FIX: Baris started_at: new Date().toISOString() DIHAPUS TOTAL dari sini karena kolomnya tidak ada di database
+          started_at: new Date().toISOString(),
         })
         .select()
         .single();
@@ -410,6 +410,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // Fallback jika database bermasalah agar ujian tetap berjalan lokal
       dispatch({ type: 'RESUME_EXAM', payload: session });
     }
+  }
+
   async function deleteHistory(resultId: string): Promise<boolean> {
     try {
       const { deleteExamResult } = await import('../lib/examPersistence');
@@ -459,8 +461,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     });
 
-    // ... (Ini adalah kelanjutan di dalam blok AppProvider)
-
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       (() => {
         if (event === 'SIGNED_OUT' || !session) {
@@ -495,7 +495,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       {children}
     </AppContext.Provider>
   );
-} // 👈 Pastikan kurung penutup AppProvider ini ada di sini!
+}
 
 export function useApp() {
   const ctx = useContext(AppContext);
