@@ -34,11 +34,12 @@ export default function LiveScoreMonitor() {
   
   const syncRef = useRef<() => Promise<void>>(async () => {});
 
-  // 1. Fungsi Utama Sinkronisasi Data (Selesai Diperbaiki: Bebas dari Kolom Waktu Bermasalah)
+  // 1. Fungsi Utama Sinkronisasi Data (Sudah Diperbaiki: Menggunakan kolom 'id' yang valid)
   const syncLiveMonitorData = useCallback(async () => {
     const { data: examData, error: examError } = await supabase
       .from('exam_results')
-      .select('*') // 🚀 FIX: .order() dihapus total agar tidak memicu error 42703 (kolom tidak ditemukan)
+      .select('*') 
+      .order('id', { ascending: false }) // ✅ FIX: Menggunakan 'id' sebagai pengganti 'updated_at' yang tidak eksis
       .limit(150);
 
     if (examError || !examData) {
@@ -64,12 +65,11 @@ export default function LiveScoreMonitor() {
       }
     }
 
-    // Gabungkan data ujian dengan nama dari profiles atau nama fallback dari record langsung
-    // 🚀 KODE BARU (BALIK PRIORITASNYA)
-const mapped = examData.map((r) => ({
-  ...r,
-  participant_name: r.user_name || nameMap[r.participant_id] || 'Peserta SKD',
-}));
+    // Gabungkan data ujian dengan nama (memprioritaskan cache user_name dari tabel exam_results)
+    const mapped = examData.map((r) => ({
+      ...r,
+      participant_name: r.user_name || nameMap[r.participant_id] || 'Peserta SKD',
+    }));
 
     setResults(mapped);
     setLastUpdated(new Date());
@@ -110,7 +110,7 @@ const mapped = examData.map((r) => ({
     };
   }, [isRealtime]);
 
-  // 3. ALGORITMA RANKING + BREAK-THE-TIE (Urutan live score tetap berjalan otomatis di sini)
+  // 3. ALGORITMA RANKING + BREAK-THE-TIE BKN
   const sortedResults = [...results].sort((a, b) => {
     if (b.total_score !== a.total_score) {
       return b.total_score - a.total_score;
