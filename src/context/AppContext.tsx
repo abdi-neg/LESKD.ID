@@ -184,7 +184,6 @@ function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, currentView: action.payload };
 
     case 'START_EXAM': {
-      // Catatan: Fungsi pemanggilan START_EXAM statis sekarang dialihkan lewat async function startExam() di Provider
       const { examType, pkg } = action.payload;
       const config = EXAM_CONFIGS[examType];
       const mock = examType === 'FULL'
@@ -249,7 +248,6 @@ function appReducer(state: AppState, action: AppAction): AppState {
         const scores = calculateScores(state.examSession);
         clearExamProgress(state.examSession.id);
 
-        // Auto-submit saat waktu habis ke Supabase
         const resultId = (state.examSession as any).resultId;
         if (resultId) {
           supabase
@@ -279,7 +277,6 @@ function appReducer(state: AppState, action: AppAction): AppState {
       const scores = calculateScores(state.examSession);
       clearExamProgress(state.examSession.id);
 
-      // 🚀 REAL-TIME COUPLING: Perbarui data yang sudah di-insert di awal menjadi COMPLETED
       const resultId = (state.examSession as any).resultId;
       if (resultId) {
         supabase
@@ -383,9 +380,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const { data: insertedData, error } = await supabase
         .from('exam_results')
         .insert({
-          user_id: user.id,
-          user_name: state.profile?.full_name || user.email, 
-          exam_type: examType,
+          participant_id: user.id, // 🔥 DISELARASKAN dengan struktur database dashboard
+          participant_name: state.profile?.full_name || user.email, // 🔥 DISELARASKAN dengan struktur database dashboard
+          package_type: pkg?.package_type || examType, // 🔥 DISELARASKAN dengan jenis tipe paket yang dikirim
           package_id: pkg?.id || null,
           package_name: pkg?.name || 'Mini Tryout',
           score_tiu: 0,
