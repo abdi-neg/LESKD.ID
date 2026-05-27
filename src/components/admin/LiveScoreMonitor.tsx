@@ -34,12 +34,11 @@ export default function LiveScoreMonitor() {
   
   const syncRef = useRef<() => Promise<void>>(async () => {});
 
-  // 1. Fungsi Utama Sinkronisasi Data (Diubah menggunakan created_at)
+  // 1. Fungsi Utama Sinkronisasi Data (Selesai Diperbaiki: Bebas dari Kolom Waktu Bermasalah)
   const syncLiveMonitorData = useCallback(async () => {
     const { data: examData, error: examError } = await supabase
       .from('exam_results')
-      .select('*')
-      .order('created_at', { ascending: false }) // 🔥 FIX: Menggunakan created_at yang merupakan standar bawaan database
+      .select('*') // 🚀 FIX: .order() dihapus total agar tidak memicu error 42703 (kolom tidak ditemukan)
       .limit(150);
 
     if (examError || !examData) {
@@ -65,7 +64,7 @@ export default function LiveScoreMonitor() {
       }
     }
 
-    // Gabungkan data ujian dengan nama peserta (gunakan properti user_name bawaan record jika profil tidak ter-fetch)
+    // Gabungkan data ujian dengan nama dari profiles atau nama fallback dari record langsung
     const mapped = examData.map((r) => ({
       ...r,
       participant_name: nameMap[r.participant_id] || r.user_name || 'Peserta SKD',
@@ -110,7 +109,7 @@ export default function LiveScoreMonitor() {
     };
   }, [isRealtime]);
 
-  // 3. ALGORITMA RANKING + BREAK-THE-TIE
+  // 3. ALGORITMA RANKING + BREAK-THE-TIE (Urutan live score tetap berjalan otomatis di sini)
   const sortedResults = [...results].sort((a, b) => {
     if (b.total_score !== a.total_score) {
       return b.total_score - a.total_score;
@@ -124,10 +123,8 @@ export default function LiveScoreMonitor() {
     return b.score_twk - a.score_twk;
   });
 
-  // 4. KALKULASI STATISTIK SECARA DINAMIS (Mendukung Sesi Berjalan)
+  // 4. KALKULASI STATISTIK SECARA DINAMIS
   const totalCount = results.length;
-  
-  // Mengakomodasi peserta Lulus Batas PG meskipun status masih pengerjaan (live scoring)
   const passedCount = results.filter((r) => r.passed).length;
   const failedCount = results.filter((r) => !r.passed).length;
   
