@@ -459,6 +459,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     });
 
+    // ... (Ini adalah kelanjutan di dalam blok AppProvider)
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       (() => {
         if (event === 'SIGNED_OUT' || !session) {
@@ -493,7 +495,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       {children}
     </AppContext.Provider>
   );
-}
+} // 👈 Pastikan kurung penutup AppProvider ini ada di sini!
 
 export function useApp() {
   const ctx = useContext(AppContext);
