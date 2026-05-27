@@ -16,20 +16,22 @@ export default function ParticipantDashboard() {
   const [results, setResults] = useState<ExamResult[]>([]);
   const [resultsLoading, setResultsLoading] = useState(true);
 
-  useEffect(() => {
-    if (!profile) return;
-    async function loadResults() {
-      setResultsLoading(true);
-      const { data } = await supabase
-        .from('exam_results')
-        .select('*')
-        .eq('participant_id', profile!.id)
-        .order('completed_at', { ascending: false });
-      if (data) setResults(data as ExamResult[]);
-      setResultsLoading(false);
-    }
-    loadResults();
-  }, [profile]);
+ // Di dalam ParticipantDashboard.tsx
+useEffect(() => {
+  if (!profile) return;
+  async function loadResults() {
+    setResultsLoading(true);
+    const { data } = await supabase
+      .from('exam_results')
+      .select('*')
+      .eq('participant_id', profile!.id)
+      .eq('status', 'COMPLETED') // 🔥 Cukup tambahkan baris ini saja!
+      .order('completed_at', { ascending: false });
+    if (data) setResults(data as ExamResult[]);
+    setResultsLoading(false);
+  }
+  loadResults();
+}, [profile]);
 
   const totalExams = results.length;
   const avgScore = totalExams > 0
