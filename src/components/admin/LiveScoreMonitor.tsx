@@ -65,10 +65,11 @@ export default function LiveScoreMonitor() {
     }
 
     // Gabungkan data ujian dengan nama dari profiles atau nama fallback dari record langsung
-    const mapped = examData.map((r) => ({
-      ...r,
-      participant_name: nameMap[r.participant_id] || r.user_name || 'Peserta SKD',
-    }));
+    // 🚀 KODE BARU (BALIK PRIORITASNYA)
+const mapped = examData.map((r) => ({
+  ...r,
+  participant_name: r.user_name || nameMap[r.participant_id] || 'Peserta SKD',
+}));
 
     setResults(mapped);
     setLastUpdated(new Date());
