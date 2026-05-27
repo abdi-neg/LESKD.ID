@@ -34,12 +34,12 @@ export default function LiveScoreMonitor() {
   
   const syncRef = useRef<() => Promise<void>>(async () => {});
 
-  // 1. Fungsi Utama Sinkronisasi Data (Diurutkan berdasarkan update jawaban terbaru)
+  // 1. Fungsi Utama Sinkronisasi Data (Diperbaiki menggunakan started_at)
   const syncLiveMonitorData = useCallback(async () => {
     const { data: examData, error: examError } = await supabase
       .from('exam_results')
       .select('*')
-      .order('updated_at', { ascending: false }) // Urutkan agar pengerjaan aktif naik ke atas
+      .order('started_at', { ascending: false }) // 🚀 FIX: Menggunakan started_at karena updated_at tidak terdaftar di database
       .limit(150);
 
     if (examError || !examData) {
@@ -65,10 +65,10 @@ export default function LiveScoreMonitor() {
       }
     }
 
-    // Gabungkan data ujian dengan nama dari profiles
+    // Gabungkan data ujian dengan nama peserta (gunakan properti user_name bawaan record jika profil tidak ter-fetch)
     const mapped = examData.map((r) => ({
       ...r,
-      participant_name: nameMap[r.participant_id] || 'Peserta SKD',
+      participant_name: nameMap[r.participant_id] || r.user_name || 'Peserta SKD',
     }));
 
     setResults(mapped);
