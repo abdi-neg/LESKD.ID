@@ -34,12 +34,12 @@ export default function LiveScoreMonitor() {
   
   const syncRef = useRef<() => Promise<void>>(async () => {});
 
-  // 1. Fungsi Utama Sinkronisasi Data (Diperbaiki menggunakan started_at)
+  // 1. Fungsi Utama Sinkronisasi Data (Diubah menggunakan created_at)
   const syncLiveMonitorData = useCallback(async () => {
     const { data: examData, error: examError } = await supabase
       .from('exam_results')
       .select('*')
-      .order('started_at', { ascending: false }) // 🚀 FIX: Menggunakan started_at karena updated_at tidak terdaftar di database
+      .order('created_at', { ascending: false }) // 🔥 FIX: Menggunakan created_at yang merupakan standar bawaan database
       .limit(150);
 
     if (examError || !examData) {
