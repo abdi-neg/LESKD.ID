@@ -32,15 +32,14 @@ export default function LiveScoreMonitor() {
   const [lastUpdated, setLastUpdated] = useState(new Date());
   const [isRealtime, setIsRealtime] = useState(true);
   
-  // Menggunakan useRef untuk menghindari infinite loop pada callback realtime
   const syncRef = useRef<() => Promise<void>>(async () => {});
 
-  // 1. Fungsi Utama Sinkronisasi Data (Tanpa mengandalkan kolom created_at)
+  // 1. Fungsi Utama Sinkronisasi Data (Diurutkan berdasarkan update jawaban terbaru)
   const syncLiveMonitorData = useCallback(async () => {
-    // Ambil data mentah tanpa .order('created_at') untuk menghindari Error 400
     const { data: examData, error: examError } = await supabase
       .from('exam_results')
       .select('*')
+      .order('updated_at', { ascending: false }) // Urutkan agar pengerjaan aktif naik ke atas
       .limit(150);
 
     if (examError || !examData) {
@@ -77,7 +76,6 @@ export default function LiveScoreMonitor() {
     setLoading(false);
   }, []);
 
-  // Simpan fungsi ke dalam ref agar ringkas dan tidak memicu trigger useEffect realtime secara liar
   useEffect(() => {
     syncRef.current = syncLiveMonitorData;
   }, [syncLiveMonitorData]);
@@ -88,7 +86,7 @@ export default function LiveScoreMonitor() {
     syncLiveMonitorData();
   }, [syncLiveMonitorData]);
 
-  // 2. Berlangganan Stream Realtime (Aman & Bebas Infinite Loop)
+  // 2. Berlangganan Stream Realtime (Menangkap INSERT & UPDATE saat peserta menjawab)
   useEffect(() => {
     if (!isRealtime) return;
 
@@ -102,7 +100,6 @@ export default function LiveScoreMonitor() {
           table: 'exam_results',
         },
         () => {
-          // Panggil fungsi sinkronisasi lewat ref secara aman
           syncRef.current();
         }
       )
@@ -113,7 +110,7 @@ export default function LiveScoreMonitor() {
     };
   }, [isRealtime]);
 
-  // 3. ALGORITMA RANKING + BREAK-THE-TIE (Urutan: Total Skor -> TKP -> TIU -> TWK)
+  // 3. ALGORITMA RANKING + BREAK-THE-TIE
   const sortedResults = [...results].sort((a, b) => {
     if (b.total_score !== a.total_score) {
       return b.total_score - a.total_score;
@@ -127,9 +124,13 @@ export default function LiveScoreMonitor() {
     return b.score_twk - a.score_twk;
   });
 
+  // 4. KALKULASI STATISTIK SECARA DINAMIS (Mendukung Sesi Berjalan)
   const totalCount = results.length;
-  const passedCount = results.filter((r) => r.completed_at && r.passed).length;
-  const failedCount = results.filter((r) => r.completed_at && !r.passed).length;
+  
+  // Mengakomodasi peserta Lulus Batas PG meskipun status masih pengerjaan (live scoring)
+  const passedCount = results.filter((r) => r.passed).length;
+  const failedCount = results.filter((r) => !r.passed).length;
+  
   const avgScore = totalCount > 0
     ? Math.round(results.reduce((s, r) => s + r.total_score, 0) / totalCount)
     : 0;
