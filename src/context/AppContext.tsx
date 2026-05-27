@@ -365,7 +365,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  // 🚀 REAL-TIME COUPLING: Fungsi memicu pembuatan baris baru di Supabase sejak awal klik mulai ujian
+  // 🚀 REAL-TIME COUPLING: Memulai baris baru di Supabase (Sudah diperbaiki: Bebas dari started_at)
   async function startExam(examType: ExamType, pkg?: ExamPackage) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
@@ -381,7 +381,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         .from('exam_results')
         .insert({
           participant_id: user.id, 
-          user_name: state.profile?.full_name || user.email, // 🔥 DIUBAH ke user_name sesuai schema cache Supabase
+          user_name: state.profile?.full_name || user.email, 
           package_type: pkg?.package_type || examType, 
           package_id: pkg?.id || null,
           package_name: pkg?.name || 'Mini Tryout',
@@ -389,8 +389,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           score_twk: 0,
           score_tkp: 0,
           total_score: 0,
-          status: 'ON_PROGRESS', 
-          started_at: new Date().toISOString(),
+          status: 'ON_PROGRESS', // 🔥 FIX: Kolom started_at dihapus total dari sini agar sinkron dengan struktur database
         })
         .select()
         .single();
@@ -446,7 +445,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 timeRemaining: saved.timeRemaining,
                 status: 'in_progress',
                 startedAt: new Date(saved.startedAt),
-                // Pertahankan resultId jika sesi dipulihkan dari localStorage
                 resultId: (saved as any).resultId || undefined
               } as any;
               dispatch({ type: 'RESUME_EXAM', payload: restoredSession });
