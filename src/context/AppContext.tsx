@@ -380,9 +380,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const { data: insertedData, error } = await supabase
         .from('exam_results')
         .insert({
-          participant_id: user.id, // 🔥 DISELARASKAN dengan struktur database dashboard
-          participant_name: state.profile?.full_name || user.email, // 🔥 DISELARASKAN dengan struktur database dashboard
-          package_type: pkg?.package_type || examType, // 🔥 DISELARASKAN dengan jenis tipe paket yang dikirim
+          participant_id: user.id, 
+          user_name: state.profile?.full_name || user.email, // 🔥 DIUBAH ke user_name sesuai schema cache Supabase
+          package_type: pkg?.package_type || examType, 
           package_id: pkg?.id || null,
           package_name: pkg?.name || 'Mini Tryout',
           score_tiu: 0,
