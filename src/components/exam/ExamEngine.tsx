@@ -116,16 +116,23 @@ export default function ExamEngine() {
     const calculatedTotal = calculatedTiu + calculatedTwk + calculatedTkp;
 
     if (session.resultId) {
-      await supabase
+      const { error } = await supabase
         .from('exam_results')
         .update({
           score_tiu: calculatedTiu,
           score_twk: calculatedTwk,
           score_tkp: calculatedTkp,
           total_score: calculatedTotal,
+          status: 'ON_PROGRESS', // Menegaskan kembali status pengerjaan ke dashboard admin
           updated_at: new Date().toISOString()
         })
         .eq('id', session.resultId);
+
+      if (error) {
+        console.error("Gagal memperbarui nilai real-time ke database:", error.message);
+      } else {
+        console.log(`🔥 Nilai berhasil dikirim! TIU: ${calculatedTiu}, TWK: ${calculatedTwk}, TKP: ${calculatedTkp}`);
+      }
     }
   }
 
