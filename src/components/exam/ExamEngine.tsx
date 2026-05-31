@@ -3,7 +3,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronLeft, ChevronRight, Flag, Send, Menu, X, AlertCircle, ShieldAlert, CheckCircle2 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { AnswerOption } from '../../types';
-import { supabase } from '../../lib/supabase';
 import ExamTimer from './ExamTimer';
 import QuestionNavigator from './QuestionNavigator';
 
@@ -20,6 +19,7 @@ export default function ExamEngine() {
 
   const session = state.examSession;
 
+  // 🚀 FIX 1: Tambahkan dependensi session agar tidak mengalami stale closure dan resultId terbaca sempurna
   const handleSubmit = useCallback(() => {
     dispatch({ type: 'SUBMIT_EXAM' });
     setConfirmSubmit(false);
@@ -70,70 +70,13 @@ export default function ExamEngine() {
   const answeredCount = Object.values(answers).filter((a) => a.selectedAnswer).length;
   const unansweredCount = totalQuestions - answeredCount;
 
-  // 🚀 LOGIKA REAL-TIME: HITUNG SKOR BERDASARKAN KATEGORI SOAL CPNS DAN ENERGIKAN KE DB
-  async function handleAnswer(option: AnswerOption) {
+  // 🚀 FIX 2: Bersihkan total kueri Supabase manual dari sini. 
+  // Biarkan urusan update skor real-time ditangani secara terpusat oleh AppContext agar tidak balapan data.
+  function handleAnswer(option: AnswerOption) {
     dispatch({
       type: 'ANSWER_QUESTION',
       payload: { questionId: currentQuestion.id, answer: option },
     });
-
-    const simulatedAnswers = {
-      ...answers,
-      [currentQuestion.id]: { ...answers[currentQuestion.id], selectedAnswer: option }
-    };
-
-    let calculatedTiu = 0;
-    let calculatedTwk = 0;
-    let calculatedTkp = 0;
-
-    questions.forEach((q) => {
-      const ans = simulatedAnswers[q.id];
-      if (!ans || !ans.selectedAnswer) return;
-
-      if (q.category === 'TKP') {
-        // Fallback dinamis jika skema points_mapping tidak tersedia, membaca properti points_a s/d points_e
-        let points = 0;
-        const selected = ans.selectedAnswer.toLowerCase();
-        if (selected === 'a') points = Number(q.points_a ?? 0);
-        else if (selected === 'b') points = Number(q.points_b ?? 0);
-        else if (selected === 'c') points = Number(q.points_c ?? 0);
-        else if (selected === 'd') points = Number(q.points_d ?? 0);
-        else if (selected === 'e') points = Number(q.points_e ?? 0);
-
-        if (points === 0 && (q as any).points_mapping) {
-          points = (q as any).points_mapping[ans.selectedAnswer] || 0;
-        }
-        calculatedTkp += Number(points || 0);
-      } else {
-        const isCorrect = q.correct_answer === ans.selectedAnswer;
-        if (isCorrect) {
-          if (q.category === 'TIU') calculatedTiu += 5;
-          if (q.category === 'TWK') calculatedTwk += 5;
-        }
-      }
-    });
-
-    const calculatedTotal = calculatedTiu + calculatedTwk + calculatedTkp;
-
-    if (session.resultId) {
-      const { error } = await supabase
-        .from('exam_results')
-        .update({
-          score_tiu: calculatedTiu,
-          score_twk: calculatedTwk,
-          score_tkp: calculatedTkp,
-          total_score: calculatedTotal,
-          status: 'ON_PROGRESS', // Menegaskan kembali status pengerjaan ke dashboard admin
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', session.resultId);
-
-      if (error) {
-        console.error("Gagal memperbarui nilai real-time ke database:", error.message);
-      } else {
-        console.log(`🔥 Nilai berhasil dikirim! TIU: ${calculatedTiu}, TWK: ${calculatedTwk}, TKP: ${calculatedTkp}`);
-      }
-    }
   }
 
   function handleToggleMark() {
@@ -335,7 +278,7 @@ export default function ExamEngine() {
           </div>
         )}
 
-        {/* MODAL DETEKSI KECURANGAN (ANTI CHAT MODAL) */}
+        {/* MODAL DETEKSI KECURANGAN */}
         {showCheatModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
             <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border-t-4 border-rose-500 space-y-4">
