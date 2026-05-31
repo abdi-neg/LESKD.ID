@@ -147,7 +147,7 @@ function calculateScores(session: ExamSession) {
       else if (selected === 'e') points = Number(q.points_e ?? 0);
       
       tkp += points;
-      if (points > 0) correctCount++; // TKP opsional dianggap menjawab jika dapat poin
+      if (points > 0) correctCount++;
     } else {
       const pts = answer.selectedAnswer === q.correct_answer ? 5 : 0;
       if (pts > 0) correctCount++;
@@ -188,17 +188,8 @@ function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, currentView: action.payload };
 
     case 'START_EXAM': {
-      const { examType, pkg } = action.payload;
-      const config = EXAM_CONFIGS[examType];
-      const mock = examType === 'FULL'
-        ? mockQuestions
-        : mockQuestions.filter((q) => q.category === examType);
-      let padded = mock;
-      while (padded.length < config.questionCount) {
-        padded = [...padded, ...padded].slice(0, config.questionCount);
-      }
-      const session = buildSession(examType, padded.slice(0, config.questionCount), pkg);
-      return { ...state, examSession: session, currentView: 'exam-engine' };
+      // Mengosongkan pengerjaan lama terlebih dahulu saat inisialisasi awal
+      return { ...state, examSession: null, currentView: 'exam-engine' };
     }
 
     case 'RESUME_EXAM':
@@ -207,13 +198,11 @@ function appReducer(state: AppState, action: AppAction): AppState {
     case 'ANSWER_QUESTION': {
       if (!state.examSession) return state;
       const { questionId, answer } = action.payload;
-      
-      // 🚀 FIX 1: Pertahankan properti 'resultId' bawaan database agar tidak hilang saat state berganti
       const dbResultId = (state.examSession as any).resultId;
 
       const updatedSession = {
         ...state.examSession,
-        resultId: dbResultId, // <-- Dikunci agar tetap aman eksis
+        resultId: dbResultId, 
         answers: {
           ...state.examSession.answers,
           [questionId]: {
@@ -223,11 +212,8 @@ function appReducer(state: AppState, action: AppAction): AppState {
         },
       };
 
-      // 🚀 FIX 2: Hitung skor seketika & kirim pembaruan real-time ke Supabase tanpa menunggu submit
       if (dbResultId) {
         const liveScores = calculateScores(updatedSession);
-        
-        // Cek ambang batas kelulusan sederhana (Passing Grade)
         const isPassed = (updatedSession.examType === 'FULL') 
           ? (liveScores.twk >= 65 && liveScores.tiu >= 80 && liveScores.tkp >= 166)
           : true; 
@@ -249,10 +235,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
           });
       }
 
-      return {
-        ...state,
-        examSession: updatedSession,
-      };
+      return { ...state, examSession: updatedSession };
     }
 
     case 'TOGGLE_MARK': {
@@ -428,6 +411,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    dispatch({ type: 'START_EXAM', payload: { examType, pkg } });
     const questions = await fetchQuestionsForExam(examType, pkg?.id);
     const session = buildSession(examType, questions, pkg);
 
@@ -458,6 +442,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         ...session,
         resultId: insertedData.id,
       };
+
+      // Simpan langsung ke localstorage agar jika siklus render terpicu, id database sudah ikut terkunci
+      saveExamProgress(sessionWithResultId);
 
       dispatch({ type: 'RESUME_EXAM', payload: sessionWithResultId });
 
