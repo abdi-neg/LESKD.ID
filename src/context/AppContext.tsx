@@ -130,6 +130,8 @@ function buildSession(
 
 function calculateScores(session: ExamSession) {
   let tiu = 0, twk = 0, tkp = 0;
+  let correctCount = 0;
+  
   session.questions.forEach((q) => {
     const answer = session.answers[q.id];
     if (!answer?.selectedAnswer) return;
@@ -145,13 +147,15 @@ function calculateScores(session: ExamSession) {
       else if (selected === 'e') points = Number(q.points_e ?? 0);
       
       tkp += points;
+      if (points > 0) correctCount++; // TKP opsional dianggap menjawab jika dapat poin
     } else {
       const pts = answer.selectedAnswer === q.correct_answer ? 5 : 0;
+      if (pts > 0) correctCount++;
       if (q.category === 'TIU') tiu += pts;
       else twk += pts;
     }
   });
-  return { tiu, twk, tkp, total: tiu + twk + tkp };
+  return { tiu, twk, tkp, total: tiu + twk + tkp, correctCount };
 }
 
 function getViewForProfile(p: Profile): AppView {
@@ -203,18 +207,51 @@ function appReducer(state: AppState, action: AppAction): AppState {
     case 'ANSWER_QUESTION': {
       if (!state.examSession) return state;
       const { questionId, answer } = action.payload;
-      return {
-        ...state,
-        examSession: {
-          ...state.examSession,
-          answers: {
-            ...state.examSession.answers,
-            [questionId]: {
-              ...state.examSession.answers[questionId],
-              selectedAnswer: answer as import('../types').AnswerOption,
-            },
+      
+      // 🚀 FIX 1: Pertahankan properti 'resultId' bawaan database agar tidak hilang saat state berganti
+      const dbResultId = (state.examSession as any).resultId;
+
+      const updatedSession = {
+        ...state.examSession,
+        resultId: dbResultId, // <-- Dikunci agar tetap aman eksis
+        answers: {
+          ...state.examSession.answers,
+          [questionId]: {
+            ...state.examSession.answers[questionId],
+            selectedAnswer: answer as import('../types').AnswerOption,
           },
         },
+      };
+
+      // 🚀 FIX 2: Hitung skor seketika & kirim pembaruan real-time ke Supabase tanpa menunggu submit
+      if (dbResultId) {
+        const liveScores = calculateScores(updatedSession);
+        
+        // Cek ambang batas kelulusan sederhana (Passing Grade)
+        const isPassed = (updatedSession.examType === 'FULL') 
+          ? (liveScores.twk >= 65 && liveScores.tiu >= 80 && liveScores.tkp >= 166)
+          : true; 
+
+        supabase
+          .from('exam_results')
+          .update({
+            score_tiu: liveScores.tiu,
+            score_twk: liveScores.twk,
+            score_tkp: liveScores.tkp,
+            total_score: liveScores.total,
+            questions_correct: liveScores.correctCount,
+            passed: isPassed,
+            duration_seconds: Math.max(0, (EXAM_CONFIGS[updatedSession.examType].timeMinutes * 60) - updatedSession.timeRemaining)
+          })
+          .eq('id', dbResultId)
+          .then(({ error }) => {
+            if (error) console.error("Realtime Score Update Failed:", error);
+          });
+      }
+
+      return {
+        ...state,
+        examSession: updatedSession,
       };
     }
 
@@ -222,10 +259,12 @@ function appReducer(state: AppState, action: AppAction): AppState {
       if (!state.examSession) return state;
       const qId = action.payload;
       const cur = state.examSession.answers[qId];
+      const dbResultId = (state.examSession as any).resultId;
       return {
         ...state,
         examSession: {
           ...state.examSession,
+          resultId: dbResultId,
           answers: { ...state.examSession.answers, [qId]: { ...cur, isMarked: !cur.isMarked } },
         },
       };
@@ -233,23 +272,30 @@ function appReducer(state: AppState, action: AppAction): AppState {
 
     case 'NAVIGATE_QUESTION': {
       if (!state.examSession) return state;
-      return { ...state, examSession: { ...state.examSession, currentQuestionIndex: action.payload } };
+      const dbResultId = (state.examSession as any).resultId;
+      return { ...state, examSession: { ...state.examSession, resultId: dbResultId, currentQuestionIndex: action.payload } };
     }
 
     case 'RESTORE_TIMER': {
       if (!state.examSession) return state;
-      return { ...state, examSession: { ...state.examSession, timeRemaining: action.payload } };
+      const dbResultId = (state.examSession as any).resultId;
+      return { ...state, examSession: { ...state.examSession, resultId: dbResultId, timeRemaining: action.payload } };
     }
 
     case 'TICK_TIMER': {
       if (!state.examSession || state.examSession.timeRemaining <= 0) return state;
       const newTime = state.examSession.timeRemaining - 1;
+      const dbResultId = (state.examSession as any).resultId;
+      
       if (newTime <= 0) {
         const scores = calculateScores(state.examSession);
         clearExamProgress(state.examSession.id);
 
-        const resultId = (state.examSession as any).resultId;
-        if (resultId) {
+        if (dbResultId) {
+          const isPassed = (state.examSession.examType === 'FULL') 
+            ? (scores.twk >= 65 && scores.tiu >= 80 && scores.tkp >= 166)
+            : true;
+
           supabase
             .from('exam_results')
             .update({
@@ -257,19 +303,21 @@ function appReducer(state: AppState, action: AppAction): AppState {
               score_twk: scores.twk,
               score_tkp: scores.tkp,
               total_score: scores.total,
+              questions_correct: scores.correctCount,
+              passed: isPassed,
               status: 'COMPLETED',
               completed_at: new Date().toISOString()
             })
-            .eq('id', resultId);
+            .eq('id', dbResultId);
         }
 
         return {
           ...state,
           currentView: 'exam-results',
-          examSession: { ...state.examSession, timeRemaining: 0, status: 'completed', completedAt: new Date(), scores },
+          examSession: { ...state.examSession, resultId: dbResultId, timeRemaining: 0, status: 'completed', completedAt: new Date(), scores },
         };
       }
-      return { ...state, examSession: { ...state.examSession, timeRemaining: newTime } };
+      return { ...state, examSession: { ...state.examSession, resultId: dbResultId, timeRemaining: newTime } };
     }
 
     case 'SUBMIT_EXAM': {
@@ -277,8 +325,13 @@ function appReducer(state: AppState, action: AppAction): AppState {
       const scores = calculateScores(state.examSession);
       clearExamProgress(state.examSession.id);
 
-      const resultId = (state.examSession as any).resultId;
-      if (resultId) {
+      const dbResultId = (state.examSession as any).resultId;
+      
+      if (dbResultId) {
+        const isPassed = (state.examSession.examType === 'FULL') 
+          ? (scores.twk >= 65 && scores.tiu >= 80 && scores.tkp >= 166)
+          : true;
+
         supabase
           .from('exam_results')
           .update({
@@ -286,19 +339,22 @@ function appReducer(state: AppState, action: AppAction): AppState {
             score_twk: scores.twk,
             score_tkp: scores.tkp,
             total_score: scores.total,
+            questions_correct: scores.correctCount,
+            passed: isPassed,
             status: 'COMPLETED',
-            completed_at: new Date().toISOString()
+            completed_at: new Date().toISOString(),
+            duration_seconds: Math.max(0, (EXAM_CONFIGS[state.examSession.examType].timeMinutes * 60) - state.examSession.timeRemaining)
           })
-          .eq('id', resultId)
+          .eq('id', dbResultId)
           .then(({ error }) => {
-            if (error) console.error("Gagal memperbarui status akhir ujian:", error);
+            if (error) console.error("Gagal melakukan update akhir status COMPLETED:", error);
           });
       }
 
       return {
         ...state,
         currentView: 'exam-results',
-        examSession: { ...state.examSession, status: 'completed', completedAt: new Date(), scores },
+        examSession: { ...state.examSession, resultId: dbResultId, status: 'completed', completedAt: new Date(), scores },
       };
     }
 
@@ -365,7 +421,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  // 🚀 REAL-TIME COUPLING: Memulai baris baru di Supabase (Sudah diperbaiki: Bebas dari started_at)
   async function startExam(examType: ExamType, pkg?: ExamPackage) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
@@ -389,14 +444,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
           score_twk: 0,
           score_tkp: 0,
           total_score: 0,
-          status: 'ON_PROGRESS', // 🔥 FIX: Kolom started_at dihapus total dari sini agar sinkron dengan struktur database
+          questions_total: questions.length,
+          questions_correct: 0,
+          passed: false,
+          status: 'ON_PROGRESS',
         })
         .select()
         .single();
 
       if (error) throw error;
 
-      // Sematkan resultId database ke dalam session sebelum dikirim ke engine
       const sessionWithResultId = {
         ...session,
         resultId: insertedData.id,
@@ -406,7 +463,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     } catch (err) {
       console.error("Gagal menginisialisasi sesi ujian di database:", err);
-      // Fallback jika database bermasalah agar ujian tetap berjalan lokal
       dispatch({ type: 'RESUME_EXAM', payload: session });
     }
   }
@@ -460,15 +516,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      (() => {
-        if (event === 'SIGNED_OUT' || !session) {
-          dispatch({ type: 'LOGOUT' });
-          return;
-        }
-        if (event === 'SIGNED_IN' && session.user) {
-          refreshProfile();
-        }
-      })();
+      if (event === 'SIGNED_OUT' || !session) {
+        dispatch({ type: 'LOGOUT' });
+        return;
+      }
+      if (event === 'SIGNED_IN' && session.user) {
+        refreshProfile();
+      }
     });
 
     return () => subscription.unsubscribe();
