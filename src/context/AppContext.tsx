@@ -230,11 +230,17 @@ const AppContext = createContext<AppContextType | null>(null);
 export function AppProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(appReducer, initialState);
 
-  // Realtime Auto Save Sync ke Supabase & LocalStorage saat menjawab soal
-  useEffect(() => {
-    const session = state.examSession;
-    if (!session || session.status === 'completed') return;
+ 
+  // 🔄 Ubah useEffect Realtime Auto Save Sync di AppContext.tsx Anda menjadi seperti ini:
+useEffect(() => {
+  const session = state.examSession;
+  
+  // 🔒 KUNCI UTAMA: Jika tidak ada sesi, atau sesi SUDAH COMPLETED / SELESAI, 
+  // JANGAN lakukan update apapun ke Supabase atau LocalStorage!
+  if (!session || session.status === 'completed' || session.status === 'completed') return;
 
+  // Hanya simpan jika statusnya benar-benar masih berjalan
+  if (session.status === 'in_progress') {
     saveExamProgress(session);
 
     const dbResultId = (session as any).resultId;
@@ -254,9 +260,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
           duration_seconds: Math.max(0, (EXAM_CONFIGS[session.examType].timeMinutes * 60) - session.timeRemaining)
         })
         .eq('id', dbResultId)
-        .error.then((err) => { if (err) console.error("Realtime Sync Error:", err); });
+        .then(({ error }) => { 
+          if (error) console.error("Realtime Sync Error:", error); 
+        });
     }
-  }, [state.examSession?.answers]);
+  }
+}, [state.examSession?.answers, state.examSession?.status]); // 🔥 Tambahkan status ke array dependensi
 
   // Timer Ticking effect
   useEffect(() => {
