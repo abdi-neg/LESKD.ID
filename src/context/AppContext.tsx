@@ -293,7 +293,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } catch { dispatch({ type: 'SET_PROFILE', payload: null }); }
   }
 
-  // 🛠️ PEMBARUAN LOGIKA UTAMA: Sistem "Cek baru Insert" murni tanpa paksaan batasan Unique DB
   async function startExam(examType: ExamType, pkg?: ExamPackage) {
     if (isStartingExam) return;
 
@@ -315,7 +314,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       
       const session = buildSession(examType, questions, pkg);
 
-      // A. Ambil manual data pengerjaan yang menggantung ('in_progress') jika ada
+      // Cari manual jika ada progress yang menggantung
       const { data: existingProgress } = await supabase
         .from('exam_results')
         .select('*')
@@ -326,7 +325,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       let finalDbRow;
 
       if (existingProgress) {
-        // Jika ada ujian menggantung, daur ulang baris tersebut agar tidak menumpuk sampah data
         const { data: recycledRow, error: recycleErr } = await supabase
           .from('exam_results')
           .update({
@@ -344,7 +342,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (recycleErr) throw recycleErr;
         finalDbRow = recycledRow;
       } else {
-        // Jika bersih tidak ada tanggungan, lakukan INSERT baris BARU (Mendukung multi riwayat)
         const { data: newRow, error: insertErr } = await supabase
           .from('exam_results')
           .insert({
@@ -397,7 +394,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const scores = calculateScores(session);
       const isPassed = checkPassedStatus(session.examType, scores);
 
-      // Menggunakan UPDATE murni berdasarkan target ID baris aktif saat ini
+      // UPDATE berdasarkan ID baris unik saat ini
       const { error } = await supabase
         .from('exam_results')
         .update({
