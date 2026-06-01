@@ -188,7 +188,6 @@ function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, currentView: action.payload };
 
     case 'START_EXAM': {
-      // Mengosongkan pengerjaan lama terlebih dahulu saat inisialisasi awal
       return { ...state, examSession: null, currentView: 'exam-engine' };
     }
 
@@ -229,6 +228,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
             passed: isPassed,
             duration_seconds: Math.max(0, (EXAM_CONFIGS[updatedSession.examType].timeMinutes * 60) - updatedSession.timeRemaining)
           })
+          .from('exam_results')
           .eq('id', dbResultId)
           .then(({ error }) => {
             if (error) console.error("Realtime Score Update Failed:", error);
@@ -272,7 +272,10 @@ function appReducer(state: AppState, action: AppAction): AppState {
       
       if (newTime <= 0) {
         const scores = calculateScores(state.examSession);
+        
+        // Bersihkan jejak penyimpanan lokal sebelum memicu pembaruan state akhir
         clearExamProgress(state.examSession.id);
+        localStorage.removeItem('exam_active_session_id');
 
         if (dbResultId) {
           const isPassed = (state.examSession.examType === 'FULL') 
@@ -289,9 +292,13 @@ function appReducer(state: AppState, action: AppAction): AppState {
               questions_correct: scores.correctCount,
               passed: isPassed,
               status: 'COMPLETED',
-              completed_at: new Date().toISOString()
+              completed_at: new Date().toISOString(),
+              duration_seconds: Math.max(0, (EXAM_CONFIGS[state.examSession.examType].timeMinutes * 60))
             })
-            .eq('id', dbResultId);
+            .eq('id', dbResultId)
+            .then(({ error }) => {
+              if (error) console.error("Gagal melakukan update otomatis batas waktu:", error);
+            });
         }
 
         return {
@@ -306,9 +313,11 @@ function appReducer(state: AppState, action: AppAction): AppState {
     case 'SUBMIT_EXAM': {
       if (!state.examSession) return state;
       const scores = calculateScores(state.examSession);
-      clearExamProgress(state.examSession.id);
-
       const dbResultId = (state.examSession as any).resultId;
+      
+      // Hapus dari lokal agar tidak memicu jalannya efek autosave pasca-render
+      clearExamProgress(state.examSession.id);
+      localStorage.removeItem('exam_active_session_id');
       
       if (dbResultId) {
         const isPassed = (state.examSession.examType === 'FULL') 
@@ -337,7 +346,13 @@ function appReducer(state: AppState, action: AppAction): AppState {
       return {
         ...state,
         currentView: 'exam-results',
-        examSession: { ...state.examSession, resultId: dbResultId, status: 'completed', completedAt: new Date(), scores },
+        examSession: { 
+          ...state.examSession, 
+          resultId: dbResultId, 
+          status: 'completed', 
+          completedAt: new Date(), 
+          scores 
+        },
       };
     }
 
@@ -443,9 +458,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         resultId: insertedData.id,
       };
 
-      // Simpan langsung ke localstorage agar jika siklus render terpicu, id database sudah ikut terkunci
       saveExamProgress(sessionWithResultId);
-
       dispatch({ type: 'RESUME_EXAM', payload: sessionWithResultId });
 
     } catch (err) {
