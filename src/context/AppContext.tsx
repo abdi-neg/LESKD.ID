@@ -34,7 +34,6 @@ const initialState: AppState = {
   reviewResultId: null,
 };
 
-// 🔒 LOCK FLAGS: Mencegah pemicu ganda (Double Trigger / StrictMode) di level aplikasi
 let isStartingExam = false;
 let isSubmittingExam = false;
 
@@ -167,8 +166,15 @@ function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, currentView: action.payload };
     case 'START_EXAM':
       return { ...state, examSession: null, currentView: 'exam-engine' };
-    case 'RESUME_EXAM':
-      return { ...state, examSession: action.payload, currentView: action.payload.status === 'completed' ? 'exam-results' : 'exam-engine' };
+    case 'RESUME_EXAM': {
+      // Pastikan payload tervalidasi dengan ketat sebelum mengubah rute visual
+      if (!action.payload) return state;
+      return { 
+        ...state, 
+        examSession: action.payload, 
+        currentView: action.payload.status === 'completed' ? 'exam-results' : 'exam-engine' 
+      };
+    }
     case 'ANSWER_QUESTION': {
       if (!state.examSession) return state;
       return {
@@ -288,7 +294,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } catch { dispatch({ type: 'SET_PROFILE', payload: null }); }
   }
 
-  // 🚀 HIGHLY STABLE FLOW: Sinkronisasi timing untuk membasmi Error #130 & Kebal Double Click
+  // 🚀 LINIER EXECUTION FLOW: Pengkondisian data 100% matang sebelum rute visual dilepas
   async function startExam(examType: ExamType, pkg?: ExamPackage) {
     if (isStartingExam) return;
 
@@ -301,20 +307,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      // 1️⃣ Bangun draf data soal dan struktur sesi langsung di memori lokal
+      // 1️⃣ Tarik data pertanyaan dari server terlebih dahulu
       const questions = await fetchQuestionsForExam(examType, pkg?.id);
       if (!questions || questions.length === 0) {
-        alert("Gagal memuat kumpulan soal.");
+        alert("Gagal memuat kumpulan soal ujian.");
         return;
       }
       
       const session = buildSession(examType, questions, pkg);
 
-      // 2️⃣ SUNTIKKAN SESI DULU BARU PINDAH (Solusi Utama Anti-White Screen)
-      // Mencegah examSession bernilai null saat komponen mesin ujian di-mount oleh React
-      dispatch({ type: 'RESUME_EXAM', payload: session });
-
-      // 3️⃣ Jalankan pencatatan ke database menggunakan skema .upsert() kebal duplikasi
+      // 2️⃣ Daftarkan sesi ke Supabase secara aman menggunakan skema Upsert Anti-23505
       const { data: insertedData, error } = await supabase
         .from('exam_results')
         .upsert(
@@ -340,26 +342,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
         throw error;
       }
 
-      // 4️⃣ Tempelkan resultId resmi dari server ke dalam sesi lokal yang aktif
+      // 3️⃣ Racik draf sesi final dengan menyertakan resultId asli database
       const sessionWithResultId = { 
         ...session, 
         resultId: insertedData.id,
         userName: state.profile?.full_name || user.email 
       };
 
+      // 4️⃣ Kunci ke persistensi lokal
       saveExamProgress(sessionWithResultId);
+
+      // 5️⃣ SATU-SATUNYA PINALTI DISPATCH: Kirim data matang & pindahkan halaman bersamaan secara atomik
       dispatch({ type: 'RESUME_EXAM', payload: sessionWithResultId });
 
     } catch (err) {
       console.error("Gagal menginisialisasi sesi ujian:", err);
       dispatch({ type: 'CLEAR_EXAM' });
-      alert("Gagal memuat sesi ujian karena bentrokan data server. Halaman dibersihkan otomatis, silakan klik ulang.");
+      alert("Terjadi kendala jaringan atau data ganda di server. Sesi visual dibersihkan, silakan coba klik kembali.");
     } finally {
       isStartingExam = false;
     }
   }
 
-  // ✅ Fungsi Submit Terpusat Original
   async function submitExamSession() {
     const session = state.examSession;
     if (!session || isSubmittingExam) return;
@@ -418,7 +422,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } catch { return false; }
   }
 
-  // 🔄 Restore & Auth listener Effect
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
