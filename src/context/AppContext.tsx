@@ -288,7 +288,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } catch { dispatch({ type: 'SET_PROFILE', payload: null }); }
   }
 
-  // 🚀 HIGHLY STABLE FLOW: Kebal terhadap double click token & bebas white screen
+  // 🚀 HIGHLY STABLE FLOW: Sinkronisasi timing untuk membasmi Error #130 & Kebal Double Click
   async function startExam(examType: ExamType, pkg?: ExamPackage) {
     if (isStartingExam) return;
 
@@ -301,13 +301,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      // Alur asli Anda: Pindahkan halaman visual dulu ke engine agar komponen React tidak crash
-      dispatch({ type: 'START_EXAM', payload: { examType, pkg } });
-
+      // 1️⃣ Bangun draf data soal dan struktur sesi langsung di memori lokal
       const questions = await fetchQuestionsForExam(examType, pkg?.id);
+      if (!questions || questions.length === 0) {
+        alert("Gagal memuat kumpulan soal.");
+        return;
+      }
+      
       const session = buildSession(examType, questions, pkg);
 
-      // 🛡️ MENGGUNAKAN .upsert() UNTUK MENANGKAP ERROR DUPLIKASI 23505 SECARA AMAN
+      // 2️⃣ SUNTIKKAN SESI DULU BARU PINDAH (Solusi Utama Anti-White Screen)
+      // Mencegah examSession bernilai null saat komponen mesin ujian di-mount oleh React
+      dispatch({ type: 'RESUME_EXAM', payload: session });
+
+      // 3️⃣ Jalankan pencatatan ke database menggunakan skema .upsert() kebal duplikasi
       const { data: insertedData, error } = await supabase
         .from('exam_results')
         .upsert(
@@ -323,7 +330,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
             status: 'in_progress', 
           },
           {
-            // Menandakan aturan constraint gabungan di Supabase Anda
             onConflict: 'participant_id,status'
           }
         )
@@ -334,6 +340,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         throw error;
       }
 
+      // 4️⃣ Tempelkan resultId resmi dari server ke dalam sesi lokal yang aktif
       const sessionWithResultId = { 
         ...session, 
         resultId: insertedData.id,
@@ -345,9 +352,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     } catch (err) {
       console.error("Gagal menginisialisasi sesi ujian:", err);
-      // 🚨 EMERGENCY FALLBACK: Jika supabse gagal, kembalikan halaman ke dashboard agar tidak white screen
       dispatch({ type: 'CLEAR_EXAM' });
-      alert("Gagal memuat sesi ujian karena bentrokan data atau koneksi. Silakan bersihkan halaman dan coba lagi.");
+      alert("Gagal memuat sesi ujian karena bentrokan data server. Halaman dibersihkan otomatis, silakan klik ulang.");
     } finally {
       isStartingExam = false;
     }
