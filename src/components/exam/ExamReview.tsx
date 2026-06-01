@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowLeft, CheckCircle, XCircle, Target, BookOpen,
@@ -264,7 +264,8 @@ function QuestionCard({
   );
 }
 
-export default function ExamReview() {
+// 🔑 PERBAIKAN: Mengubah menjadi Named Export agar sinkron saat di-import di App.tsx
+export function ExamReview() {
   const { state, dispatch } = useApp();
   const [snapshot, setSnapshot] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
