@@ -30,16 +30,17 @@ export default function LiveScoreMonitor() {
   const [results, setResults] = useState<ResultWithName[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(new Date());
-  const [isRealtime, setIsRealtime] = useState(true);
+  const [isRealtime, setIsRealtime] = useState(true); // Di sini berfungsi sebagai toggle "Auto Refresh / Polling"
+  const [countdown, setCountdown] = useState<number>(5); // Indikator visual detik untuk request berikutnya
   
   const syncRef = useRef<() => Promise<void>>(async () => {});
 
-  // 1. Fungsi Utama Sinkronisasi Data (Sudah Diperbaiki: Menggunakan kolom 'id' yang valid)
+  // 1. Fungsi Utama Sinkronisasi Data via HTTP REST (Kebal Proxy)
   const syncLiveMonitorData = useCallback(async () => {
     const { data: examData, error: examError } = await supabase
       .from('exam_results')
       .select('*') 
-      .order('id', { ascending: false }) // ✅ FIX: Menggunakan 'id' sebagai pengganti 'updated_at' yang tidak eksis
+      .order('id', { ascending: false })
       .limit(150);
 
     if (examError || !examData) {
@@ -86,27 +87,25 @@ export default function LiveScoreMonitor() {
     syncLiveMonitorData();
   }, [syncLiveMonitorData]);
 
-  // 2. Berlangganan Stream Realtime (Menangkap INSERT & UPDATE saat peserta menjawab)
+  // 2. SOLUSI FIX: Mengganti WebSocket dengan Sistem HTTP Polling Berkala (Setiap 5 Detik)
   useEffect(() => {
     if (!isRealtime) return;
 
-    const channel = supabase
-      .channel('bkn-broadcast-channel')
-      .on(
-        'postgres_changes',
-        {
-          event: '*', 
-          schema: 'public',
-          table: 'exam_results',
-        },
-        () => {
-          syncRef.current();
-        }
-      )
-      .subscribe();
+    // Trigger hit data otomatis setiap 5 detik sekali
+    const pollingTimer = setInterval(() => {
+      syncRef.current();
+      setCountdown(5); // Reset visual countdown kembali ke angka 5
+    }, 5000);
 
+    // Mengatur pengurangan angka detik visual (5..4..3..2..1) di layar monitor
+    const visualTimer = setInterval(() => {
+      setCountdown((prev) => (prev > 1 ? prev - 1 : 5));
+    }, 1000);
+
+    // Bersihkan memori interval ketika admin keluar dari halaman monitor ini
     return () => {
-      supabase.removeChannel(channel);
+      clearInterval(pollingTimer);
+      clearInterval(visualTimer);
     };
   }, [isRealtime]);
 
@@ -146,13 +145,14 @@ export default function LiveScoreMonitor() {
           </p>
         </div>
         <div className="flex items-center gap-2 self-end sm:self-center">
+          {/* Tombol Stream Switcher (Sekarang berganti fungsi menjadi Auto Polling) */}
           <button
             onClick={() => setIsRealtime(!isRealtime)}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold tracking-wide uppercase transition-colors
               ${isRealtime ? 'bg-emerald-500 text-slate-950 shadow-lg shadow-emerald-500/20' : 'bg-slate-900 text-slate-400 border border-slate-800'}`}
           >
             <span className={`w-2 h-2 rounded-full ${isRealtime ? 'bg-slate-950 animate-pulse' : 'bg-slate-500'}`} />
-            {isRealtime ? 'STREAM LIVE' : 'PAUSED'}
+            {isRealtime ? `AUTO REFRESH (${countdown}s)` : 'PAUSED'}
           </button>
           <button
             onClick={() => { setLoading(true); syncLiveMonitorData(); }}
