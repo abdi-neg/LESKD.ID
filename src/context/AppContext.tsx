@@ -288,7 +288,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } catch { dispatch({ type: 'SET_PROFILE', payload: null }); }
   }
 
-  // 🚀 ORIGINAL FLOW: Mengembalikan alur asli Anda yang 100% aman dari White Screen
+  // 🚀 HIGHLY STABLE FLOW: Kebal terhadap double click token & bebas white screen
   async function startExam(examType: ExamType, pkg?: ExamPackage) {
     if (isStartingExam) return;
 
@@ -301,33 +301,36 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      // Alur asli Anda: Pindahkan halaman visual dulu ke engine agar tidak crash
+      // Alur asli Anda: Pindahkan halaman visual dulu ke engine agar komponen React tidak crash
       dispatch({ type: 'START_EXAM', payload: { examType, pkg } });
 
       const questions = await fetchQuestionsForExam(examType, pkg?.id);
       const session = buildSession(examType, questions, pkg);
 
-      // SINKRONISASI CASING STATUS: Diubah menjadi 'in_progress' agar terbaca oleh useEffect Auto-Save
+      // 🛡️ MENGGUNAKAN .upsert() UNTUK MENANGKAP ERROR DUPLIKASI 23505 SECARA AMAN
       const { data: insertedData, error } = await supabase
         .from('exam_results')
-        .insert({
-          participant_id: user.id,
-          user_name: state.profile?.full_name || user.email, 
-          package_type: pkg?.package_type || examType,
-          package_id: pkg?.id || null,
-          package_name: pkg?.name || 'Mini Tryout',
-          score_tiu: 0, score_twk: 0, score_tkp: 0, total_score: 0,
-          questions_total: questions.length, questions_correct: 0,
-          passed: false, 
-          status: 'in_progress', 
-        })
+        .upsert(
+          {
+            participant_id: user.id,
+            user_name: state.profile?.full_name || user.email, 
+            package_type: pkg?.package_type || examType,
+            package_id: pkg?.id || null,
+            package_name: pkg?.name || 'Mini Tryout',
+            score_tiu: 0, score_twk: 0, score_tkp: 0, total_score: 0,
+            questions_total: questions.length, questions_correct: 0,
+            passed: false, 
+            status: 'in_progress', 
+          },
+          {
+            // Menandakan aturan constraint gabungan di Supabase Anda
+            onConflict: 'participant_id,status'
+          }
+        )
         .select()
         .single();
 
       if (error) {
-        if (error.code === '23505') { 
-          console.warn("Sesi aktif terdeteksi.");
-        }
         throw error;
       }
 
@@ -342,6 +345,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     } catch (err) {
       console.error("Gagal menginisialisasi sesi ujian:", err);
+      // 🚨 EMERGENCY FALLBACK: Jika supabse gagal, kembalikan halaman ke dashboard agar tidak white screen
+      dispatch({ type: 'CLEAR_EXAM' });
+      alert("Gagal memuat sesi ujian karena bentrokan data atau koneksi. Silakan bersihkan halaman dan coba lagi.");
     } finally {
       isStartingExam = false;
     }
