@@ -237,14 +237,14 @@ const AppContext = createContext<AppContextType | null>(null);
 export function AppProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(appReducer, initialState);
   
-  // 🔑 REAKTIF LOCK STATE: Mengunci siklus Auto Save Sync di tingkat hook React secara realtime
+  // 🔑 REAKTIF LOCK STATE: Menghentikan siklus Auto Save Sync secepatnya sebelum fetch berjalan
   const [isSyncLocked, setIsSyncLocked] = useState(false);
 
   // 🔄 Realtime Auto Save Sync Effect
   useEffect(() => {
     const session = state.examSession;
     
-    // Jika sesi selesai atau sinkronisasi dikunci (proses submit berjalan), segera batalkan query.
+    // Batalkan sinkronisasi secepatnya jika status kelar atau sedang memproses tombol submit
     if (!session || session.status === 'completed' || isSyncLocked) return;
 
     if (session.status === 'in_progress') {
@@ -302,7 +302,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     try {
       isStartingExam = true;
-      setIsSyncLocked(false); // Membuka kembali kunci sinkronisasi saat ujian baru dimulai
+      setIsSyncLocked(false); // Pastikan lock dibuka kembali saat memulai sesi tryout baru
 
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
@@ -370,35 +370,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!dbResultId) return;
 
     try {
-      // 1️⃣ Kunci akses pengiriman data paralel sesegera mungkin
+      // 1️⃣ Kunci akses pengiriman data paralel secepat mungkin agar Auto Save tidak bocor
       setIsSyncLocked(true);
 
       const scores = calculateScores(session);
       const isPassed = checkPassedStatus(session.examType, scores);
-      const currentParticipantId = state.profile?.id;
 
-      // 2️⃣ SKEMA UPSERT AMAN: Menyertakan kembali kolom wajib NOT NULL
-      // untuk mencegah error kekosongan kolom (Constraint 23502)
+      // 2️⃣ BERSIH MENGGUNAKAN .update().eq('id', dbResultId)
+      // Skema ini mencegah benturan aturan unique_participant_progress majemuk di Postgres
+      // karena database tidak mendeteksi benturan baris data bertipe 'completed' yang sudah ada sebelumnya.
       const { error } = await supabase
         .from('exam_results')
-        .upsert({
-          id: dbResultId, 
-          participant_id: currentParticipantId,
-          user_name: state.profile?.full_name || (session as any).userName || 'Peserta', 
-          package_type: (session as any).packageType || session.examType, 
-          package_id: session.packageId || null,
-          package_name: session.packageName || 'Mini Tryout', 
+        .update({
           score_tiu: scores.tiu,
           score_twk: scores.twk,
           score_tkp: scores.tkp,
           total_score: scores.total,
-          questions_total: session.questions.length,
           questions_correct: scores.correctCount,
           passed: isPassed,
           status: 'completed', 
           completed_at: new Date().toISOString(),
           duration_seconds: Math.max(0, (EXAM_CONFIGS[session.examType].timeMinutes * 60) - session.timeRemaining)
-        });
+        })
+        .eq('id', dbResultId);
 
       if (error) throw error;
 
@@ -416,7 +410,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     } catch (err) {
       console.error("Gagal melakukan submisi ujian akhir:", err);
-      setIsSyncLocked(false); // Buka kunci jika terjadi kegagalan sistem agar pengguna dapat mengirim ulang
+      setIsSyncLocked(false); // Buka kembali kunci sinkronisasi jika gagal submit agar user bisa mencoba klik lagi
       alert("Gagal mengirimkan lembar jawaban ke server. Silakan coba klik submit kembali.");
     }
   }
