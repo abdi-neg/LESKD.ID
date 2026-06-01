@@ -12,7 +12,8 @@ import MasterResults from './MasterResults';
 import PackageManager from './PackageManager';
 import ManageAdmins from './ManageAdmins';
 import ManageParticipants from './ManageParticipants';
-import ExamReview from '../exam/ExamReview'; // 👈 Import komponen review agar bisa dirender terisolasi
+// 🔑 PERBAIKAN: Mengubah menjadi Named Import dengan kurung kurawal agar proses build sukses
+import { ExamReview } from '../exam/ExamReview'; 
 
 type Tab = 'overview' | 'questions' | 'live' | 'results' | 'packages' | 'admins' | 'participants';
 
