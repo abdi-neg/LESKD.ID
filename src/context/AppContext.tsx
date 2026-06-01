@@ -292,58 +292,65 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // 🚀 Fungsi Start Exam yang Diperbaiki Secara Total & Aman dari Double-Trigger
   async function startExam(examType: ExamType, pkg?: ExamPackage) {
-    if (isStartingExam) return;
+  if (isStartingExam) return;
 
-    try {
-      isStartingExam = true;
-      console.log("🔥 START_EXAM VALIDATED:", examType);
+  try {
+    isStartingExam = true;
 
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { alert("Sesi login tidak valid."); return; }
-
-      // Cek duplikasi sesi aktif di database sebelum membuat baru
-      const { data: activeCheck } = await supabase
-        .from('exam_results')
-        .select('id')
-        .eq('participant_id', user.id)
-        .eq('status', 'ON_PROGRESS')
-        .maybeSingle();
-
-      if (activeCheck) {
-        console.warn("Sesi aktif masih berjalan di database, mencegah pembuatan baris baru ganda.");
-        return;
-      }
-
-      dispatch({ type: 'START_EXAM', payload: { examType, pkg } });
-      const questions = await fetchQuestionsForExam(examType, pkg?.id);
-      const session = buildSession(examType, questions, pkg);
-
-      const { data: insertedData, error } = await supabase
-        .from('exam_results')
-        .insert({
-          participant_id: user.id,
-          user_name: state.profile?.full_name || user.email,
-          package_type: pkg?.package_type || examType,
-          package_id: pkg?.id || null,
-          package_name: pkg?.name || 'Mini Tryout',
-          score_tiu: 0, score_twk: 0, score_tkp: 0, total_score: 0,
-          questions_total: questions.length, questions_correct: 0,
-          passed: false, status: 'ON_PROGRESS',
-        })
-        .select().single();
-
-      if (error) throw error;
-      
-      const sessionWithResultId = { ...session, resultId: insertedData.id };
-      saveExamProgress(sessionWithResultId);
-      dispatch({ type: 'RESUME_EXAM', payload: sessionWithResultId });
-
-    } catch (err) {
-      console.error("Gagal menginisialisasi database:", err);
-    } finally {
-      isStartingExam = false;
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      alert("Sesi login tidak valid.");
+      return;
     }
+
+    // 1️⃣ Ambil pertanyaan terlebih dahulu
+    const questions = await fetchQuestionsForExam(examType, pkg?.id);
+    const session = buildSession(examType, questions, pkg);
+
+    // 2️⃣ Daftarkan sesi baru ke Supabase
+    const { data: insertedData, error } = await supabase
+      .from('exam_results')
+      .insert({
+        participant_id: user.id,
+        user_name: state.profile?.full_name || user.email, // Memastikan nama peserta terisi langsung
+        package_type: pkg?.package_type || examType,
+        package_id: pkg?.id || null,
+        package_name: pkg?.name || 'Mini Tryout',
+        score_tiu: 0, score_twk: 0, score_tkp: 0, total_score: 0,
+        questions_total: questions.length, questions_correct: 0,
+        passed: false, 
+        status: 'ON_PROGRESS', // Pastikan casing string ini sama dengan constraint DB
+      })
+      .select()
+      .single();
+
+    if (error) {
+      // Jika terblokir karena masih ada sesi aktif di database, jangan buat baru
+      if (error.code === '23505') { 
+        console.warn("Anda memiliki sesi yang masih berjalan. Silakan muat ulang halaman.");
+      }
+      throw error;
+    }
+
+    // 3️⃣ GABUNGKAN DATA: Pastikan resultId dari Supabase dimasukkan ke dalam state
+    const sessionWithResultId = { 
+      ...session, 
+      resultId: insertedData.id,
+      userName: state.profile?.full_name || user.email // Mengunci nama di level state engine
+    };
+
+    // 4️⃣ Simpan ke penyimpan lokal dan aktifkan views secara bersamaan
+    saveExamProgress(sessionWithResultId);
+    
+    // Pemicu tampilan engine ditaruh di sini agar data ID dan Nama sudah siap pakai
+    dispatch({ type: 'RESUME_EXAM', payload: sessionWithResultId });
+
+  } catch (err) {
+    console.error("Gagal menginisialisasi sesi ujian:", err);
+  } finally {
+    isStartingExam = false;
   }
+}
 
   // ✅ Fungsi Submit Terpusat yang Diperbaiki (Menghilangkan Kondisi Balapan Penyebab Nilai Reset)
   async function submitExamSession() {
