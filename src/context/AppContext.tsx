@@ -213,10 +213,15 @@ function appReducer(state: AppState, action: AppAction): AppState {
 
       if (dbResultId) {
         const liveScores = calculateScores(updatedSession);
-        const isPassed = (updatedSession.examType === 'FULL') 
-          ? (liveScores.twk >= 65 && liveScores.tiu >= 80 && liveScores.tkp >= 166)
-          : true; 
+        
+        // ✅ PERBAIKAN LOGIKA PASSING GRADE ADAPTIF
+        const isPassed = 
+          updatedSession.examType === 'FULL' ? (liveScores.twk >= 65 && liveScores.tiu >= 80 && liveScores.tkp >= 166) :
+          updatedSession.examType === 'TWK'  ? (liveScores.twk >= 65) :
+          updatedSession.examType === 'TIU'  ? (liveScores.tiu >= 80) :
+          updatedSession.examType === 'TKP'  ? (liveScores.tkp >= 166) : false;
 
+        // ✅ PERBAIKAN: Menghapus chain .from() ganda yang memicu duplikasi query database
         supabase
           .from('exam_results')
           .update({
@@ -228,7 +233,6 @@ function appReducer(state: AppState, action: AppAction): AppState {
             passed: isPassed,
             duration_seconds: Math.max(0, (EXAM_CONFIGS[updatedSession.examType].timeMinutes * 60) - updatedSession.timeRemaining)
           })
-          .from('exam_results')
           .eq('id', dbResultId)
           .then(({ error }) => {
             if (error) console.error("Realtime Score Update Failed:", error);
@@ -273,14 +277,16 @@ function appReducer(state: AppState, action: AppAction): AppState {
       if (newTime <= 0) {
         const scores = calculateScores(state.examSession);
         
-        // Bersihkan jejak penyimpanan lokal sebelum memicu pembaruan state akhir
         clearExamProgress(state.examSession.id);
         localStorage.removeItem('exam_active_session_id');
 
         if (dbResultId) {
-          const isPassed = (state.examSession.examType === 'FULL') 
-            ? (scores.twk >= 65 && scores.tiu >= 80 && scores.tkp >= 166)
-            : true;
+          // ✅ PERBAIKAN LOGIKA PASSING GRADE ADAPTIF
+          const isPassed = 
+            state.examSession.examType === 'FULL' ? (scores.twk >= 65 && scores.tiu >= 80 && scores.tkp >= 166) :
+            state.examSession.examType === 'TWK'  ? (scores.twk >= 65) :
+            state.examSession.examType === 'TIU'  ? (scores.tiu >= 80) :
+            state.examSession.examType === 'TKP'  ? (scores.tkp >= 166) : false;
 
           supabase
             .from('exam_results')
@@ -315,14 +321,16 @@ function appReducer(state: AppState, action: AppAction): AppState {
       const scores = calculateScores(state.examSession);
       const dbResultId = (state.examSession as any).resultId;
       
-      // Hapus dari lokal agar tidak memicu jalannya efek autosave pasca-render
       clearExamProgress(state.examSession.id);
       localStorage.removeItem('exam_active_session_id');
       
       if (dbResultId) {
-        const isPassed = (state.examSession.examType === 'FULL') 
-          ? (scores.twk >= 65 && scores.tiu >= 80 && scores.tkp >= 166)
-          : true;
+        // ✅ PERBAIKAN LOGIKA PASSING GRADE ADAPTIF
+        const isPassed = 
+          state.examSession.examType === 'FULL' ? (scores.twk >= 65 && scores.tiu >= 80 && scores.tkp >= 166) :
+          state.examSession.examType === 'TWK'  ? (scores.twk >= 65) :
+          state.examSession.examType === 'TIU'  ? (scores.tiu >= 80) :
+          state.examSession.examType === 'TKP'  ? (scores.tkp >= 166) : false;
 
         supabase
           .from('exam_results')
@@ -528,9 +536,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
+  // ✅ PEMBATASAN PERSISTENCE AUTO-SAVE KETAT AGAR TIDAK RE-TRIGGER SETELAH COMPLETED
   useEffect(() => {
     const session = state.examSession;
-    if (!session) return;
+    if (!session || session.status === 'completed') return;
 
     if (session.status === 'in_progress') {
       saveExamProgress(session);
