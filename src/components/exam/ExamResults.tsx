@@ -6,7 +6,8 @@ import { EXAM_CONFIGS } from '../../data/mockData';
 import { supabase } from '../../lib/supabase';
 import { buildReviewSnapshot, saveReviewSnapshot } from '../../lib/examPersistence';
 
-export default function ExamResults() {
+// 🔑 PERBAIKAN: Mengubah menjadi Named Export agar sinkron dengan App.tsx menggunakan kurung kurawal
+export function ExamResults() {
   const { state, dispatch, startExam } = useApp();
   const [savedResultId, setSavedResultId] = useState<string | null>(null);
   const savedRef = useRef(false);
