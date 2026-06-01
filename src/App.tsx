@@ -2,9 +2,12 @@ import { AppProvider, useApp } from './context/AppContext';
 import LandingPage from './components/auth/LandingPage';
 import WaitingRoom from './components/auth/WaitingRoom';
 import ParticipantDashboard from './components/participant/ParticipantDashboard';
-import ExamEngine from './components/exam/ExamEngine';
-import ExamResults from './components/exam/ExamResults';
-import ExamReview from './components/exam/ExamReview';
+
+// 🔑 PERBAIKAN: Menggunakan Named Import { } untuk mencegah nilai undefined pada komponen ujian
+import { ExamEngine } from './components/exam/ExamEngine';
+import { ExamResults } from './components/exam/ExamResults';
+import { ExamReview } from './components/exam/ExamReview';
+
 import AdminDashboard from './components/admin/AdminDashboard';
 
 function AppRouter() {
