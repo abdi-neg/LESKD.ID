@@ -34,6 +34,10 @@ const initialState: AppState = {
   reviewResultId: null,
 };
 
+// 🔒 LOCK FLAGS: Mencegah pemicu ganda (Double Trigger / StrictMode) di level aplikasi
+let isStartingExam = false;
+let isSubmittingExam = false;
+
 export function packageTypeToExamType(pt: string): ExamType {
   if (pt === 'MINI_TIU') return 'TIU';
   if (pt === 'MINI_TWK') return 'TWK';
@@ -127,7 +131,6 @@ function calculateScores(session: ExamSession) {
 }
 
 function checkPassedStatus(examType: ExamType, scores: { tiu: number; twk: number; tkp: number }) {
-  // ✅ LOGIKA PASSING GRADE ADAPTIF YANG DIKUNCI MATI SESUAI SUBTES
   if (examType === 'FULL') {
     return scores.twk >= 65 && scores.tiu >= 80 && scores.tkp >= 166;
   }
@@ -230,42 +233,39 @@ const AppContext = createContext<AppContextType | null>(null);
 export function AppProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(appReducer, initialState);
 
- 
-  // 🔄 Ubah useEffect Realtime Auto Save Sync di AppContext.tsx Anda menjadi seperti ini:
-useEffect(() => {
-  const session = state.examSession;
-  
-  // 🔒 KUNCI UTAMA: Jika tidak ada sesi, atau sesi SUDAH COMPLETED / SELESAI, 
-  // JANGAN lakukan update apapun ke Supabase atau LocalStorage!
-  if (!session || session.status === 'completed' || session.status === 'completed') return;
+  // 🔄 Realtime Auto Save Sync Effect
+  useEffect(() => {
+    const session = state.examSession;
+    
+    // 🔒 JANGAN update Supabase jika status pengerjaan sudah selesai atau sedang dikirimkan!
+    if (!session || session.status === 'completed' || isSubmittingExam) return;
 
-  // Hanya simpan jika statusnya benar-benar masih berjalan
-  if (session.status === 'in_progress') {
-    saveExamProgress(session);
+    if (session.status === 'in_progress') {
+      saveExamProgress(session);
 
-    const dbResultId = (session as any).resultId;
-    if (dbResultId) {
-      const liveScores = calculateScores(session);
-      const isPassed = checkPassedStatus(session.examType, liveScores);
+      const dbResultId = (session as any).resultId;
+      if (dbResultId) {
+        const liveScores = calculateScores(session);
+        const isPassed = checkPassedStatus(session.examType, liveScores);
 
-      supabase
-        .from('exam_results')
-        .update({
-          score_tiu: liveScores.tiu,
-          score_twk: liveScores.twk,
-          score_tkp: liveScores.tkp,
-          total_score: liveScores.total,
-          questions_correct: liveScores.correctCount,
-          passed: isPassed,
-          duration_seconds: Math.max(0, (EXAM_CONFIGS[session.examType].timeMinutes * 60) - session.timeRemaining)
-        })
-        .eq('id', dbResultId)
-        .then(({ error }) => { 
-          if (error) console.error("Realtime Sync Error:", error); 
-        });
+        supabase
+          .from('exam_results')
+          .update({
+            score_tiu: liveScores.tiu,
+            score_twk: liveScores.twk,
+            score_tkp: liveScores.tkp,
+            total_score: liveScores.total,
+            questions_correct: liveScores.correctCount,
+            passed: isPassed,
+            duration_seconds: Math.max(0, (EXAM_CONFIGS[session.examType].timeMinutes * 60) - session.timeRemaining)
+          })
+          .eq('id', dbResultId)
+          .then(({ error }) => { 
+            if (error) console.error("Realtime Sync Error:", error); 
+          });
+      }
     }
-  }
-}, [state.examSession?.answers, state.examSession?.status]); // 🔥 Tambahkan status ke array dependensi
+  }, [state.examSession?.answers, state.examSession?.status]);
 
   // Timer Ticking effect
   useEffect(() => {
@@ -290,22 +290,34 @@ useEffect(() => {
     } catch { dispatch({ type: 'SET_PROFILE', payload: null }); }
   }
 
+  // 🚀 Fungsi Start Exam yang Diperbaiki Secara Total & Aman dari Double-Trigger
   async function startExam(examType: ExamType, pkg?: ExamPackage) {
-  // 🚨 TAMBAHKAN BARIS INI UNTUK MELACAK SIAPA YANG MEMANGGIL:
-  console.log("🔥 FUNGSI START_EXAM TERPICU! Jenis:", examType);
-  console.trace("Jejak Pemanggil Fungsi:"); 
-
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) { alert("Sesi login tidak valid."); return; }
-  
-  // ... sisa kode startExam lainnya ...
-}
-
-    dispatch({ type: 'START_EXAM', payload: { examType, pkg } });
-    const questions = await fetchQuestionsForExam(examType, pkg?.id);
-    const session = buildSession(examType, questions, pkg);
+    if (isStartingExam) return;
 
     try {
+      isStartingExam = true;
+      console.log("🔥 START_EXAM VALIDATED:", examType);
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { alert("Sesi login tidak valid."); return; }
+
+      // Cek duplikasi sesi aktif di database sebelum membuat baru
+      const { data: activeCheck } = await supabase
+        .from('exam_results')
+        .select('id')
+        .eq('participant_id', user.id)
+        .eq('status', 'ON_PROGRESS')
+        .maybeSingle();
+
+      if (activeCheck) {
+        console.warn("Sesi aktif masih berjalan di database, mencegah pembuatan baris baru ganda.");
+        return;
+      }
+
+      dispatch({ type: 'START_EXAM', payload: { examType, pkg } });
+      const questions = await fetchQuestionsForExam(examType, pkg?.id);
+      const session = buildSession(examType, questions, pkg);
+
       const { data: insertedData, error } = await supabase
         .from('exam_results')
         .insert({
@@ -321,30 +333,34 @@ useEffect(() => {
         .select().single();
 
       if (error) throw error;
+      
       const sessionWithResultId = { ...session, resultId: insertedData.id };
       saveExamProgress(sessionWithResultId);
       dispatch({ type: 'RESUME_EXAM', payload: sessionWithResultId });
+
     } catch (err) {
       console.error("Gagal menginisialisasi database:", err);
-      dispatch({ type: 'RESUME_EXAM', payload: session });
+    } finally {
+      isStartingExam = false;
     }
   }
 
-  // ✅ SOLUSI UTAMA: Fungsi Submit Terpusat (Menjamin Supabase Selesai Sebelum Berpindah Halaman)
+  // ✅ Fungsi Submit Terpusat yang Diperbaiki (Menghilangkan Kondisi Balapan Penyebab Nilai Reset)
   async function submitExamSession() {
     const session = state.examSession;
-    if (!session) return;
+    if (!session || isSubmittingExam) return;
 
-    const scores = calculateScores(session);
     const dbResultId = (session as any).resultId;
-    const isPassed = checkPassedStatus(session.examType, scores);
+    if (!dbResultId) return;
 
-    clearExamProgress(session.id);
-    localStorage.removeItem('exam_active_session_id');
+    try {
+      isSubmittingExam = true;
 
-    if (dbResultId) {
-      // 🔒 Kita paksa await di sini agar status COMPLETED sukses terekam penuh di server Supabase
-      await supabase
+      const scores = calculateScores(session);
+      const isPassed = checkPassedStatus(session.examType, scores);
+
+      // 1️⃣ Langkah Utama: Amankan & simpan status akhir ke database Supabase terlebih dahulu
+      const { error } = await supabase
         .from('exam_results')
         .update({
           score_tiu: scores.tiu,
@@ -358,17 +374,28 @@ useEffect(() => {
           duration_seconds: Math.max(0, (EXAM_CONFIGS[session.examType].timeMinutes * 60) - session.timeRemaining)
         })
         .eq('id', dbResultId);
+
+      if (error) throw error;
+
+      // 2️⃣ Langkah Kedua: Setelah Supabase ter-update penuh, baru bersihkan penyimpanan lokal
+      clearExamProgress(session.id);
+      localStorage.removeItem('exam_active_session_id');
+
+      const completedSession: ExamSession = {
+        ...session,
+        status: 'completed',
+        completedAt: new Date(),
+        scores
+      };
+
+      // 3️⃣ Langkah Terakhir: Berpindah rute tampilan ke halaman hasil
+      dispatch({ type: 'FINALIZE_EXAM_STORE', payload: completedSession });
+
+    } catch (err) {
+      console.error("Gagal melakukan submisi ujian akhir:", err);
+    } finally {
+      isSubmittingExam = false;
     }
-
-    const completedSession: ExamSession = {
-      ...session,
-      status: 'completed',
-      completedAt: new Date(),
-      scores
-    };
-
-    // Baru pindahkan halaman setelah data aman
-    dispatch({ type: 'FINALIZE_EXAM_STORE', payload: completedSession });
   }
 
   async function deleteHistory(resultId: string): Promise<boolean> {
@@ -380,6 +407,7 @@ useEffect(() => {
     } catch { return false; }
   }
 
+  // 🔄 Restore & Auth listener Effect
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
