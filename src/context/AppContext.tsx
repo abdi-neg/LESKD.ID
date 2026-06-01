@@ -291,8 +291,15 @@ useEffect(() => {
   }
 
   async function startExam(examType: ExamType, pkg?: ExamPackage) {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { alert("Sesi login tidak valid."); return; }
+  // 🚨 TAMBAHKAN BARIS INI UNTUK MELACAK SIAPA YANG MEMANGGIL:
+  console.log("🔥 FUNGSI START_EXAM TERPICU! Jenis:", examType);
+  console.trace("Jejak Pemanggil Fungsi:"); 
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) { alert("Sesi login tidak valid."); return; }
+  
+  // ... sisa kode startExam lainnya ...
+}
 
     dispatch({ type: 'START_EXAM', payload: { examType, pkg } });
     const questions = await fetchQuestionsForExam(examType, pkg?.id);
