@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'react';
 import { ChevronLeft, ChevronRight, Flag, Send, Menu, X, AlertCircle, ShieldAlert, CheckCircle2 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { AnswerOption } from '../../types';
@@ -10,7 +10,8 @@ const OPTIONS: AnswerOption[] = ['A', 'B', 'C', 'D', 'E'];
 const MAX_VIOLATIONS = 3;
 
 export default function ExamEngine() {
-  const { state, dispatch } = useApp();
+  // 🔗 Destrukturisasi fungsi 'submitExamSession' yang baru dari context
+  const { state, dispatch, submitExamSession } = useApp();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [confirmSubmit, setConfirmSubmit] = useState(false);
   const [showCheatModal, setShowCheatModal] = useState(false);
@@ -19,11 +20,11 @@ export default function ExamEngine() {
 
   const session = state.examSession;
 
-  // ✅ PERBAIKAN: Menambahkan 'session' ke dalam array dependensi agar resultId selalu terbaca versi terbarunya
+  // ✅ PERBAIKAN: Memanggil fungsi submit terpusat (asinkronus) agar data aman tersimpan penuh ke Supabase
   const handleSubmit = useCallback(() => {
-    dispatch({ type: 'SUBMIT_EXAM' });
+    submitExamSession();
     setConfirmSubmit(false);
-  }, [dispatch, session]); 
+  }, [submitExamSession]); 
 
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -73,7 +74,7 @@ export default function ExamEngine() {
   function handleAnswer(option: AnswerOption) {
     dispatch({
       type: 'ANSWER_QUESTION',
-      payload: { questionId: currentQuestion.id, answer: option },
+      payload: { questionId: currentQuestion.id, answers: { ...answers, [currentQuestion.id]: { ...currentAnswer, selectedAnswer: option } } },
     });
   }
 
@@ -137,7 +138,7 @@ export default function ExamEngine() {
         </div>
       </header>
 
-      {/* AREA UTAMA (KONTEN & SIDEBAR) */}
+      {/* AREA UTAMA */}
       <div className="flex-1 flex overflow-hidden relative">
         <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8">
           <div className="max-w-3xl mx-auto space-y-6">
@@ -175,7 +176,7 @@ export default function ExamEngine() {
               </p>
             </div>
 
-            {/* DAFTAR PILIHAN JAWABAN OPTION */}
+            {/* DAFTAR PILIHAN JAWABAN */}
             <div className="space-y-3">
               {OPTIONS.map((option) => {
                 const isSelected = currentAnswer?.selectedAnswer === option;
@@ -204,7 +205,7 @@ export default function ExamEngine() {
               })}
             </div>
 
-            {/* BOTTOM NAVIGASI (BACK - NEXT) */}
+            {/* BOTTOM NAVIGASI */}
             <div className="flex items-center justify-between pt-4">
               <button
                 onClick={goPrev}
@@ -228,7 +229,7 @@ export default function ExamEngine() {
           </div>
         </main>
 
-        {/* SIDEBAR NAVIGASI NOMOR SOAL */}
+        {/* SIDEBAR NOMOR SOAL */}
         <aside className={`fixed inset-y-16 right-0 w-80 bg-white border-l border-gray-200 p-4 transform transition-transform duration-300 lg:sticky lg:translate-x-0 z-30 flex flex-col justify-between ${
           sidebarOpen ? 'translate-x-0' : 'translate-x-full'
         }`}>
@@ -240,7 +241,6 @@ export default function ExamEngine() {
               </button>
             </div>
             
-            {/* STATS PROGRESS MINI */}
             <div className="grid grid-cols-2 gap-2 text-center text-xs border-b pb-4 border-gray-100">
               <div className="bg-indigo-50 text-indigo-700 p-2 rounded-lg font-medium">
                 <div className="text-lg font-bold">{answeredCount}</div> Soal Terjawab
@@ -257,7 +257,6 @@ export default function ExamEngine() {
 
       {/* MODAL GLOBAL */}
       <AnimatePresence>
-        {/* MODAL KONFIRMASI SUBMIT */}
         {confirmSubmit && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
             <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl border border-gray-100 space-y-5">
@@ -276,7 +275,6 @@ export default function ExamEngine() {
           </div>
         )}
 
-        {/* MODAL DETEKSI KECURANGAN */}
         {showCheatModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
             <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border-t-4 border-rose-500 space-y-4">
