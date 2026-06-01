@@ -19,11 +19,11 @@ export default function ExamEngine() {
 
   const session = state.examSession;
 
-  // 🚀 FIX 1: Tambahkan dependensi session agar tidak mengalami stale closure dan resultId terbaca sempurna
+  // ✅ PERBAIKAN: Menambahkan 'session' ke dalam array dependensi agar resultId selalu terbaca versi terbarunya
   const handleSubmit = useCallback(() => {
     dispatch({ type: 'SUBMIT_EXAM' });
     setConfirmSubmit(false);
-  }, [dispatch]);
+  }, [dispatch, session]); 
 
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -70,8 +70,6 @@ export default function ExamEngine() {
   const answeredCount = Object.values(answers).filter((a) => a.selectedAnswer).length;
   const unansweredCount = totalQuestions - answeredCount;
 
-  // 🚀 FIX 2: Bersihkan total kueri Supabase manual dari sini. 
-  // Biarkan urusan update skor real-time ditangani secara terpusat oleh AppContext agar tidak balapan data.
   function handleAnswer(option: AnswerOption) {
     dispatch({
       type: 'ANSWER_QUESTION',
@@ -230,7 +228,7 @@ export default function ExamEngine() {
           </div>
         </main>
 
-        {/* SIDEBAR NAVIGASI NOMOR SOAL (DESKTOP & MOBILE) */}
+        {/* SIDEBAR NAVIGASI NOMOR SOAL */}
         <aside className={`fixed inset-y-16 right-0 w-80 bg-white border-l border-gray-200 p-4 transform transition-transform duration-300 lg:sticky lg:translate-x-0 z-30 flex flex-col justify-between ${
           sidebarOpen ? 'translate-x-0' : 'translate-x-full'
         }`}>
@@ -257,7 +255,7 @@ export default function ExamEngine() {
         </aside>
       </div>
 
-      {/* GLOBAL MODAL ANIMATION PRESENCE */}
+      {/* MODAL GLOBAL */}
       <AnimatePresence>
         {/* MODAL KONFIRMASI SUBMIT */}
         {confirmSubmit && (
