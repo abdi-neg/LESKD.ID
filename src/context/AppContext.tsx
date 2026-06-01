@@ -1,4 +1,4 @@
-import { createContext, useContext, useReducer, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useReducer, useEffect, ReactNode, useState } from 'react';
 import { AppState, AppView, ExamSession, Profile, Question, ExamType, ExamPackage } from '../types';
 import { mockQuestions, EXAM_CONFIGS } from '../data/mockData';
 import { supabase, getProfile } from '../lib/supabase';
@@ -35,7 +35,6 @@ const initialState: AppState = {
 };
 
 let isStartingExam = false;
-let isSubmittingExam = false;
 
 export function packageTypeToExamType(pt: string): ExamType {
   if (pt === 'MINI_TIU') return 'TIU';
@@ -237,12 +236,16 @@ const AppContext = createContext<AppContextType | null>(null);
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(appReducer, initialState);
+  
+  // 🔑 REAKTIF LOCK STATE: Menghentikan siklus Auto Save Sync di level Hook secara realtime
+  const [isSyncLocked, setIsSyncLocked] = useState(false);
 
   // 🔄 Realtime Auto Save Sync Effect
   useEffect(() => {
     const session = state.examSession;
-    // 🔑 PERBAIKAN: Jika flag global isSubmittingExam aktif, batalkan auto-save agar tidak tabrakan PATCH
-    if (!session || session.status === 'completed' || isSubmittingExam) return;
+    
+    // Jika komponen sedang mengunci sinkronisasi (proses submit), batalkan operasi secepatnya
+    if (!session || session.status === 'completed' || isSyncLocked) return;
 
     if (session.status === 'in_progress') {
       saveExamProgress(session);
@@ -269,7 +272,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           });
       }
     }
-  }, [state.examSession?.answers, state.examSession?.status]);
+  }, [state.examSession?.answers, state.examSession?.status, isSyncLocked]); // Masukkan isSyncLocked ke dependency array
 
   // Timer Ticking effect
   useEffect(() => {
@@ -299,6 +302,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     try {
       isStartingExam = true;
+      setIsSyncLocked(false); // Pastikan lock dibuka kembali saat memulai ujian baru
 
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
@@ -326,7 +330,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             score_tiu: 0, score_twk: 0, score_tkp: 0, total_score: 0,
             questions_total: questions.length, questions_correct: 0,
             passed: false, 
-            status: 'in_progress', // Tetap menggunakan format lowercase 'in_progress'
+            status: 'in_progress',
           },
           {
             onConflict: 'participant_id,status'
@@ -359,33 +363,36 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   async function submitExamSession() {
     const session = state.examSession;
-    if (!session || isSubmittingExam) return;
+    if (!session || isSyncLocked) return;
 
     const dbResultId = (session as any).resultId;
     if (!dbResultId) return;
 
     try {
-      // 1️⃣ Kunci akses pengiriman data paralel sesegera mungkin
-      isSubmittingExam = true;
+      // 1️⃣ Kunci siklus auto save melalui state reaktif secepat mungkin
+      setIsSyncLocked(true);
 
       const scores = calculateScores(session);
       const isPassed = checkPassedStatus(session.examType, scores);
 
-      // 2️⃣ KUNCI UTAMA PERBAIKAN: Mengubah status menjadi 'completed' (lowercase) agar seragam dengan siklus data lainnya
+      // 2️⃣ MENGGUNAKAN .upsert() SEBAGAI ANTI-CONFLICT: 
+      // Menyertakan 'id' baris secara eksplisit memaksa Postgres melakukan pembaruan 
+      // tanpa menabrak constraint unik majemuk di level database.
       const { error } = await supabase
         .from('exam_results')
-        .update({
+        .upsert({
+          id: dbResultId, // Target baris data yang akan ditimpa kinerjanya
+          participant_id: session.answers[Object.keys(session.answers)[0]] ? state.profile?.id : undefined, // Opsional, jaga relasi tetap aman
           score_tiu: scores.tiu,
           score_twk: scores.twk,
           score_tkp: scores.tkp,
           total_score: scores.total,
           questions_correct: scores.correctCount,
           passed: isPassed,
-          status: 'completed', // 🔑 DIUBAH DARI 'COMPLETED' MENJADI 'completed'
+          status: 'completed', 
           completed_at: new Date().toISOString(),
           duration_seconds: Math.max(0, (EXAM_CONFIGS[session.examType].timeMinutes * 60) - session.timeRemaining)
-        })
-        .eq('id', dbResultId);
+        });
 
       if (error) throw error;
 
@@ -403,10 +410,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     } catch (err) {
       console.error("Gagal melakukan submisi ujian akhir:", err);
+      setIsSyncLocked(false); // Buka kunci jika gagal submit agar pengguna bisa mencoba lagi
       alert("Gagal mengirimkan lembar jawaban ke server. Silakan coba klik submit kembali.");
-    } finally {
-      // 3️⃣ Buka kembali lock jika terjadi error/selesai
-      isSubmittingExam = false;
     }
   }
 
