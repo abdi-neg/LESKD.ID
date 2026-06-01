@@ -236,15 +236,11 @@ const AppContext = createContext<AppContextType | null>(null);
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(appReducer, initialState);
-  
-  // 🔑 REAKTIF LOCK STATE: Menghentikan siklus Auto Save Sync secepatnya sebelum fetch berjalan
   const [isSyncLocked, setIsSyncLocked] = useState(false);
 
   // 🔄 Realtime Auto Save Sync Effect
   useEffect(() => {
     const session = state.examSession;
-    
-    // Batalkan sinkronisasi secepatnya jika status kelar atau sedang memproses tombol submit
     if (!session || session.status === 'completed' || isSyncLocked) return;
 
     if (session.status === 'in_progress') {
@@ -297,12 +293,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } catch { dispatch({ type: 'SET_PROFILE', payload: null }); }
   }
 
+  // 🛠️ PEMBARUAN LOGIKA UTAMA: Sistem "Cek baru Insert" murni tanpa paksaan batasan Unique DB
   async function startExam(examType: ExamType, pkg?: ExamPackage) {
     if (isStartingExam) return;
 
     try {
       isStartingExam = true;
-      setIsSyncLocked(false); // Pastikan lock dibuka kembali saat memulai sesi tryout baru
+      setIsSyncLocked(false); 
 
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
@@ -318,10 +315,39 @@ export function AppProvider({ children }: { children: ReactNode }) {
       
       const session = buildSession(examType, questions, pkg);
 
-      const { data: insertedData, error } = await supabase
+      // A. Ambil manual data pengerjaan yang menggantung ('in_progress') jika ada
+      const { data: existingProgress } = await supabase
         .from('exam_results')
-        .upsert(
-          {
+        .select('*')
+        .eq('participant_id', user.id)
+        .eq('status', 'in_progress')
+        .maybeSingle();
+
+      let finalDbRow;
+
+      if (existingProgress) {
+        // Jika ada ujian menggantung, daur ulang baris tersebut agar tidak menumpuk sampah data
+        const { data: recycledRow, error: recycleErr } = await supabase
+          .from('exam_results')
+          .update({
+            package_type: pkg?.package_type || examType,
+            package_id: pkg?.id || null,
+            package_name: pkg?.name || 'Mini Tryout',
+            score_tiu: 0, score_twk: 0, score_tkp: 0, total_score: 0,
+            questions_total: questions.length, questions_correct: 0,
+            passed: false
+          })
+          .eq('id', existingProgress.id)
+          .select()
+          .single();
+
+        if (recycleErr) throw recycleErr;
+        finalDbRow = recycledRow;
+      } else {
+        // Jika bersih tidak ada tanggungan, lakukan INSERT baris BARU (Mendukung multi riwayat)
+        const { data: newRow, error: insertErr } = await supabase
+          .from('exam_results')
+          .insert({
             participant_id: user.id,
             user_name: state.profile?.full_name || user.email, 
             package_type: pkg?.package_type || examType,
@@ -331,21 +357,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
             questions_total: questions.length, questions_correct: 0,
             passed: false, 
             status: 'in_progress',
-          },
-          {
-            onConflict: 'participant_id,status'
-          }
-        )
-        .select()
-        .single();
+          })
+          .select()
+          .single();
 
-      if (error) {
-        throw error;
+        if (insertErr) throw insertErr;
+        finalDbRow = newRow;
       }
 
       const sessionWithResultId = { 
         ...session, 
-        resultId: insertedData.id,
+        resultId: finalDbRow.id,
         userName: state.profile?.full_name || user.email,
         packageType: pkg?.package_type || examType
       };
@@ -356,7 +378,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } catch (err) {
       console.error("Gagal menginisialisasi sesi ujian:", err);
       dispatch({ type: 'CLEAR_EXAM' });
-      alert("Terjadi kendala jaringan atau data ganda di server.");
+      alert("Terjadi kendala jaringan saat memuat sesi tryout baru.");
     } finally {
       isStartingExam = false;
     }
@@ -370,15 +392,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!dbResultId) return;
 
     try {
-      // 1️⃣ Kunci akses pengiriman data paralel secepat mungkin agar Auto Save tidak bocor
       setIsSyncLocked(true);
 
       const scores = calculateScores(session);
       const isPassed = checkPassedStatus(session.examType, scores);
 
-      // 2️⃣ BERSIH MENGGUNAKAN .update().eq('id', dbResultId)
-      // Skema ini mencegah benturan aturan unique_participant_progress majemuk di Postgres
-      // karena database tidak mendeteksi benturan baris data bertipe 'completed' yang sudah ada sebelumnya.
+      // Menggunakan UPDATE murni berdasarkan target ID baris aktif saat ini
       const { error } = await supabase
         .from('exam_results')
         .update({
@@ -410,7 +429,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     } catch (err) {
       console.error("Gagal melakukan submisi ujian akhir:", err);
-      setIsSyncLocked(false); // Buka kembali kunci sinkronisasi jika gagal submit agar user bisa mencoba klik lagi
+      setIsSyncLocked(false); 
       alert("Gagal mengirimkan lembar jawaban ke server. Silakan coba klik submit kembali.");
     }
   }
