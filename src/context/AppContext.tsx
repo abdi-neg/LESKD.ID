@@ -167,7 +167,6 @@ function appReducer(state: AppState, action: AppAction): AppState {
     case 'START_EXAM':
       return { ...state, examSession: null, currentView: 'exam-engine' };
     case 'RESUME_EXAM': {
-      // Pastikan payload tervalidasi dengan ketat sebelum mengubah rute visual
       if (!action.payload) return state;
       return { 
         ...state, 
@@ -242,6 +241,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // 🔄 Realtime Auto Save Sync Effect
   useEffect(() => {
     const session = state.examSession;
+    // 🔑 PERBAIKAN: Jika flag global isSubmittingExam aktif, batalkan auto-save agar tidak tabrakan PATCH
     if (!session || session.status === 'completed' || isSubmittingExam) return;
 
     if (session.status === 'in_progress') {
@@ -294,7 +294,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } catch { dispatch({ type: 'SET_PROFILE', payload: null }); }
   }
 
-  // 🚀 LINIER EXECUTION FLOW: Pengkondisian data 100% matang sebelum rute visual dilepas
   async function startExam(examType: ExamType, pkg?: ExamPackage) {
     if (isStartingExam) return;
 
@@ -307,7 +306,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      // 1️⃣ Tarik data pertanyaan dari server terlebih dahulu
       const questions = await fetchQuestionsForExam(examType, pkg?.id);
       if (!questions || questions.length === 0) {
         alert("Gagal memuat kumpulan soal ujian.");
@@ -316,7 +314,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       
       const session = buildSession(examType, questions, pkg);
 
-      // 2️⃣ Daftarkan sesi ke Supabase secara aman menggunakan skema Upsert Anti-23505
       const { data: insertedData, error } = await supabase
         .from('exam_results')
         .upsert(
@@ -329,7 +326,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             score_tiu: 0, score_twk: 0, score_tkp: 0, total_score: 0,
             questions_total: questions.length, questions_correct: 0,
             passed: false, 
-            status: 'in_progress', 
+            status: 'in_progress', // Tetap menggunakan format lowercase 'in_progress'
           },
           {
             onConflict: 'participant_id,status'
@@ -342,23 +339,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
         throw error;
       }
 
-      // 3️⃣ Racik draf sesi final dengan menyertakan resultId asli database
       const sessionWithResultId = { 
         ...session, 
         resultId: insertedData.id,
         userName: state.profile?.full_name || user.email 
       };
 
-      // 4️⃣ Kunci ke persistensi lokal
       saveExamProgress(sessionWithResultId);
-
-      // 5️⃣ SATU-SATUNYA PINALTI DISPATCH: Kirim data matang & pindahkan halaman bersamaan secara atomik
       dispatch({ type: 'RESUME_EXAM', payload: sessionWithResultId });
 
     } catch (err) {
       console.error("Gagal menginisialisasi sesi ujian:", err);
       dispatch({ type: 'CLEAR_EXAM' });
-      alert("Terjadi kendala jaringan atau data ganda di server. Sesi visual dibersihkan, silakan coba klik kembali.");
+      alert("Terjadi kendala jaringan atau data ganda di server.");
     } finally {
       isStartingExam = false;
     }
@@ -372,11 +365,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!dbResultId) return;
 
     try {
+      // 1️⃣ Kunci akses pengiriman data paralel sesegera mungkin
       isSubmittingExam = true;
 
       const scores = calculateScores(session);
       const isPassed = checkPassedStatus(session.examType, scores);
 
+      // 2️⃣ KUNCI UTAMA PERBAIKAN: Mengubah status menjadi 'completed' (lowercase) agar seragam dengan siklus data lainnya
       const { error } = await supabase
         .from('exam_results')
         .update({
@@ -386,7 +381,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           total_score: scores.total,
           questions_correct: scores.correctCount,
           passed: isPassed,
-          status: 'COMPLETED',
+          status: 'completed', // 🔑 DIUBAH DARI 'COMPLETED' MENJADI 'completed'
           completed_at: new Date().toISOString(),
           duration_seconds: Math.max(0, (EXAM_CONFIGS[session.examType].timeMinutes * 60) - session.timeRemaining)
         })
@@ -408,7 +403,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     } catch (err) {
       console.error("Gagal melakukan submisi ujian akhir:", err);
+      alert("Gagal mengirimkan lembar jawaban ke server. Silakan coba klik submit kembali.");
     } finally {
+      // 3️⃣ Buka kembali lock jika terjadi error/selesai
       isSubmittingExam = false;
     }
   }
