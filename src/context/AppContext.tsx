@@ -165,8 +165,11 @@ function appReducer(state: AppState, action: AppAction): AppState {
       return { ...initialState, authLoading: false };
     case 'SET_VIEW':
       return { ...state, currentView: action.payload };
+    
+    // 🛡️ AMAN: Aksi START_EXAM tidak lagi langsung membajak currentView ke 'exam-engine'
     case 'START_EXAM':
-      return { ...state, examSession: null, currentView: 'exam-engine' };
+      return { ...state, examSession: null };
+      
     case 'RESUME_EXAM':
       return { ...state, examSession: action.payload, currentView: action.payload.status === 'completed' ? 'exam-results' : 'exam-engine' };
     case 'ANSWER_QUESTION': {
@@ -236,8 +239,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // 🔄 Realtime Auto Save Sync Effect
   useEffect(() => {
     const session = state.examSession;
-    
-    // 🔒 JANGAN update Supabase jika status pengerjaan sudah selesai atau sedang dikirimkan!
     if (!session || session.status === 'completed' || isSubmittingExam) return;
 
     if (session.status === 'in_progress') {
@@ -290,69 +291,79 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } catch { dispatch({ type: 'SET_PROFILE', payload: null }); }
   }
 
-  // 🚀 Fungsi Start Exam yang Diperbaiki Secara Total & Aman dari Double-Trigger
+  // 🚀 Fungsi Start Exam yang Stabil Terkendali & Bebas White Screen
   async function startExam(examType: ExamType, pkg?: ExamPackage) {
-  if (isStartingExam) return;
+    if (isStartingExam) return;
 
-  try {
-    isStartingExam = true;
+    try {
+      isStartingExam = true;
 
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      alert("Sesi login tidak valid.");
-      return;
-    }
-
-    // 1️⃣ Ambil pertanyaan terlebih dahulu
-    const questions = await fetchQuestionsForExam(examType, pkg?.id);
-    const session = buildSession(examType, questions, pkg);
-
-    // 2️⃣ Daftarkan sesi baru ke Supabase
-    const { data: insertedData, error } = await supabase
-      .from('exam_results')
-      .insert({
-        participant_id: user.id,
-        user_name: state.profile?.full_name || user.email, // Memastikan nama peserta terisi langsung
-        package_type: pkg?.package_type || examType,
-        package_id: pkg?.id || null,
-        package_name: pkg?.name || 'Mini Tryout',
-        score_tiu: 0, score_twk: 0, score_tkp: 0, total_score: 0,
-        questions_total: questions.length, questions_correct: 0,
-        passed: false, 
-        status: 'ON_PROGRESS', // Pastikan casing string ini sama dengan constraint DB
-      })
-      .select()
-      .single();
-
-    if (error) {
-      // Jika terblokir karena masih ada sesi aktif di database, jangan buat baru
-      if (error.code === '23505') { 
-        console.warn("Anda memiliki sesi yang masih berjalan. Silakan muat ulang halaman.");
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        alert("Sesi login tidak valid.");
+        return;
       }
-      throw error;
+
+      // Bersihkan instans examSession lokal lama tanpa memindahkan rute halaman visual
+      dispatch({ type: 'START_EXAM', payload: { examType, pkg } });
+
+      // Ambil kumpulan soal dari database backend terlebih dahulu
+      const questions = await fetchQuestionsForExam(examType, pkg?.id);
+      
+      if (!questions || questions.length === 0) {
+        alert("Kumpulan soal gagal dimuat. Silakan periksa koneksi atau coba lagi.");
+        return;
+      }
+
+      const session = buildSession(examType, questions, pkg);
+
+      // Daftarkan baris pengerjaan baru ke database Supabase
+      const { data: insertedData, error } = await supabase
+        .from('exam_results')
+        .insert({
+          participant_id: user.id,
+          user_name: state.profile?.full_name || user.email, 
+          package_type: pkg?.package_type || examType,
+          package_id: pkg?.id || null,
+          package_name: pkg?.name || 'Mini Tryout',
+          score_tiu: 0, score_twk: 0, score_tkp: 0, total_score: 0,
+          questions_total: questions.length, questions_correct: 0,
+          passed: false, 
+          status: 'ON_PROGRESS',
+        })
+        .select()
+        .single();
+
+      if (error) {
+        if (error.code === '23505') { 
+          alert("Anda mendeteksi pengerjaan aktif yang sedang berjalan. Silakan muat ulang halaman.");
+        }
+        throw error;
+      }
+
+      // Gabungkan id baris database (resultId) dan nama asli peserta ke dalam satu payload terpadu
+      const sessionWithResultId = { 
+        ...session, 
+        resultId: insertedData.id,
+        userName: state.profile?.full_name || user.email
+      };
+
+      // Tanamkan data ke penyimpanan persisten lokal browser
+      saveExamProgress(sessionWithResultId);
+      
+      // 🔥 UTAMA: Eksekusi pemindahan rute ke 'exam-engine' baru dilepas di sini
+      // Ketika views berubah, state.examSession dijamin SUDAH terisi penuh sehingga mencegah Crash Error #130!
+      dispatch({ type: 'RESUME_EXAM', payload: sessionWithResultId });
+
+    } catch (err) {
+      console.error("Gagal menginisialisasi sesi ujian:", err);
+      dispatch({ type: 'CLEAR_EXAM' }); // Kembalikan ke dashboard apabila gagal total di tengah jalan
+    } finally {
+      isStartingExam = false;
     }
-
-    // 3️⃣ GABUNGKAN DATA: Pastikan resultId dari Supabase dimasukkan ke dalam state
-    const sessionWithResultId = { 
-      ...session, 
-      resultId: insertedData.id,
-      userName: state.profile?.full_name || user.email // Mengunci nama di level state engine
-    };
-
-    // 4️⃣ Simpan ke penyimpan lokal dan aktifkan views secara bersamaan
-    saveExamProgress(sessionWithResultId);
-    
-    // Pemicu tampilan engine ditaruh di sini agar data ID dan Nama sudah siap pakai
-    dispatch({ type: 'RESUME_EXAM', payload: sessionWithResultId });
-
-  } catch (err) {
-    console.error("Gagal menginisialisasi sesi ujian:", err);
-  } finally {
-    isStartingExam = false;
   }
-}
 
-  // ✅ Fungsi Submit Terpusat yang Diperbaiki (Menghilangkan Kondisi Balapan Penyebab Nilai Reset)
+  // ✅ Fungsi Submit Terpusat (Bebas dari Race-Condition Penyetelan Ulang Nilai)
   async function submitExamSession() {
     const session = state.examSession;
     if (!session || isSubmittingExam) return;
@@ -366,7 +377,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const scores = calculateScores(session);
       const isPassed = checkPassedStatus(session.examType, scores);
 
-      // 1️⃣ Langkah Utama: Amankan & simpan status akhir ke database Supabase terlebih dahulu
+      // Kunci pembaruan data akhir ke Supabase
       const { error } = await supabase
         .from('exam_results')
         .update({
@@ -384,7 +395,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       if (error) throw error;
 
-      // 2️⃣ Langkah Kedua: Setelah Supabase ter-update penuh, baru bersihkan penyimpanan lokal
+      // Hapus data lokal setelah status database aman ter-update
       clearExamProgress(session.id);
       localStorage.removeItem('exam_active_session_id');
 
@@ -395,7 +406,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         scores
       };
 
-      // 3️⃣ Langkah Terakhir: Berpindah rute tampilan ke halaman hasil
       dispatch({ type: 'FINALIZE_EXAM_STORE', payload: completedSession });
 
     } catch (err) {
