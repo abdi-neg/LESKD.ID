@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { motion, AnimatePresence } from 'react';
+import { motion, AnimatePresence } from 'framer-motion'; // Pastikan import framer-motion lengkap jika menggunakan motion
 import { ChevronLeft, ChevronRight, Flag, Send, Menu, X, AlertCircle, ShieldAlert, CheckCircle2 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { AnswerOption } from '../../types';
@@ -9,7 +9,8 @@ import QuestionNavigator from './QuestionNavigator';
 const OPTIONS: AnswerOption[] = ['A', 'B', 'C', 'D', 'E'];
 const MAX_VIOLATIONS = 3;
 
-export default function ExamEngine() {
+// 🔑 PERBAIKAN: Mengubah menjadi Named Export agar sinkron dengan App.tsx
+export function ExamEngine() {
   // 🔗 Destrukturisasi fungsi 'submitExamSession' yang baru dari context
   const { state, dispatch, submitExamSession } = useApp();
   const [sidebarOpen, setSidebarOpen] = useState(false);
