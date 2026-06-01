@@ -237,14 +237,14 @@ const AppContext = createContext<AppContextType | null>(null);
 export function AppProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(appReducer, initialState);
   
-  // 🔑 REAKTIF LOCK STATE: Menghentikan siklus Auto Save Sync di level Hook secara realtime
+  // 🔑 REAKTIF LOCK STATE: Mengunci siklus Auto Save Sync di tingkat hook React secara realtime
   const [isSyncLocked, setIsSyncLocked] = useState(false);
 
   // 🔄 Realtime Auto Save Sync Effect
   useEffect(() => {
     const session = state.examSession;
     
-    // Jika komponen sedang mengunci sinkronisasi (proses submit), batalkan operasi secepatnya
+    // Jika sesi selesai atau sinkronisasi dikunci (proses submit berjalan), segera batalkan query.
     if (!session || session.status === 'completed' || isSyncLocked) return;
 
     if (session.status === 'in_progress') {
@@ -272,7 +272,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           });
       }
     }
-  }, [state.examSession?.answers, state.examSession?.status, isSyncLocked]); // Masukkan isSyncLocked ke dependency array
+  }, [state.examSession?.answers, state.examSession?.status, isSyncLocked]);
 
   // Timer Ticking effect
   useEffect(() => {
@@ -302,7 +302,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     try {
       isStartingExam = true;
-      setIsSyncLocked(false); // Pastikan lock dibuka kembali saat memulai ujian baru
+      setIsSyncLocked(false); // Membuka kembali kunci sinkronisasi saat ujian baru dimulai
 
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
@@ -346,7 +346,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const sessionWithResultId = { 
         ...session, 
         resultId: insertedData.id,
-        userName: state.profile?.full_name || user.email 
+        userName: state.profile?.full_name || user.email,
+        packageType: pkg?.package_type || examType
       };
 
       saveExamProgress(sessionWithResultId);
@@ -369,24 +370,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!dbResultId) return;
 
     try {
-      // 1️⃣ Kunci siklus auto save melalui state reaktif secepat mungkin
+      // 1️⃣ Kunci akses pengiriman data paralel sesegera mungkin
       setIsSyncLocked(true);
 
       const scores = calculateScores(session);
       const isPassed = checkPassedStatus(session.examType, scores);
+      const currentParticipantId = state.profile?.id;
 
-      // 2️⃣ MENGGUNAKAN .upsert() SEBAGAI ANTI-CONFLICT: 
-      // Menyertakan 'id' baris secara eksplisit memaksa Postgres melakukan pembaruan 
-      // tanpa menabrak constraint unik majemuk di level database.
+      // 2️⃣ SKEMA UPSERT AMAN: Menyertakan kembali kolom wajib NOT NULL
+      // untuk mencegah error kekosongan kolom (Constraint 23502)
       const { error } = await supabase
         .from('exam_results')
         .upsert({
-          id: dbResultId, // Target baris data yang akan ditimpa kinerjanya
-          participant_id: session.answers[Object.keys(session.answers)[0]] ? state.profile?.id : undefined, // Opsional, jaga relasi tetap aman
+          id: dbResultId, 
+          participant_id: currentParticipantId,
+          user_name: state.profile?.full_name || (session as any).userName || 'Peserta', 
+          package_type: (session as any).packageType || session.examType, 
+          package_id: session.packageId || null,
+          package_name: session.packageName || 'Mini Tryout', 
           score_tiu: scores.tiu,
           score_twk: scores.twk,
           score_tkp: scores.tkp,
           total_score: scores.total,
+          questions_total: session.questions.length,
           questions_correct: scores.correctCount,
           passed: isPassed,
           status: 'completed', 
@@ -410,7 +416,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     } catch (err) {
       console.error("Gagal melakukan submisi ujian akhir:", err);
-      setIsSyncLocked(false); // Buka kunci jika gagal submit agar pengguna bisa mencoba lagi
+      setIsSyncLocked(false); // Buka kunci jika terjadi kegagalan sistem agar pengguna dapat mengirim ulang
       alert("Gagal mengirimkan lembar jawaban ke server. Silakan coba klik submit kembali.");
     }
   }
