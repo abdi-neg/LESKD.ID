@@ -293,6 +293,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } catch { dispatch({ type: 'SET_PROFILE', payload: null }); }
   }
 
+  // 🛠️ FUNGSI START EXAM YANG SUDAH DIPERBAIKI TOTAL
   async function startExam(examType: ExamType, pkg?: ExamPackage) {
     if (isStartingExam) return;
 
@@ -314,53 +315,32 @@ export function AppProvider({ children }: { children: ReactNode }) {
       
       const session = buildSession(examType, questions, pkg);
 
-      // Cari manual jika ada progress yang menggantung
-      const { data: existingProgress } = await supabase
+      // 1. Bersihkan semua progress menggantung milik user ini agar tidak terjadi duplikasi sampah
+      await supabase
         .from('exam_results')
-        .select('*')
+        .delete()
         .eq('participant_id', user.id)
-        .eq('status', 'in_progress')
-        .maybeSingle();
+        .eq('status', 'in_progress');
 
-      let finalDbRow;
+      // 2. Selalu buat baris baru yang benar-benar bersih dan fresh
+      const { data: newRow, error: insertErr } = await supabase
+        .from('exam_results')
+        .insert({
+          participant_id: user.id,
+          user_name: state.profile?.full_name || user.email, 
+          package_type: pkg?.package_type || examType,
+          package_id: pkg?.id || null,
+          package_name: pkg?.name || 'Mini Tryout',
+          score_tiu: 0, score_twk: 0, score_tkp: 0, total_score: 0,
+          questions_total: questions.length, questions_correct: 0,
+          passed: false, 
+          status: 'in_progress',
+        })
+        .select()
+        .single();
 
-      if (existingProgress) {
-        const { data: recycledRow, error: recycleErr } = await supabase
-          .from('exam_results')
-          .update({
-            package_type: pkg?.package_type || examType,
-            package_id: pkg?.id || null,
-            package_name: pkg?.name || 'Mini Tryout',
-            score_tiu: 0, score_twk: 0, score_tkp: 0, total_score: 0,
-            questions_total: questions.length, questions_correct: 0,
-            passed: false
-          })
-          .eq('id', existingProgress.id)
-          .select()
-          .single();
-
-        if (recycleErr) throw recycleErr;
-        finalDbRow = recycledRow;
-      } else {
-        const { data: newRow, error: insertErr } = await supabase
-          .from('exam_results')
-          .insert({
-            participant_id: user.id,
-            user_name: state.profile?.full_name || user.email, 
-            package_type: pkg?.package_type || examType,
-            package_id: pkg?.id || null,
-            package_name: pkg?.name || 'Mini Tryout',
-            score_tiu: 0, score_twk: 0, score_tkp: 0, total_score: 0,
-            questions_total: questions.length, questions_correct: 0,
-            passed: false, 
-            status: 'in_progress',
-          })
-          .select()
-          .single();
-
-        if (insertErr) throw insertErr;
-        finalDbRow = newRow;
-      }
+      if (insertErr) throw insertErr;
+      const finalDbRow = newRow;
 
       const sessionWithResultId = { 
         ...session, 
