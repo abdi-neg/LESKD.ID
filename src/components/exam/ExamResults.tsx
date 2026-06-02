@@ -26,66 +26,81 @@ export function ExamResults() {
     savedRef.current = true;
 
     const { scores, examType, questions, answers, startedAt, completedAt, packageId, packageName } = session;
-    const config = EXAM_CONFIGS[examType];
-    const passed = scores.total >= config.passingScore;
-    const durationSeconds = completedAt
-      ? Math.floor((completedAt.getTime() - startedAt.getTime()) / 1000)
-      : 0;
-
-    let correctCount = 0;
-    questions.forEach((q) => {
-      const ans = answers[q.id];
-      if (ans?.selectedAnswer && q.category !== 'TKP' && ans.selectedAnswer === q.correct_answer) {
-        correctCount++;
-      }
-    });
-
-    const pkgTypeMap: Record<string, string> = {
-      TIU: 'MINI_TIU',
-      TWK: 'MINI_TWK',
-      TKP: 'MINI_TKP',
-      FULL: 'FULL',
-    };
+    const dbResultId = (session as any).resultId; // 🔑 AMBIL ID BARIS YANG SUDAH DIBUAT SEBELUMNYA
 
     (async () => {
       // 1. Ambil data snapshot pembahasan terlebih dahulu
       const snapshot = buildReviewSnapshot(session);
 
-      // 2. Simpan hasil ujian ke Supabase beserta snapshot-nya
-      const { data, error } = await supabase.from('exam_results').insert({
-        participant_id: profile.id,
-        package_id: packageId ?? null,
-        package_name: packageName ?? examType,
-        package_type: pkgTypeMap[examType] ?? 'FULL',
-        score_tiu: scores.tiu,
-        score_twk: scores.twk,
-        score_tkp: scores.tkp,
-        total_score: scores.total,
-        questions_correct: correctCount,
-        questions_total: questions.length,
-        passed,
-        duration_seconds: durationSeconds,
-        completed_at: (completedAt ?? new Date()).toISOString(),
-        review_snapshot: snapshot // 👈 Ini baris baru yang ditambahkan
-      }).select('id').maybeSingle();
+      if (dbResultId) {
+        // 🔑 PERBAIKAN SEJATI: Gunakan .update() berdasarkan dbResultId agar tidak menduplikasi baris liar!
+        const { error } = await supabase
+          .from('exam_results')
+          .update({
+            review_snapshot: snapshot
+          })
+          .eq('id', dbResultId);
 
-      if (error) {
-        console.error('Failed to save exam result:', error);
-        return;
-      }
+        if (error) {
+          console.error('Failed to update review snapshot:', error);
+          return;
+        }
 
-      if (data?.id) {
-        const snapshot = buildReviewSnapshot(session);
-        saveReviewSnapshot(data.id, snapshot);
-        setSavedResultId(data.id);
+        // Simpan snapshot ke cache lokal browser & update state komponen
+        saveReviewSnapshot(dbResultId, snapshot);
+        setSavedResultId(dbResultId);
 
         // 🚀 2. OTOMATIS MENGOYAK/MENONAKTIFKAN TOKEN YANG BARU DIGUNAKAN
-        // Menggunakan token yang terikat di session ujian saat ini
         if (session.tokenUsed) {
           await supabase
             .from('exam_tokens')
             .update({ is_active: false })
             .eq('token', session.tokenUsed.trim().toUpperCase());
+        }
+      } else {
+        // 🛡️ Fallback Guard: Jika karena suatu alasan teknis ID tidak ditemukan, baru lakukan insert aman
+        const config = EXAM_CONFIGS[examType];
+        const passed = scores.total >= config.passingScore;
+        const durationSeconds = completedAt
+          ? Math.floor((completedAt.getTime() - startedAt.getTime()) / 1000)
+          : 0;
+
+        let correctCount = 0;
+        questions.forEach((q) => {
+          const ans = answers[q.id];
+          if (ans?.selectedAnswer && q.category !== 'TKP' && ans.selectedAnswer === q.correct_answer) {
+            correctCount++;
+          }
+        });
+
+        const pkgTypeMap: Record<string, string> = {
+          TIU: 'MINI_TIU',
+          TWK: 'MINI_TWK',
+          TKP: 'MINI_TKP',
+          FULL: 'FULL',
+        };
+
+        const { data, error } = await supabase.from('exam_results').insert({
+          participant_id: profile.id,
+          package_id: packageId ?? null,
+          package_name: packageName ?? examType,
+          package_type: pkgTypeMap[examType] ?? 'FULL',
+          score_tiu: scores.tiu,
+          score_twk: scores.twk,
+          score_tkp: scores.tkp,
+          total_score: scores.total,
+          questions_correct: correctCount,
+          questions_total: questions.length,
+          passed,
+          duration_seconds: durationSeconds,
+          completed_at: (completedAt ?? new Date()).toISOString(),
+          review_snapshot: snapshot,
+          status: 'completed' // Amankan status jika terpaksa membuat baris baru
+        }).select('id').maybeSingle();
+
+        if (data?.id) {
+          saveReviewSnapshot(data.id, snapshot);
+          setSavedResultId(data.id);
         }
       }
     })();
@@ -158,7 +173,7 @@ export function ExamResults() {
       console.error(err);
       setTokenError('Terjadi kesalahan sistem. Coba lagi.');
     } finally {
-      setIsValidating(false);
+      isValidating(false);
     }
   };
 
@@ -277,7 +292,7 @@ export function ExamResults() {
           ) : (
             <div className="w-full py-4 rounded-2xl bg-gray-100 text-gray-400 font-semibold text-center flex items-center justify-center gap-2">
               <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
-              Menyiapkan Pembahasan...
+              <div className="text-sm">Menyiapkan Pembahasan...</div>
             </div>
           )}
           
@@ -378,7 +393,7 @@ export function ExamResults() {
                     {isValidating ? (
                       <>
                         <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        Validasi...
+                        <span>Validasi...</span>
                       </>
                     ) : (
                       'Mulai Ujian'
