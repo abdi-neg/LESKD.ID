@@ -22,10 +22,13 @@ export function ExamEngine() {
   const session = state.examSession;
 
   // ✅ PERBAIKAN: Memanggil fungsi submit terpusat (asinkronus) agar data aman tersimpan penuh ke Supabase
-  const handleSubmit = useCallback(() => {
-    submitExamSession();
-    setConfirmSubmit(false);
-  }, [submitExamSession]); 
+ const handleSubmit = useCallback(() => {
+  // 🎯 PASANG DI BARIS PERTAMA UTAMA
+  console.log("⚡ [RADAR ENGINE] Fungsi handleSubmit di ExamEngine RESMI DIEKSEKUSI!"); 
+
+  submitExamSession();
+  setConfirmSubmit(false);
+}, [submitExamSession]); 
 
   useEffect(() => {
     const handleVisibilityChange = () => {
