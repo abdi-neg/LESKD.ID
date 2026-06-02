@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion'; // Pastikan import framer-motion lengkap jika menggunakan motion
+import { motion, AnimatePresence } from 'framer-motion'; 
 import { ChevronLeft, ChevronRight, Flag, Send, Menu, X, AlertCircle, ShieldAlert, CheckCircle2 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { AnswerOption } from '../../types';
@@ -9,9 +9,7 @@ import QuestionNavigator from './QuestionNavigator';
 const OPTIONS: AnswerOption[] = ['A', 'B', 'C', 'D', 'E'];
 const MAX_VIOLATIONS = 3;
 
-// 🔑 PERBAIKAN: Mengubah menjadi Named Export agar sinkron dengan App.tsx
 export function ExamEngine() {
-  // 🔗 Destrukturisasi fungsi 'submitExamSession' yang baru dari context
   const { state, dispatch, submitExamSession } = useApp();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [confirmSubmit, setConfirmSubmit] = useState(false);
@@ -21,14 +19,11 @@ export function ExamEngine() {
 
   const session = state.examSession;
 
-  // ✅ PERBAIKAN: Memanggil fungsi submit terpusat (asinkronus) agar data aman tersimpan penuh ke Supabase
- const handleSubmit = useCallback(() => {
-  // 🎯 PASANG DI BARIS PERTAMA UTAMA
-  console.log("⚡ [RADAR ENGINE] Fungsi handleSubmit di ExamEngine RESMI DIEKSEKUSI!"); 
-
-  submitExamSession();
-  setConfirmSubmit(false);
-}, [submitExamSession]); 
+  const handleSubmit = useCallback(() => {
+    console.log("⚡ [RADAR ENGINE] Fungsi handleSubmit di ExamEngine RESMI DIEKSEKUSI!"); 
+    submitExamSession();
+    setConfirmSubmit(false);
+  }, [submitExamSession]); 
 
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -104,6 +99,16 @@ export function ExamEngine() {
     C: currentQuestion.option_c,
     D: currentQuestion.option_d,
     E: currentQuestion.option_e,
+  };
+
+  // 🔑 KUNCI PERBAIKAN 1: Petakan URL Gambar Opsi A-E dari Supabase
+  // Sesuai konvensi, jika kolom gambar soal bernama `image_url`, opsi biasanya `option_a_image` atau `option_a_image_url`
+  const optionImages: Record<AnswerOption, string | undefined> = {
+    A: currentQuestion.option_a_image || currentQuestion.option_a_image_url,
+    B: currentQuestion.option_b_image || currentQuestion.option_b_image_url,
+    C: currentQuestion.option_c_image || currentQuestion.option_c_image_url,
+    D: currentQuestion.option_d_image || currentQuestion.option_d_image_url,
+    E: currentQuestion.option_e_image || currentQuestion.option_e_image_url,
   };
 
   const categoryColors: Record<string, string> = {
@@ -201,9 +206,24 @@ export function ExamEngine() {
                     }`}>
                       {option}
                     </span>
-                    <span className={`text-[15px] leading-relaxed pt-0.5 ${isSelected ? 'text-indigo-900 font-medium' : 'text-gray-700'}`}>
-                      {optionLabels[option]}
-                    </span>
+                    
+                    {/* 🔑 KUNCI PERBAIKAN 2: Bungkus teks & gambar ke dalam wrapper flex-col agar layout rapi vertikal */}
+                    <div className="flex-1 flex flex-col gap-2">
+                      <span className={`text-[15px] leading-relaxed pt-0.5 ${isSelected ? 'text-indigo-900 font-medium' : 'text-gray-700'}`}>
+                        {optionLabels[option]}
+                      </span>
+                      
+                      {/* TAMPILKAN GAMBAR OPSI JIKA ADA DI DATABASE */}
+                      {optionImages[option] && (
+                        <div className="rounded-lg overflow-hidden bg-gray-50 border max-w-full sm:max-w-md flex justify-start p-2 mt-1">
+                          <img 
+                            src={optionImages[option]} 
+                            alt={`Gambar Opsi ${option}`} 
+                            className="max-h-40 object-contain rounded"
+                          />
+                        </div>
+                      )}
+                    </div>
                   </button>
                 );
               })}
