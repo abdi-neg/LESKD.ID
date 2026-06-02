@@ -12,6 +12,19 @@ const OPTIONS: AnswerOption[] = ['A', 'B', 'C', 'D', 'E'];
 
 type FilterType = 'all' | 'correct' | 'wrong' | 'unanswered';
 
+// 🔑 KUNCI PERBAIKAN 1: Helper untuk mendeteksi string berupa Link Gambar URL
+const checkIsImageUrl = (text: string | null | undefined) => {
+  if (!text) return false;
+  const str = text.trim();
+  return (
+    str.startsWith('http://') || 
+    str.startsWith('https://') || 
+    str.startsWith('/storage') || 
+    str.includes('supabase.co/storage') ||
+    /\.(jpeg|jpg|gif|png|webp|svg)/i.test(str)
+  );
+};
+
 function QuestionCard({
   question,
   answer,
@@ -35,7 +48,6 @@ function QuestionCard({
 
   const userGainedPoints = selected ? getOptionPoints(selected as AnswerOption) : 0;
 
-  // 🔑 KUNCI PERBAIKAN 1: Mapping Gambar Opsi & Gambar Pembahasan dari Database
   const optionImages: Record<AnswerOption, string | undefined> = {
     A: question.option_a_image || question.option_a_image_url,
     B: question.option_b_image || question.option_b_image_url,
@@ -45,6 +57,7 @@ function QuestionCard({
   };
 
   const explanationImage = question.explanation_image || question.explanation_image_url;
+  const optionType = question.option_type?.toLowerCase();
 
   return (
     <motion.div
@@ -81,7 +94,6 @@ function QuestionCard({
         </div>
 
         <div className="flex-1 min-w-0">
-          {/* 🔑 PERBAIKAN UX: Hilangkan line-clamp-2 saat expanded agar teks soal panjang bisa dibaca utuh */}
           <p className={`text-sm font-medium text-gray-800 whitespace-pre-wrap ${expanded ? '' : 'line-clamp-2'}`}>
             <span className="text-gray-400 mr-1">#{index + 1}</span>
             {question.question_text}
@@ -148,10 +160,9 @@ function QuestionCard({
                 </div>
               )}
               
-              {question.option_type === 'image' ? (
+              {optionType === 'image' ? (
                 <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-2.5">
                   {OPTIONS.map((opt) => {
-                    // Defensive fallback jika URL gambar ditaruh di kolom option_a atau option_a_image
                     const imgUrl = (question[`option_${opt.toLowerCase()}` as keyof typeof question] as string) || optionImages[opt];
                     const pts = getOptionPoints(opt);
                     
@@ -210,6 +221,9 @@ function QuestionCard({
                     const isChosen = selected === opt;
                     const isWrongChoice = !isTKP && isChosen && !isKey;
 
+                    // 🔑 KUNCI PERBAIKAN 2: Jalankan detektor teks link
+                    const isTextAnImage = checkIsImageUrl(text);
+
                     let bgClass = 'bg-gray-50 border border-transparent';
                     if (isTKP) {
                       if (isChosen) bgClass = 'bg-amber-50/70 border border-amber-300';
@@ -230,23 +244,33 @@ function QuestionCard({
                           {opt}
                         </div>
 
-                        {/* 🔑 KUNCI PERBAIKAN 2: Susun teks dan pendukung gambar opsi secara vertikal */}
                         <div className="flex-1 flex flex-col gap-1.5">
-                          <span className={`leading-relaxed
-                            ${isTKP
-                              ? isChosen ? 'text-amber-900 font-medium' : 'text-gray-600'
-                              : isKey ? 'text-emerald-800 font-medium'
-                              : isWrongChoice ? 'text-red-700'
-                              : 'text-gray-600'}`}>
-                            {text}
-                          </span>
+                          {/* 🔑 KUNCI PERBAIKAN 3: Jika isi data berupa link URL, jadikan elemen <img> secara otomatis */}
+                          {isTextAnImage ? (
+                            <div className="rounded-xl overflow-hidden bg-white border border-gray-100 max-w-full sm:max-w-md flex justify-start p-2 shadow-sm">
+                              <img 
+                                src={text} 
+                                alt={`Gambar Opsi ${opt}`} 
+                                className="max-h-36 object-contain rounded-lg"
+                              />
+                            </div>
+                          ) : (
+                            <span className={`leading-relaxed
+                              ${isTKP
+                                ? isChosen ? 'text-amber-900 font-medium' : 'text-gray-600'
+                                : isKey ? 'text-emerald-800 font-medium'
+                                : isWrongChoice ? 'text-red-700'
+                                : 'text-gray-600'}`}>
+                              {text}
+                            </span>
+                          )}
 
-                          {/* TAMPILKAN GAMBAR OPSI TEKS JIKA TERSEDIA */}
-                          {optionImages[opt] && (
+                          {/* Render fallback gambar pendukung terpisah jika ada */}
+                          {optionImages[opt] && !isTextAnImage && (
                             <div className="rounded-lg overflow-hidden bg-white border max-w-full sm:max-w-md flex justify-start p-1.5 mt-0.5">
                               <img 
                                 src={optionImages[opt]} 
-                                alt={`Gambar Opsi ${opt}`} 
+                                alt={`Gambar Opsi Pendukung ${opt}`} 
                                 className="max-h-32 object-contain rounded"
                               />
                             </div>
@@ -274,7 +298,7 @@ function QuestionCard({
                 </div>
               )}
 
-              {/* 🔑 KUNCI PERBAIKAN 3: Penampil Gambar Pembahasan Soal */}
+              {/* Penampil Gambar Pembahasan Soal */}
               {(question.explanation || explanationImage) ? (
                 <div className="mt-4 bg-[#1e3a8a]/5 border border-[#1e3a8a]/10 rounded-xl p-3.5">
                   <div className="flex items-center gap-1.5 mb-2">
@@ -282,7 +306,6 @@ function QuestionCard({
                     <p className="text-xs font-bold text-[#1e3a8a]">Pembahasan</p>
                   </div>
                   
-                  {/* Render Gambar Pembahasan Jika Ada */}
                   {explanationImage && (
                     <div className="mb-3 rounded-xl overflow-hidden bg-white border max-w-full flex justify-center p-3 shadow-sm">
                       <img 
@@ -312,6 +335,7 @@ function QuestionCard({
   );
 }
 
+// ... Sisa component ExamReview di bawah tetap sama seperti sebelumnya
 export function ExamReview() {
   const { state, dispatch } = useApp();
   const [snapshot, setSnapshot] = useState<any | null>(null);
@@ -431,7 +455,6 @@ export function ExamReview() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
       <header className="bg-[#1e3a8a] sticky top-0 z-40 shadow-lg">
         <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
           <button
@@ -456,7 +479,6 @@ export function ExamReview() {
       </header>
 
       <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
-        {/* Score Summary */}
         <div className="grid grid-cols-3 gap-3">
           {[
             { label: 'Benar', value: stats.correct, color: 'text-emerald-600', bg: 'bg-emerald-50' },
@@ -470,10 +492,7 @@ export function ExamReview() {
           ))}
         </div>
 
-        {/* Filters Group Container */}
         <div className="mt-8 pt-4 border-t border-gray-100 space-y-3.5">
-          
-          {/* 1. Kategori Filter (TIU, TWK, TKP) */}
           {categories.length > 2 && (
             <div className="flex gap-2 overflow-x-auto pb-1 hide-scrollbar">
               {categories.map((cat) => (
@@ -491,7 +510,6 @@ export function ExamReview() {
             </div>
           )}
 
-          {/* 2. Sub-Filter Status Jawaban (Semua, Benar, Salah, Kosong) */}
           <div className="flex flex-wrap items-center gap-2 pb-1">
             <div className="flex items-center gap-1 text-gray-400 mr-1 flex-shrink-0">
               <Filter className="w-3.5 h-3.5" />
@@ -514,7 +532,6 @@ export function ExamReview() {
             ))}
           </div>
 
-          {/* 3. Search Bar */}
           <div className="relative pt-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
@@ -527,7 +544,6 @@ export function ExamReview() {
           </div>
         </div>
 
-        {/* Question List */}
         {filtered.length === 0 ? (
           <div className="text-center py-12 text-gray-400">
             <Target className="w-10 h-10 mx-auto mb-3 opacity-40" />
