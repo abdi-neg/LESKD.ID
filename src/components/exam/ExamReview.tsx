@@ -1,27 +1,16 @@
-import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import {
-  ArrowLeft, CheckCircle, XCircle, Target, BookOpen,
-  ChevronDown, ChevronUp, Search, Filter,
-} from 'lucide-react';
-import { useApp } from '../../context/AppContext';
-import { supabase } from '../../lib/supabase';
-import { AnswerOption } from '../../types';
-
-const OPTIONS: AnswerOption[] = ['A', 'B', 'C', 'D', 'E'];
-
-type FilterType = 'all' | 'correct' | 'wrong' | 'unanswered';
-
-// 🔑 KUNCI PERBAIKAN 1: Helper untuk mendeteksi string berupa Link Gambar URL
-const checkIsImageUrl = (text: string | null | undefined) => {
-  if (!text) return false;
-  const str = text.trim();
+// 🔑 KUNCI PERBAIKAN 1: Detektor Gambar yang Jauh Lebih Agresif & Sensitif
+const checkIsImageUrl = (text: any) => {
+  if (!text || typeof text !== 'string') return false;
+  
+  const str = text.trim().toLowerCase();
+  
+  // Deteksi jika mengandung protokol web, keyword storage, atau ekstensi gambar umum
   return (
-    str.startsWith('http://') || 
-    str.startsWith('https://') || 
-    str.startsWith('/storage') || 
+    str.includes('http://') || 
+    str.includes('https://') || 
     str.includes('supabase.co/storage') ||
-    /\.(jpeg|jpg|gif|png|webp|svg)/i.test(str)
+    str.includes('/storage/') ||
+    /\.(jpeg|jpg|gif|png|webp|svg|avif)/i.test(str)
   );
 };
 
@@ -221,8 +210,14 @@ function QuestionCard({
                     const isChosen = selected === opt;
                     const isWrongChoice = !isTKP && isChosen && !isKey;
 
-                    // 🔑 KUNCI PERBAIKAN 2: Jalankan detektor teks link
                     const isTextAnImage = checkIsImageUrl(text);
+
+                    // 🔑 KUNCI PERBAIKAN 2: Log debugging untuk melihat data asli dari Database
+                    console.log(`[DEBUG SOAL #${index + 1} OPSI ${opt}]`, {
+                      textAsli: text,
+                      tipeData: typeof text,
+                      apakahDeteksiGambar: isTextAnImage
+                    });
 
                     let bgClass = 'bg-gray-50 border border-transparent';
                     if (isTKP) {
@@ -245,13 +240,14 @@ function QuestionCard({
                         </div>
 
                         <div className="flex-1 flex flex-col gap-1.5">
-                          {/* 🔑 KUNCI PERBAIKAN 3: Jika isi data berupa link URL, jadikan elemen <img> secara otomatis */}
+                          {/* 🔑 KUNCI PERBAIKAN 3: Render Element Gambar Otomatis jika lolos detektor */}
                           {isTextAnImage ? (
                             <div className="rounded-xl overflow-hidden bg-white border border-gray-100 max-w-full sm:max-w-md flex justify-start p-2 shadow-sm">
                               <img 
                                 src={text} 
                                 alt={`Gambar Opsi ${opt}`} 
                                 className="max-h-36 object-contain rounded-lg"
+                                onError={(e) => console.error(`Gagal me-render gambar opsi ${opt}:`, text)}
                               />
                             </div>
                           ) : (
@@ -261,11 +257,10 @@ function QuestionCard({
                                 : isKey ? 'text-emerald-800 font-medium'
                                 : isWrongChoice ? 'text-red-700'
                                 : 'text-gray-600'}`}>
-                              {text}
+                              {text || <span className="text-gray-400 italic">(Opsi Kosong)</span>}
                             </span>
                           )}
 
-                          {/* Render fallback gambar pendukung terpisah jika ada */}
                           {optionImages[opt] && !isTextAnImage && (
                             <div className="rounded-lg overflow-hidden bg-white border max-w-full sm:max-w-md flex justify-start p-1.5 mt-0.5">
                               <img 
@@ -298,7 +293,6 @@ function QuestionCard({
                 </div>
               )}
 
-              {/* Penampil Gambar Pembahasan Soal */}
               {(question.explanation || explanationImage) ? (
                 <div className="mt-4 bg-[#1e3a8a]/5 border border-[#1e3a8a]/10 rounded-xl p-3.5">
                   <div className="flex items-center gap-1.5 mb-2">
@@ -332,236 +326,5 @@ function QuestionCard({
         )}
       </AnimatePresence>
     </motion.div>
-  );
-}
-
-// ... Sisa component ExamReview di bawah tetap sama seperti sebelumnya
-export function ExamReview() {
-  const { state, dispatch } = useApp();
-  const [snapshot, setSnapshot] = useState<any | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<FilterType>('all');
-  const [search, setSearch] = useState('');
-  const [activeCategory, setActiveCategory] = useState<string>('all');
-
-  const reviewResultId = state.reviewResultId;
-
-  useEffect(() => {
-    async function fetchReviewData() {
-      if (!reviewResultId) {
-        setLoading(false);
-        return;
-      }
-      
-      setLoading(true);
-      try {
-        const { data, error } = await supabase
-          .from('exam_results')
-          .select('review_snapshot')
-          .eq('id', reviewResultId)
-          .maybeSingle();
-
-        if (data?.review_snapshot) {
-          setSnapshot(data.review_snapshot);
-        } else {
-          const localData = localStorage.getItem(`exam_review_snapshot_${reviewResultId}`);
-          if (localData) {
-            setSnapshot(JSON.parse(localData));
-          } else {
-            setSnapshot(null);
-          }
-        }
-      } catch (err) {
-        console.error("Gagal memuat snapshot pembahasan:", err);
-        setSnapshot(null);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    fetchReviewData();
-  }, [reviewResultId]);
-
-  const handleBack = () => {
-    dispatch({ type: 'SET_VIEW', payload: 'exam-results' });
-  };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <div className="text-center text-gray-500 text-sm">Memuat dokumen pembahasan...</div>
-      </div>
-    );
-  }
-
-  if (!snapshot) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <div className="text-center">
-          <BookOpen className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-          <p className="text-gray-500 font-medium">Data pembahasan tidak ditemukan</p>
-          <button
-            onClick={handleBack}
-            className="mt-4 px-4 py-2 rounded-xl bg-[#1e3a8a] text-white text-sm font-semibold shadow"
-          >
-            Kembali ke Dashboard
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  const { questions, answers, scores, examType, packageName, completedAt } = snapshot;
-
-  const categories = examType === 'FULL'
-    ? ['all', 'TIU', 'TWK', 'TKP']
-    : ['all', examType];
-
-  const filtered = questions ? questions.filter((q: any) => {
-    const ans = answers ? answers[q.id] : null;
-    const selected = ans?.selectedAnswer ?? null;
-    const isCorrect = selected !== null && selected === q.correct_answer;
-
-    if (activeCategory !== 'all' && q.category !== activeCategory) return false;
-    if (filter === 'correct' && !isCorrect) return false;
-    if (filter === 'wrong' && (selected === null || isCorrect)) return false;
-    if (filter === 'unanswered' && selected !== null) return false;
-    if (search.trim()) {
-      const q_lower = q.question_text.toLowerCase();
-      if (!q_lower.includes(search.toLowerCase())) return false;
-    }
-    return true;
-  }) : [];
-
-  const stats = (() => {
-    let correct = 0, wrong = 0, unanswered = 0;
-    if (questions) {
-      questions.forEach((q: any) => {
-        const ans = answers ? answers[q.id] : null;
-        if (!ans?.selectedAnswer) { unanswered++; return; }
-        if (ans.selectedAnswer === q.correct_answer) correct++;
-        else wrong++;
-      });
-    }
-    return { correct, wrong, unanswered };
-  })();
-
-  const filterOptions: { key: FilterType; label: string; count: number; color: string }[] = [
-    { key: 'all', label: 'Semua', count: questions?.length || 0, color: 'bg-gray-100 text-gray-700' },
-    { key: 'correct', label: 'Benar', count: stats.correct, color: 'bg-emerald-100 text-emerald-700' },
-    { key: 'wrong', label: 'Salah', count: stats.wrong, color: 'bg-red-100 text-red-600' },
-    { key: 'unanswered', label: 'Kosong', count: stats.unanswered, color: 'bg-gray-100 text-gray-500' },
-  ];
-
-  return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-[#1e3a8a] sticky top-0 z-40 shadow-lg">
-        <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
-          <button
-            onClick={handleBack}
-            className="w-9 h-9 bg-white/10 hover:bg-white/20 rounded-xl flex items-center justify-center transition-colors flex-shrink-0"
-          >
-            <ArrowLeft className="w-4 h-4 text-white" />
-          </button>
-          <div className="flex-1 min-w-0">
-            <p className="text-white font-bold text-sm leading-tight truncate">
-              Pembahasan — {packageName ?? examType}
-            </p>
-            <p className="text-blue-200 text-xs">
-              {completedAt ? new Date(completedAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '-'}
-              {' · '}Skor: <span className="font-bold text-white">{scores?.total ?? 0}</span>
-            </p>
-          </div>
-          <div className="flex-shrink-0 text-right">
-            <p className="text-xs text-blue-200">{filtered.length} soal</p>
-          </div>
-        </div>
-      </header>
-
-      <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
-        <div className="grid grid-cols-3 gap-3">
-          {[
-            { label: 'Benar', value: stats.correct, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-            { label: 'Salah', value: stats.wrong, color: 'text-red-500', bg: 'bg-red-50' },
-            { label: 'Kosong', value: stats.unanswered, color: 'text-gray-500', bg: 'bg-gray-50' },
-          ].map((s) => (
-            <div key={s.label} className={`${s.bg} rounded-2xl p-3 text-center border border-white shadow-sm`}>
-              <p className={`text-2xl font-extrabold ${s.color}`}>{s.value}</p>
-              <p className="text-xs text-gray-500 mt-0.5">{s.label}</p>
-            </div>
-          ))}
-        </div>
-
-        <div className="mt-8 pt-4 border-t border-gray-100 space-y-3.5">
-          {categories.length > 2 && (
-            <div className="flex gap-2 overflow-x-auto pb-1 hide-scrollbar">
-              {categories.map((cat) => (
-                <button
-                  key={cat}
-                  onClick={() => setActiveCategory(cat)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex-shrink-0 transition-colors
-                    ${activeCategory === cat
-                      ? 'bg-[#1e3a8a] text-white'
-                      : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}
-                >
-                  {cat === 'all' ? 'Semua Kategori' : cat}
-                </button>
-              ))}
-            </div>
-          )}
-
-          <div className="flex flex-wrap items-center gap-2 pb-1">
-            <div className="flex items-center gap-1 text-gray-400 mr-1 flex-shrink-0">
-              <Filter className="w-3.5 h-3.5" />
-              <span className="text-[11px] font-medium hidden sm:inline">Filter:</span>
-            </div>
-            
-            {filterOptions.map((f) => (
-              <button
-                key={f.key}
-                onClick={() => setFilter(f.key)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex-shrink-0 transition-colors flex items-center gap-1.5
-                  ${filter === f.key ? `${f.color} ring-2 ring-offset-1 ring-current` : 'bg-white border border-gray-200 text-gray-500 hover:bg-gray-50'}`}
-              >
-                {f.label}
-                <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold
-                  ${filter === f.key ? 'bg-white/60' : 'bg-gray-100'}`}>
-                  {f.count}
-                </span>
-              </button>
-            ))}
-          </div>
-
-          <div className="relative pt-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Cari teks soal..."
-              className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/30 text-gray-800 placeholder-gray-400 shadow-sm"
-            />
-          </div>
-        </div>
-
-        {filtered.length === 0 ? (
-          <div className="text-center py-12 text-gray-400">
-            <Target className="w-10 h-10 mx-auto mb-3 opacity-40" />
-            <p className="font-medium">Tidak ada soal yang cocok</p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {filtered.map((q: any, i: number) => (
-              <QuestionCard
-                key={q.id}
-                question={q}
-                answer={answers ? answers[q.id] : undefined}
-                index={questions.indexOf(q)}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
   );
 }
