@@ -1,5 +1,5 @@
 import { createContext, useContext, useReducer, useEffect, ReactNode, useState } from 'react';
-import { AppState, AppView, ExamSession, Profile, Question, ExamType, ExamPackage } from '../types';
+import { AppState, AppView, ExamSession, Profile, Question, ExamType, ExamPackage, AnswerOption } from '../types'; // Ditambahkan AnswerOption untuk keamanan mengetik
 import { mockQuestions, EXAM_CONFIGS } from '../data/mockData';
 import { supabase, getProfile } from '../lib/supabase';
 import {
@@ -160,6 +160,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
     }
     case 'LOGOUT':
       localStorage.removeItem('exam_active_session_id');
+      localStorage.removeItem('active_db_result_id'); // Bersihkan cadangan ID saat logout
       return { ...initialState, authLoading: false };
     case 'SET_VIEW':
       return { ...state, currentView: action.payload };
@@ -210,6 +211,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
     case 'CLEAR_EXAM': {
       if (state.examSession) clearExamProgress(state.examSession.id);
       else localStorage.removeItem('exam_active_session_id');
+      localStorage.removeItem('active_db_result_id'); // Bersihkan cadangan ID saat ujian dibersihkan
       const isAdmin = state.profile?.role === 'admin' || state.profile?.role === 'super_admin';
       return { ...state, examSession: null, reviewResultId: null, currentView: isAdmin ? 'admin-dashboard' : 'participant-dashboard' };
     }
@@ -238,7 +240,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(appReducer, initialState);
   const [isSyncLocked, setIsSyncLocked] = useState(false);
 
-  // 🔄 Realtime Auto Save Sync Effect
+  // 🔄 Realtime Auto Save Sync Effect (SUDAH DIPROTEKSI BACKUP)
   useEffect(() => {
     const session = state.examSession;
     if (!session || session.status === 'completed' || isSyncLocked) return;
@@ -246,7 +248,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (session.status === 'in_progress') {
       saveExamProgress(session);
 
-      const dbResultId = (session as any).resultId;
+      // 🔑 PROTEKSI 1: Cek dari session, jika hilang gunakan cadangan localStorage
+      const dbResultId = (session as any).resultId || localStorage.getItem('active_db_result_id');
       if (dbResultId) {
         const liveScores = calculateScores(session);
         const isPassed = checkPassedStatus(session.examType, liveScores);
@@ -293,7 +296,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } catch { dispatch({ type: 'SET_PROFILE', payload: null }); }
   }
 
-  // 🛠️ FUNGSI START EXAM YANG SUDAH DIPERBAIKI TOTAL
+  // 🛠️ FUNGSI START EXAM (SUDAH DIPROTEKSI BACKUP)
   async function startExam(examType: ExamType, pkg?: ExamPackage) {
     if (isStartingExam) return;
 
@@ -349,6 +352,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         packageType: pkg?.package_type || examType
       };
 
+      // 🔑 PROTEKSI 2: Kunci ID database ke localStorage mandiri agar aman dari Auto-Refresh HMR
+      localStorage.setItem('active_db_result_id', finalDbRow.id);
+
       saveExamProgress(sessionWithResultId);
       dispatch({ type: 'RESUME_EXAM', payload: sessionWithResultId });
 
@@ -361,7 +367,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  // 🛠️ FUNGSI SUBMIT EXAM YANG SUDAH DILENGKAPI RADAR PELACAK TOTAL
+  // 🛠️ FUNGSI SUBMIT EXAM (SUDAH DIPROTEKSI CADANGAN ANTI-BATAL KERAS)
   async function submitExamSession() {
     const session = state.examSession;
 
@@ -379,11 +385,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    const dbResultId = (session as any).resultId;
-    console.log("🔍 [SUBMIT] dbResultId yang terbaca di session:", dbResultId);
+    // 🔑 PROTEKSI 3: Jika session.resultId hilang akibat refresh, ambil dari cadangan localStorage
+    const dbResultId = (session as any).resultId || localStorage.getItem('active_db_result_id');
+    console.log("🔍 [SUBMIT] dbResultId yang terbaca di session/backup:", dbResultId);
 
     if (!dbResultId) {
       console.log("❌ [SUBMIT] Batal Keras: dbResultId TIDAK DITEMUKAN di dalam session (Undefined/Null)!");
+      alert("Sesi ID database hilang. Silakan kembali ke dashboard dan buat ujian baru.");
       return;
     }
 
@@ -422,6 +430,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       clearExamProgress(session.id);
       localStorage.removeItem('exam_active_session_id');
+      localStorage.removeItem('active_db_result_id'); // 🔑 Bersihkan cadangan ID setelah sukses submit
       console.log("🧹 [SUBMIT] Cache lokal exam progress dibersihkan.");
 
       const completedSession: ExamSession = {
@@ -451,6 +460,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } catch { return false; }
   }
 
+  // 🔄 INITIAL LOAD EFFECT (SUDAH DIPROTEKSI PEMULIHAN BACKUP CADANGAN)
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
@@ -458,6 +468,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (savedId) {
           const saved = loadExamProgress(savedId);
           if (saved && (saved as any).status !== 'completed') {
+            
+            // 🔑 PROTEKSI 4: Ambil ID database cadangan dari localStorage jika bawaan persistence hilang
+            const backupResultId = localStorage.getItem('active_db_result_id') || undefined;
+
             fetchQuestionsForExam(saved.examType, saved.packageId).then((questions) => {
               dispatch({
                 type: 'RESUME_EXAM',
@@ -465,11 +479,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
                   id: saved.sessionId, packageId: saved.packageId, packageName: saved.packageName,
                   examType: saved.examType, questions, answers: saved.answers,
                   currentQuestionIndex: saved.currentQuestionIndex, timeRemaining: saved.timeRemaining,
-                  status: 'in_progress', startedAt: new Date(saved.startedAt), resultId: (saved as any).resultId || undefined
+                  status: 'in_progress', startedAt: new Date(saved.startedAt), 
+                  resultId: (saved as any).resultId || backupResultId || undefined // 🔑 Gabungkan cadangan ke sini
                 } as any
               });
             });
-          } else { localStorage.removeItem('exam_active_session_id'); }
+          } else { 
+            localStorage.removeItem('exam_active_session_id'); 
+            localStorage.removeItem('active_db_result_id');
+          }
         }
         refreshProfile();
       } else { dispatch({ type: 'SET_AUTH_LOADING', payload: false }); }
