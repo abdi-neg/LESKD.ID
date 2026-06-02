@@ -362,8 +362,17 @@ console.log("🚀 [RADAR] startExam terpicu! Sistem membuat baris baru (in_progr
   }
 
   async function submitExamSession() {
-    const session = state.examSession;
-    if (!session || isSyncLocked) return;
+  const session = state.examSession;
+
+  // 🔍 TARUH LOG INI TEPAT DI ATAS IF UNTUK MENGINTIP NILAINYA
+  console.log("🔍 [INTIP GATEKEEPER] Nilai session:", session, " | Nilai isSyncLocked:", isSyncLocked);
+
+  if (!session || isSyncLocked) {
+    console.log("❌ [FUNGSI MATI] submitExamSession berhenti prematur di sini!");
+    return;
+  }
+  
+  // ... kode sisa ke bawah
 
     const dbResultId = (session as any).resultId;
     if (!dbResultId) return;
