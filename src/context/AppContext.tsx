@@ -300,7 +300,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       isStartingExam = true;
       setIsSyncLocked(false); 
-
+console.log("🚀 [RADAR] startExam terpicu! Sistem membuat baris baru (in_progress).");
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         alert("Sesi login tidak valid.");
