@@ -35,6 +35,17 @@ function QuestionCard({
 
   const userGainedPoints = selected ? getOptionPoints(selected as AnswerOption) : 0;
 
+  // 🔑 KUNCI PERBAIKAN 1: Mapping Gambar Opsi & Gambar Pembahasan dari Database
+  const optionImages: Record<AnswerOption, string | undefined> = {
+    A: question.option_a_image || question.option_a_image_url,
+    B: question.option_b_image || question.option_b_image_url,
+    C: question.option_c_image || question.option_c_image_url,
+    D: question.option_d_image || question.option_d_image_url,
+    E: question.option_e_image || question.option_e_image_url,
+  };
+
+  const explanationImage = question.explanation_image || question.explanation_image_url;
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
@@ -70,7 +81,8 @@ function QuestionCard({
         </div>
 
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-gray-800 line-clamp-2">
+          {/* 🔑 PERBAIKAN UX: Hilangkan line-clamp-2 saat expanded agar teks soal panjang bisa dibaca utuh */}
+          <p className={`text-sm font-medium text-gray-800 whitespace-pre-wrap ${expanded ? '' : 'line-clamp-2'}`}>
             <span className="text-gray-400 mr-1">#{index + 1}</span>
             {question.question_text}
           </p>
@@ -127,17 +139,20 @@ function QuestionCard({
           >
             <div className="px-4 pb-4 border-t border-gray-50">
               {question.image_url && (
-                <img
-                  src={question.image_url}
-                  alt="soal"
-                  className="mt-3 max-h-48 rounded-xl border border-gray-100 object-contain w-full"
-                />
+                <div className="rounded-xl overflow-hidden bg-gray-50 border max-w-full flex justify-center p-4 mt-3">
+                  <img
+                    src={question.image_url}
+                    alt="soal"
+                    className="max-h-64 object-contain"
+                  />
+                </div>
               )}
               
               {question.option_type === 'image' ? (
                 <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-2.5">
                   {OPTIONS.map((opt) => {
-                    const imgUrl = question[`option_${opt.toLowerCase()}` as keyof typeof question] as string;
+                    // Defensive fallback jika URL gambar ditaruh di kolom option_a atau option_a_image
+                    const imgUrl = (question[`option_${opt.toLowerCase()}` as keyof typeof question] as string) || optionImages[opt];
                     const pts = getOptionPoints(opt);
                     
                     const isKey = !isTKP && opt === question.correct_answer;
@@ -174,11 +189,13 @@ function QuestionCard({
                         {!isTKP && isKey && <CheckCircle className="absolute top-1.5 right-1.5 z-10 w-4 h-4 text-emerald-500 drop-shadow" />}
                         {!isTKP && isWrongChoice && <XCircle className="absolute top-1.5 right-1.5 z-10 w-4 h-4 text-red-400 drop-shadow" />}
                         
-                        <img
-                          src={imgUrl}
-                          alt={`Opsi ${opt}`}
-                          className="w-full aspect-square object-contain bg-white p-2"
-                        />
+                        {imgUrl && (
+                          <img
+                            src={imgUrl}
+                            alt={`Opsi ${opt}`}
+                            className="w-full aspect-square object-contain bg-white p-2"
+                          />
+                        )}
                       </div>
                     );
                   })}
@@ -213,14 +230,28 @@ function QuestionCard({
                           {opt}
                         </div>
 
-                        <span className={`leading-relaxed flex-1
-                          ${isTKP
-                            ? isChosen ? 'text-amber-900 font-medium' : 'text-gray-600'
-                            : isKey ? 'text-emerald-800 font-medium'
-                            : isWrongChoice ? 'text-red-700'
-                            : 'text-gray-600'}`}>
-                          {text}
-                        </span>
+                        {/* 🔑 KUNCI PERBAIKAN 2: Susun teks dan pendukung gambar opsi secara vertikal */}
+                        <div className="flex-1 flex flex-col gap-1.5">
+                          <span className={`leading-relaxed
+                            ${isTKP
+                              ? isChosen ? 'text-amber-900 font-medium' : 'text-gray-600'
+                              : isKey ? 'text-emerald-800 font-medium'
+                              : isWrongChoice ? 'text-red-700'
+                              : 'text-gray-600'}`}>
+                            {text}
+                          </span>
+
+                          {/* TAMPILKAN GAMBAR OPSI TEKS JIKA TERSEDIA */}
+                          {optionImages[opt] && (
+                            <div className="rounded-lg overflow-hidden bg-white border max-w-full sm:max-w-md flex justify-start p-1.5 mt-0.5">
+                              <img 
+                                src={optionImages[opt]} 
+                                alt={`Gambar Opsi ${opt}`} 
+                                className="max-h-32 object-contain rounded"
+                              />
+                            </div>
+                          )}
+                        </div>
 
                         {isTKP ? (
                           <span className={`text-xs font-bold px-2 py-0.5 rounded-lg flex-shrink-0 ml-auto self-center
@@ -232,10 +263,10 @@ function QuestionCard({
                             {pts} Poin
                           </span>
                         ) : (
-                          <>
-                            {isKey && <CheckCircle className="w-4 h-4 text-emerald-500 flex-shrink-0 ml-auto mt-0.5" />}
-                            {isWrongChoice && <XCircle className="w-4 h-4 text-red-400 flex-shrink-0 ml-auto mt-0.5" />}
-                          </>
+                          <div className="flex-shrink-0 ml-auto mt-0.5">
+                            {isKey && <CheckCircle className="w-4 h-4 text-emerald-500" />}
+                            {isWrongChoice && <XCircle className="w-4 h-4 text-red-400" />}
+                          </div>
                         )}
                       </div>
                     );
@@ -243,13 +274,30 @@ function QuestionCard({
                 </div>
               )}
 
-              {question.explanation ? (
+              {/* 🔑 KUNCI PERBAIKAN 3: Penampil Gambar Pembahasan Soal */}
+              {(question.explanation || explanationImage) ? (
                 <div className="mt-4 bg-[#1e3a8a]/5 border border-[#1e3a8a]/10 rounded-xl p-3.5">
-                  <div className="flex items-center gap-1.5 mb-1.5">
+                  <div className="flex items-center gap-1.5 mb-2">
                     <BookOpen className="w-4 h-4 text-[#1e3a8a]" />
                     <p className="text-xs font-bold text-[#1e3a8a]">Pembahasan</p>
                   </div>
-                  <p className="text-sm text-gray-700 leading-relaxed">{question.explanation}</p>
+                  
+                  {/* Render Gambar Pembahasan Jika Ada */}
+                  {explanationImage && (
+                    <div className="mb-3 rounded-xl overflow-hidden bg-white border max-w-full flex justify-center p-3 shadow-sm">
+                      <img 
+                        src={explanationImage} 
+                        alt="Ilustrasi Pembahasan" 
+                        className="max-h-64 object-contain" 
+                      />
+                    </div>
+                  )}
+
+                  {question.explanation && (
+                    <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
+                      {question.explanation}
+                    </p>
+                  )}
                 </div>
               ) : (
                 <div className="mt-4 bg-gray-50 border border-gray-100 rounded-xl p-3 text-xs text-gray-400 text-center">
@@ -264,7 +312,6 @@ function QuestionCard({
   );
 }
 
-// 🔑 PERBAIKAN: Mengubah menjadi Named Export agar sinkron saat di-import di App.tsx
 export function ExamReview() {
   const { state, dispatch } = useApp();
   const [snapshot, setSnapshot] = useState<any | null>(null);
