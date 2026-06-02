@@ -300,7 +300,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       isStartingExam = true;
       setIsSyncLocked(false); 
-console.log("🚀 [RADAR] startExam terpicu! Sistem membuat baris baru (in_progress).");
+      console.log("🚀 [RADAR] startExam terpicu! Sistem membuat baris baru (in_progress).");
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         alert("Sesi login tidak valid.");
@@ -361,30 +361,43 @@ console.log("🚀 [RADAR] startExam terpicu! Sistem membuat baris baru (in_progr
     }
   }
 
+  // 🛠️ FUNGSI SUBMIT EXAM YANG SUDAH DILENGKAPI RADAR PELACAK TOTAL
   async function submitExamSession() {
-  const session = state.examSession;
+    const session = state.examSession;
 
-  // 🔍 TARUH LOG INI TEPAT DI ATAS IF UNTUK MENGINTIP NILAINYA
-  console.log("🔍 [INTIP GATEKEEPER] Nilai session:", session, " | Nilai isSyncLocked:", isSyncLocked);
+    console.log("🔍 [SUBMIT] ========================================");
+    console.log("🔍 [SUBMIT] Fungsi submitExamSession mulai dieksekusi.");
+    console.log("🔍 [SUBMIT] Nilai session saat ini:", session);
+    console.log("🔍 [SUBMIT] Nilai isSyncLocked saat ini:", isSyncLocked);
 
-  if (!session || isSyncLocked) {
-    console.log("❌ [FUNGSI MATI] submitExamSession berhenti prematur di sini!");
-    return;
-  }
-  
-  // ... kode sisa ke bawah
+    if (!session) {
+      console.log("❌ [SUBMIT] Batal: Sesi ujian (session) kosong atau null!");
+      return;
+    }
+    if (isSyncLocked) {
+      console.log("❌ [SUBMIT] Batal: Fungsi diblokir karena isSyncLocked bernilai TRUE!");
+      return;
+    }
 
     const dbResultId = (session as any).resultId;
-    if (!dbResultId) return;
+    console.log("🔍 [SUBMIT] dbResultId yang terbaca di session:", dbResultId);
+
+    if (!dbResultId) {
+      console.log("❌ [SUBMIT] Batal Keras: dbResultId TIDAK DITEMUKAN di dalam session (Undefined/Null)!");
+      return;
+    }
 
     try {
+      console.log("🔒 [SUBMIT] Mengunci sinkronisasi (setIsSyncLocked -> true)...");
       setIsSyncLocked(true);
 
       const scores = calculateScores(session);
       const isPassed = checkPassedStatus(session.examType, scores);
+      console.log("📊 [SUBMIT] Skor berhasil dihitung:", scores, " | Lulus:", isPassed);
 
-      // UPDATE berdasarkan ID baris unik saat ini
-      const { error } = await supabase
+      console.log("📡 [SUBMIT] Mengirimkan perintah UPDATE ke Supabase untuk ID:", dbResultId);
+      
+      const { data, error } = await supabase
         .from('exam_results')
         .update({
           score_tiu: scores.tiu,
@@ -397,12 +410,19 @@ console.log("🚀 [RADAR] startExam terpicu! Sistem membuat baris baru (in_progr
           completed_at: new Date().toISOString(),
           duration_seconds: Math.max(0, (EXAM_CONFIGS[session.examType].timeMinutes * 60) - session.timeRemaining)
         })
-        .eq('id', dbResultId);
+        .eq('id', dbResultId)
+        .select();
 
-      if (error) throw error;
+      if (error) {
+        console.error("❌ [SUBMIT] Supabase menolak update! Error detail:", error);
+        throw error;
+      }
+
+      console.log("✅ [SUBMIT] Supabase SUKSES mengubah baris menjadi 'completed'!", data);
 
       clearExamProgress(session.id);
       localStorage.removeItem('exam_active_session_id');
+      console.log("🧹 [SUBMIT] Cache lokal exam progress dibersihkan.");
 
       const completedSession: ExamSession = {
         ...session,
@@ -411,10 +431,12 @@ console.log("🚀 [RADAR] startExam terpicu! Sistem membuat baris baru (in_progr
         scores
       };
 
+      console.log("🧩 [SUBMIT] Mengirim DISPATCH FINALIZE_EXAM_STORE ke Reducer...");
       dispatch({ type: 'FINALIZE_EXAM_STORE', payload: completedSession });
+      console.log("🔍 [SUBMIT] ========================================");
 
     } catch (err) {
-      console.error("Gagal melakukan submisi ujian akhir:", err);
+      console.error("❌ [SUBMIT] Terjadi kegagalan fatal pada blok catch:", err);
       setIsSyncLocked(false); 
       alert("Gagal mengirimkan lembar jawaban ke server. Silakan coba klik submit kembali.");
     }
