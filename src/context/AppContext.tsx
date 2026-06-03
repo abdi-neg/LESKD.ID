@@ -43,8 +43,24 @@ export function packageTypeToExamType(pt: string): ExamType {
   return 'FULL';
 }
 
+// 📌 FUNGSI UTAMA UNTUK AMBIL & URUTKAN SOAL SESUAI STANDAR CAT BKN
 async function fetchQuestionsForExam(examType: ExamType, packageId?: string): Promise<Question[]> {
   const config = EXAM_CONFIGS[examType];
+  
+  // Ketetapan bobot urutan kategori SKD
+  const categoryWeight: Record<string, number> = {
+    'TWK': 1, // Urutan Pertama (1-30)
+    'TIU': 2, // Urutan Kedua (31-65)
+    'TKP': 3  // Urutan Ketiga (66-110)
+  };
+
+  // Fungsi pengurut otomatis (Memanfaatkan Stable Sort bawaan V8 JavaScript Engine)
+  const sortSKD = (a: Question, b: Question) => {
+    const weightA = categoryWeight[a.category?.toUpperCase()] || 99;
+    const weightB = categoryWeight[b.category?.toUpperCase()] || 99;
+    return weightA - weightB; 
+  };
+
   if (packageId) {
     const { data } = await supabase.from('questions').select('*').eq('package_id', packageId).order('created_at');
     if (data && data.length > 0) {
@@ -57,9 +73,15 @@ async function fetchQuestionsForExam(examType: ExamType, packageId?: string): Pr
         points_e: q.points_e ?? 0,
       })) as Question[];
       const filtered = examType === 'FULL' ? mappedData : mappedData.filter((q) => q.category === examType);
-      if (filtered.length > 0) return filtered.slice(0, config.questionCount);
+      if (filtered.length > 0) {
+        const sliced = filtered.slice(0, config.questionCount);
+        // 🔑 KUNCI PERBAIKAN 1: Urutkan data riil dari database Supabase sebelum dikembalikan
+        return [...sliced].sort(sortSKD);
+      }
     }
   }
+
+  // Fallback ke Mock Data jika data database kosong
   const mock = examType === 'FULL' ? mockQuestions : mockQuestions.filter((q) => q.category === examType);
   const mappedMock = mock.map((q) => ({
     ...q,
@@ -71,7 +93,10 @@ async function fetchQuestionsForExam(examType: ExamType, packageId?: string): Pr
   })) as Question[];
   let padded = mappedMock;
   while (padded.length < config.questionCount) { padded = [...padded, ...padded].slice(0, config.questionCount); }
-  return padded.slice(0, config.questionCount);
+  
+  const slicedPadded = padded.slice(0, config.questionCount);
+  // 🔑 KUNCI PERBAIKAN 2: Urutkan mock data sebelum dikembalikan
+  return [...slicedPadded].sort(sortSKD);
 }
 
 function buildSession(examType: ExamType, questions: Question[], pkg?: ExamPackage): ExamSession {
