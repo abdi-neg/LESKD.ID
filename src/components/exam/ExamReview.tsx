@@ -1,3 +1,21 @@
+import React, { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { 
+  Target, 
+  CheckCircle, 
+  XCircle, 
+  ChevronUp, 
+  ChevronDown, 
+  BookOpen,
+  Search,
+  Filter,
+  RefreshCw
+} from 'lucide-react';
+
+// Tipe data & konstanta pendukung opsi jawaban
+type AnswerOption = 'A' | 'B' | 'C' | 'D' | 'E';
+const OPTIONS: AnswerOption[] = ['A', 'B', 'C', 'D', 'E'];
+
 // 🔑 KUNCI PERBAIKAN 1: Detektor Gambar yang Jauh Lebih Agresif & Sensitif
 const checkIsImageUrl = (text: any) => {
   if (!text || typeof text !== 'string') return false;
@@ -14,6 +32,9 @@ const checkIsImageUrl = (text: any) => {
   );
 };
 
+// ==========================================
+// COMPONENT: QuestionCard (Item Kartu Soal)
+// ==========================================
 function QuestionCard({
   question,
   answer,
@@ -326,5 +347,143 @@ function QuestionCard({
         )}
       </AnimatePresence>
     </motion.div>
+  );
+}
+
+// ==========================================
+// 👑 MAIN COMPONENT: ExamReview (Default Export)
+// ==========================================
+interface ExamReviewProps {
+  questions?: any[];
+  answers?: any[];
+  isLoading?: boolean;
+}
+
+export default function ExamReview({ questions = [], answers = [], isLoading = false }: ExamReviewProps) {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState<'ALL' | 'TIU' | 'TWK' | 'TKP'>('ALL');
+  const [selectedStatus, setSelectedStatus] = useState<'ALL' | 'CORRECT' | 'WRONG' | 'UNANSWERED'>('ALL');
+
+  // Menyelaraskan ID jawaban dengan ID Soal
+  const getAnswerForQuestion = (qId: string | number) => {
+    return answers.find((ans) => ans.question_id === qId || ans.questionId === qId);
+  };
+
+  // Logika Filter & Pencarian Soal
+  const filteredQuestions = questions.filter((q) => {
+    // 1. Filter Berdasarkan Pencarian Teks
+    const matchesSearch = q.question_text?.toLowerCase().includes(searchQuery.toLowerCase());
+
+    // 2. Filter Berdasarkan Kategori Materi
+    const matchesCategory = selectedCategory === 'ALL' || q.category === selectedCategory;
+
+    // 3. Filter Berdasarkan Status Benar/Salah/Kosong
+    const ans = getAnswerForQuestion(q.id);
+    const selected = ans?.selectedAnswer ?? null;
+    const isTKP = q.category === 'TKP';
+    
+    const isCorrect = !isTKP && selected !== null && selected === q.correct_answer;
+    const isUnanswered = selected === null;
+    const isWrong = !isTKP && selected !== null && selected !== q.correct_answer;
+
+    let matchesStatus = true;
+    if (selectedStatus === 'CORRECT') {
+      matchesStatus = isCorrect || (isTKP && (ans?.points > 0 || ans?.userGainedPoints > 0)); 
+    } else if (selectedStatus === 'WRONG') {
+      matchesStatus = isWrong;
+    } else if (selectedStatus === 'UNANSWERED') {
+      matchesStatus = isUnanswered;
+    }
+
+    return matchesSearch && matchesCategory && matchesStatus;
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center p-12 text-gray-500">
+        <RefreshCw className="w-8 h-8 animate-spin text-blue-600 mb-2" />
+        <p className="text-sm font-medium">Memuat data review ujian...</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Search & Filter Panel */}
+      <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm space-y-3">
+        <div className="relative">
+          <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Cari teks pertanyaan..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+          />
+        </div>
+
+        <div className="flex flex-wrap gap-2 items-center text-xs">
+          <div className="flex items-center gap-1 text-gray-500 font-medium mr-1">
+            <Filter className="w-3.5 h-3.5" />
+            <span>Filter:</span>
+          </div>
+          
+          {/* Tabs Materi */}
+          {['ALL', 'TWK', 'TIU', 'TKP'].map((cat) => (
+            <button
+              key={cat}
+              onClick={() => setSelectedCategory(cat as any)}
+              className={`px-3 py-1 rounded-full font-semibold transition-colors ${
+                selectedCategory === cat
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              {cat === 'ALL' ? 'Semua Materi' : cat}
+            </button>
+          ))}
+
+          <div className="h-4 w-[1px] bg-gray-200 mx-1 hidden sm:block" />
+
+          {/* Tabs Status Jawaban */}
+          {[
+            { id: 'ALL', label: 'Semua Status' },
+            { id: 'CORRECT', label: 'Benar' },
+            { id: 'WRONG', label: 'Salah' },
+            { id: 'UNANSWERED', label: 'Tidak Dijawab' },
+          ].map((stat) => (
+            <button
+              key={stat.id}
+              onClick={() => setSelectedStatus(stat.id as any)}
+              className={`px-3 py-1 rounded-md font-medium transition-colors ${
+                selectedStatus === stat.id
+                  ? 'bg-gray-800 text-white'
+                  : 'bg-gray-50 text-gray-500 border border-gray-200 hover:bg-gray-100'
+              }`}
+            >
+              {stat.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Daftar Soal */}
+      <div className="space-y-4">
+        {filteredQuestions.length > 0 ? (
+          filteredQuestions.map((q, idx) => (
+            <QuestionCard
+              key={q.id || idx}
+              question={q}
+              answer={getAnswerForQuestion(q.id)}
+              index={idx}
+            />
+          ))
+        ) : (
+          <div className="text-center py-12 bg-white rounded-2xl border border-gray-100 p-6">
+            <p className="text-sm text-gray-400 italic">Tidak ada soal yang cocok dengan kriteria pencarian.</p>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
