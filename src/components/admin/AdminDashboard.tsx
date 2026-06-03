@@ -12,8 +12,8 @@ import MasterResults from './MasterResults';
 import PackageManager from './PackageManager';
 import ManageAdmins from './ManageAdmins';
 import ManageParticipants from './ManageParticipants';
-// 🔑 PERBAIKAN: Mengubah menjadi Named Import dengan kurung kurawal agar proses build sukses
-import { ExamReview } from '../exam/ExamReview'; 
+// 🔑 PERBAIKAN: Mengubah menjadi Default Import tanpa {} agar proses build Vercel sukses
+import ExamReview from '../exam/ExamReview'; 
 
 type Tab = 'overview' | 'questions' | 'live' | 'results' | 'packages' | 'admins' | 'participants';
 
