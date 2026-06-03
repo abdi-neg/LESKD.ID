@@ -101,16 +101,6 @@ export function ExamEngine() {
     E: currentQuestion.option_e,
   };
 
-  // 🔑 KUNCI PERBAIKAN 1: Petakan URL Gambar Opsi A-E dari Supabase
-  // Sesuai konvensi, jika kolom gambar soal bernama `image_url`, opsi biasanya `option_a_image` atau `option_a_image_url`
-  const optionImages: Record<AnswerOption, string | undefined> = {
-    A: currentQuestion.option_a_image || currentQuestion.option_a_image_url,
-    B: currentQuestion.option_b_image || currentQuestion.option_b_image_url,
-    C: currentQuestion.option_c_image || currentQuestion.option_c_image_url,
-    D: currentQuestion.option_d_image || currentQuestion.option_d_image_url,
-    E: currentQuestion.option_e_image || currentQuestion.option_e_image_url,
-  };
-
   const categoryColors: Record<string, string> = {
     TIU: 'bg-blue-100 text-blue-700 font-semibold',
     TWK: 'bg-emerald-100 text-emerald-700 font-semibold',
@@ -189,6 +179,11 @@ export function ExamEngine() {
             <div className="space-y-3">
               {OPTIONS.map((option) => {
                 const isSelected = currentAnswer?.selectedAnswer === option;
+                const optionText = optionLabels[option] || '';
+
+                // 🔑 SELEKSI OTOMATIS: Deteksi apakah isi opsi merupakan link gambar dari Supabase Storage
+                const isImage = optionText.startsWith('http://') || optionText.startsWith('https://');
+
                 return (
                   <button
                     key={option}
@@ -207,19 +202,22 @@ export function ExamEngine() {
                       {option}
                     </span>
                     
-                    {/* 🔑 KUNCI PERBAIKAN 2: Bungkus teks & gambar ke dalam wrapper flex-col agar layout rapi vertikal */}
                     <div className="flex-1 flex flex-col gap-2">
-                      <span className={`text-[15px] leading-relaxed pt-0.5 ${isSelected ? 'text-indigo-900 font-medium' : 'text-gray-700'}`}>
-                        {optionLabels[option]}
-                      </span>
-                      
-                      {/* TAMPILKAN GAMBAR OPSI JIKA ADA DI DATABASE */}
-                      {optionImages[option] && (
+                      {/* JIKA INPUT TEXT BISA: Tampilkan string teks */}
+                      {!isImage ? (
+                        <span className={`text-[15px] leading-relaxed pt-0.5 ${isSelected ? 'text-indigo-900 font-medium' : 'text-gray-700'}`}>
+                          {optionText}
+                        </span>
+                      ) : (
+                        {/* JIKA INPUT GAMBAR: Sembunyikan link teks mentah, langsung ubah jadi tag img */}
                         <div className="rounded-lg overflow-hidden bg-gray-50 border max-w-full sm:max-w-md flex justify-start p-2 mt-1">
                           <img 
-                            src={optionImages[option]} 
+                            src={optionText} 
                             alt={`Gambar Opsi ${option}`} 
                             className="max-h-40 object-contain rounded"
+                            onError={(e) => {
+                              console.error(`Gagal memuat gambar opsi ${option}`, optionText);
+                            }}
                           />
                         </div>
                       )}
