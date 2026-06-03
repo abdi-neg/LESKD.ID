@@ -2,7 +2,7 @@ import { motion } from 'framer-motion';
 import { Clock, LogOut, MessageCircle } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 
-const WA_NUMBER = '6281234567890'; // Super Admin WA number
+const WA_NUMBER = '628124483868'; // Nomor Admin LESKD.ID Berhasil Diperbarui
 
 export default function WaitingRoom() {
   const { state, signOut } = useApp();
@@ -62,13 +62,14 @@ export default function WaitingRoom() {
             className="flex items-center justify-center gap-2 w-full py-3.5 bg-[#25D366] hover:bg-[#20BA5C] text-white font-semibold rounded-2xl transition-colors mb-3"
           >
             <MessageCircle className="w-5 h-5" />
-            Hubungi Super Admin via WhatsApp
+            Hubungi Admin Via Whatsapp
           </a>
 
           <button
             onClick={signOut}
             className="w-full py-3 text-gray-500 hover:text-gray-700 text-sm font-medium border border-gray-200 rounded-2xl hover:bg-gray-50 transition-colors"
           >
+            <button />
             Keluar dari Akun
           </button>
         </motion.div>
