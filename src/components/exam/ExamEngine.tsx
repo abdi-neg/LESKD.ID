@@ -203,14 +203,15 @@ export function ExamEngine() {
                     </span>
                     
                     <div className="flex-1 flex flex-col gap-2">
-                      {/* JIKA INPUT TEXT BISA: Tampilkan string teks */}
+                      {/* JIKA INPUT TEXT BIASA: Tampilkan string teks */}
                       {!isImage ? (
                         <span className={`text-[15px] leading-relaxed pt-0.5 ${isSelected ? 'text-indigo-900 font-medium' : 'text-gray-700'}`}>
                           {optionText}
                         </span>
                       ) : (
-                        {/* JIKA INPUT GAMBAR: Sembunyikan link teks mentah, langsung ubah jadi tag img */}
+                        /* JIKA INPUT GAMBAR: Ubah link teks mentah menjadi tag img */
                         <div className="rounded-lg overflow-hidden bg-gray-50 border max-w-full sm:max-w-md flex justify-start p-2 mt-1">
+                          {/* Komentar aman di dalam JSX element */}
                           <img 
                             src={optionText} 
                             alt={`Gambar Opsi ${option}`} 
