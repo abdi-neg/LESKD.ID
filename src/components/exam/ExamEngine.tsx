@@ -108,9 +108,12 @@ export function ExamEngine() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col select-none antialiased text-gray-800">
+    /* 1. Mengunci tinggi penuh layar monitor dan mematikan scroll global */
+    <div className="h-screen bg-gray-50 flex flex-col select-none antialiased text-gray-800 overflow-hidden">
+      
       {/* HEADER NAVIGASI UJIAN */}
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-40 px-4 h-16 flex items-center justify-between shadow-sm">
+      {/* 2. Menambahkan shrink-0 agar tinggi header tidak terdistorsi */}
+      <header className="bg-white border-b border-gray-200 shrink-0 px-4 h-16 flex items-center justify-between shadow-sm z-40">
         <div className="flex items-center gap-3">
           <button 
             onClick={() => setSidebarOpen(!sidebarOpen)}
@@ -139,6 +142,8 @@ export function ExamEngine() {
 
       {/* AREA UTAMA */}
       <div className="flex-1 flex overflow-hidden relative">
+        
+        {/* LAYER 1 (KIRI): Area Soal & Pilihan Jawaban */}
         <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8">
           <div className="max-w-3xl mx-auto space-y-6">
             
@@ -180,8 +185,6 @@ export function ExamEngine() {
               {OPTIONS.map((option) => {
                 const isSelected = currentAnswer?.selectedAnswer === option;
                 const optionText = optionLabels[option] || '';
-
-                // 🔑 SELEKSI OTOMATIS: Deteksi apakah isi opsi merupakan link gambar dari Supabase Storage
                 const isImage = optionText.startsWith('http://') || optionText.startsWith('https://');
 
                 return (
@@ -203,15 +206,12 @@ export function ExamEngine() {
                     </span>
                     
                     <div className="flex-1 flex flex-col gap-2">
-                      {/* JIKA INPUT TEXT BIASA: Tampilkan string teks */}
                       {!isImage ? (
                         <span className={`text-[15px] leading-relaxed pt-0.5 ${isSelected ? 'text-indigo-900 font-medium' : 'text-gray-700'}`}>
                           {optionText}
                         </span>
                       ) : (
-                        /* JIKA INPUT GAMBAR: Ubah link teks mentah menjadi tag img */
                         <div className="rounded-lg overflow-hidden bg-gray-50 border max-w-full sm:max-w-md flex justify-start p-2 mt-1">
-                          {/* Komentar aman di dalam JSX element */}
                           <img 
                             src={optionText} 
                             alt={`Gambar Opsi ${option}`} 
@@ -252,11 +252,12 @@ export function ExamEngine() {
           </div>
         </main>
 
-        {/* SIDEBAR NOMOR SOAL */}
-        <aside className={`fixed inset-y-16 right-0 w-80 bg-white border-l border-gray-200 p-4 transform transition-transform duration-300 lg:sticky lg:translate-x-0 z-30 flex flex-col justify-between ${
+        {/* LAYER 2 (KANAN): Sidebar Kotak Nomor Soal */}
+        {/* 3. Mengubah fixed inset-y-16 menjadi fixed top-16 bottom-0 dan menggunakan lg:static lg:h-full pada layar besar */}
+        <aside className={`fixed top-16 bottom-0 right-0 w-80 bg-white border-l border-gray-200 p-4 transform transition-transform duration-300 lg:static lg:h-full lg:translate-x-0 z-30 flex flex-col justify-between ${
           sidebarOpen ? 'translate-x-0' : 'translate-x-full'
         }`}>
-          <div className="space-y-4 overflow-y-auto flex-1">
+          <div className="space-y-4 overflow-y-auto flex-1 pr-1">
             <div className="flex items-center justify-between lg:hidden">
               <span className="font-bold text-gray-700">Daftar Soal</span>
               <button onClick={() => setSidebarOpen(false)} className="p-1 rounded-md hover:bg-gray-100">
