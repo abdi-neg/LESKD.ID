@@ -43,18 +43,15 @@ export function packageTypeToExamType(pt: string): ExamType {
   return 'FULL';
 }
 
-// 📌 FUNGSI UTAMA UNTUK AMBIL & URUTKAN SOAL SESUAI STANDAR CAT BKN
 async function fetchQuestionsForExam(examType: ExamType, packageId?: string): Promise<Question[]> {
   const config = EXAM_CONFIGS[examType];
   
-  // Ketetapan bobot urutan kategori SKD
   const categoryWeight: Record<string, number> = {
-    'TWK': 1, // Urutan Pertama (1-30)
-    'TIU': 2, // Urutan Kedua (31-65)
-    'TKP': 3  // Urutan Ketiga (66-110)
+    'TWK': 1,
+    'TIU': 2,
+    'TKP': 3 
   };
 
-  // Fungsi pengurut otomatis (Memanfaatkan Stable Sort bawaan V8 JavaScript Engine)
   const sortSKD = (a: Question, b: Question) => {
     const weightA = categoryWeight[a.category?.toUpperCase()] || 99;
     const weightB = categoryWeight[b.category?.toUpperCase()] || 99;
@@ -74,14 +71,11 @@ async function fetchQuestionsForExam(examType: ExamType, packageId?: string): Pr
       })) as Question[];
       const filtered = examType === 'FULL' ? mappedData : mappedData.filter((q) => q.category === examType);
       if (filtered.length > 0) {
-        const sliced = filtered.slice(0, config.questionCount);
-        // 🔑 KUNCI PERBAIKAN 1: Urutkan data riil dari database Supabase sebelum dikembalikan
-        return [...sliced].sort(sortSKD);
+        return [...filtered.slice(0, config.questionCount)].sort(sortSKD);
       }
     }
   }
 
-  // Fallback ke Mock Data jika data database kosong
   const mock = examType === 'FULL' ? mockQuestions : mockQuestions.filter((q) => q.category === examType);
   const mappedMock = mock.map((q) => ({
     ...q,
@@ -94,9 +88,7 @@ async function fetchQuestionsForExam(examType: ExamType, packageId?: string): Pr
   let padded = mappedMock;
   while (padded.length < config.questionCount) { padded = [...padded, ...padded].slice(0, config.questionCount); }
   
-  const slicedPadded = padded.slice(0, config.questionCount);
-  // 🔑 KUNCI PERBAIKAN 2: Urutkan mock data sebelum dikembalikan
-  return [...slicedPadded].sort(sortSKD);
+  return [...padded.slice(0, config.questionCount)].sort(sortSKD);
 }
 
 function buildSession(examType: ExamType, questions: Question[], pkg?: ExamPackage): ExamSession {
@@ -175,17 +167,33 @@ function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, authLoading: action.payload };
     case 'SET_PROFILE': {
       if (!action.payload) return { ...state, profile: null, currentView: 'landing', authLoading: false };
+      
+      // 🔑 KUNCI MEMORI 1: Ambil data backup posisi terakhir dari localStorage pasca refresh halaman
+      const savedView = localStorage.getItem('leskd_saved_view') as AppView | null;
+      const savedReviewId = localStorage.getItem('leskd_saved_review_id');
+      
       const examActive = state.currentView === 'exam-engine' || state.currentView === 'exam-results';
+      let targetView = examActive ? state.currentView : getViewForProfile(action.payload);
+      
+      // Kembalikan ke posisi semula jika tidak sedang di halaman pengerjaan ujian
+      if (!examActive && savedView && savedView !== 'landing') {
+        targetView = savedView;
+      }
+
       return {
         ...state,
         profile: action.payload,
         authLoading: false,
-        currentView: examActive ? state.currentView : getViewForProfile(action.payload),
+        currentView: targetView,
+        reviewResultId: savedReviewId || state.reviewResultId,
       };
     }
     case 'LOGOUT':
       localStorage.removeItem('exam_active_session_id');
       localStorage.removeItem('active_db_result_id'); 
+      // 🔑 KUNCI MEMORI 2: Hapus backup navigasi saat user sengaja keluar (logout)
+      localStorage.removeItem('leskd_saved_view');
+      localStorage.removeItem('leskd_saved_review_id');
       return { ...initialState, authLoading: false };
     case 'SET_VIEW':
       return { ...state, currentView: action.payload };
@@ -265,7 +273,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(appReducer, initialState);
   const [isSyncLocked, setIsSyncLocked] = useState(false);
 
-  // 🔄 Realtime Auto Save Sync Effect (SUDAH DIPROTEKSI BACKUP)
+  // 🔑 KUNCI MEMORI 3: Jalankan perekaman otomatis setiap kali terjadi perpindahan halaman/view review
+  useEffect(() => {
+    if (state.currentView && state.currentView !== 'landing') {
+      localStorage.setItem('leskd_saved_view', state.currentView);
+    }
+    if (state.reviewResultId) {
+      localStorage.setItem('leskd_saved_review_id', state.reviewResultId);
+    } else {
+      localStorage.removeItem('leskd_saved_review_id');
+    }
+  }, [state.currentView, state.reviewResultId]);
+
+  // 🔄 Realtime Auto Save Sync Effect
   useEffect(() => {
     const session = state.examSession;
     if (!session || session.status === 'completed' || isSyncLocked) return;
@@ -297,7 +317,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [state.examSession?.answers, state.examSession?.status, isSyncLocked]);
 
-  // 🔄 1. Effect Jalur Utama: Mengurangi waktu 1 detik secara konsisten di background
+  // 🔄 1. Effect Jalur Utama Pengurangan Timer Waktu Ujian
   useEffect(() => {
     if (!state.examSession || state.examSession.status !== 'in_progress') return;
     const timer = setInterval(() => {
@@ -306,7 +326,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(timer);
   }, [state.examSession?.status, state.examSession?.id]);
 
-  // 🚨 2. Effect Satpam Otomatis: Memaksa submit ujian jika waktu menyentuh angka 0 (Anti Bocor)
+  // 🚨 2. Effect Satpam Otomatis Paksa Submit Ujian
   useEffect(() => {
     if (
       state.examSession && 
@@ -327,14 +347,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } catch { dispatch({ type: 'SET_PROFILE', payload: null }); }
   }
 
-  // 🛠️ FUNGSI START EXAM (SUDAH DIPROTEKSI BACKUP)
+  // 🛠️ FUNGSI START EXAM
   async function startExam(examType: ExamType, pkg?: ExamPackage) {
     if (isStartingExam) return;
 
     try {
       isStartingExam = true;
       setIsSyncLocked(false); 
-      console.log("🚀 [RADAR] startExam terpicu! Sistem membuat baris baru (in_progress).");
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         alert("Sesi login tidak valid.");
@@ -395,44 +414,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  // 🛠️ FUNGSI SUBMIT EXAM (SUDAH DIPROTEKSI CADANGAN ANTI-BATAL KERAS)
+  // 🛠️ FUNGSI SUBMIT EXAM
   async function submitExamSession() {
     const session = state.examSession;
-
-    console.log("🔍 [SUBMIT] ========================================");
-    console.log("🔍 [SUBMIT] Fungsi submitExamSession mulai dieksekusi.");
-    console.log("🔍 [SUBMIT] Nilai session saat ini:", session);
-    console.log("🔍 [SUBMIT] Nilai isSyncLocked saat ini:", isSyncLocked);
-
-    if (!session) {
-      console.log("❌ [SUBMIT] Batal: Sesi ujian (session) kosong atau null!");
-      return;
-    }
-    if (isSyncLocked) {
-      console.log("❌ [SUBMIT] Batal: Fungsi diblokir karena isSyncLocked bernilai TRUE!");
-      return;
-    }
+    if (!session || isSyncLocked) return;
 
     const dbResultId = (session as any).resultId || localStorage.getItem('active_db_result_id');
-    console.log("🔍 [SUBMIT] dbResultId yang terbaca di session/backup:", dbResultId);
-
     if (!dbResultId) {
-      console.log("❌ [SUBMIT] Batal Keras: dbResultId TIDAK DITEMUKAN di dalam session (Undefined/Null)!");
       alert("Sesi ID database hilang. Silakan kembali ke dashboard dan buat ujian baru.");
       return;
     }
 
     try {
-      console.log("🔒 [SUBMIT] Mengunci sinkronisasi (setIsSyncLocked -> true)...");
       setIsSyncLocked(true);
-
       const scores = calculateScores(session);
       const isPassed = checkPassedStatus(session.examType, scores);
-      console.log("📊 [SUBMIT] Skor berhasil dihitung:", scores, " | Lulus:", isPassed);
-
-      console.log("📡 [SUBMIT] Mengirimkan perintah UPDATE ke Supabase untuk ID:", dbResultId);
       
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('exam_results')
         .update({
           score_tiu: scores.tiu,
@@ -445,20 +443,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
           completed_at: new Date().toISOString(),
           duration_seconds: Math.max(0, (EXAM_CONFIGS[session.examType].timeMinutes * 60) - session.timeRemaining)
         })
-        .eq('id', dbResultId)
-        .select();
+        .eq('id', dbResultId);
 
-      if (error) {
-        console.error("❌ [SUBMIT] Supabase menolak update! Error detail:", error);
-        throw error;
-      }
-
-      console.log("✅ [SUBMIT] Supabase SUKSES mengubah baris menjadi 'completed'!", data);
+      if (error) throw error;
 
       clearExamProgress(session.id);
       localStorage.removeItem('exam_active_session_id');
       localStorage.removeItem('active_db_result_id'); 
-      console.log("🧹 [SUBMIT] Cache lokal exam progress dibersihkan.");
 
       const completedSession: ExamSession = {
         ...session,
@@ -467,12 +458,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         scores
       };
 
-      console.log("🧩 [SUBMIT] Mengirim DISPATCH FINALIZE_EXAM_STORE ke Reducer...");
       dispatch({ type: 'FINALIZE_EXAM_STORE', payload: completedSession });
-      console.log("🔍 [SUBMIT] ========================================");
 
     } catch (err) {
-      console.error("❌ [SUBMIT] Terjadi kegagalan fatal pada blok catch:", err);
+      console.error("Terjadi kegagalan submit:", err);
       setIsSyncLocked(false); 
       alert("Gagal mengirimkan lembar jawaban ke server. Silakan coba klik submit kembali.");
     }
@@ -487,7 +476,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } catch { return false; }
   }
 
-  // 🔄 INITIAL LOAD EFFECT (SUDAH DIPROTEKSI PEMULIHAN BACKUP CADANGAN)
+  // 🔄 INITIAL LOAD EFFECT
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
@@ -495,7 +484,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (savedId) {
           const saved = loadExamProgress(savedId);
           if (saved && (saved as any).status !== 'completed') {
-            
             const backupResultId = localStorage.getItem('active_db_result_id') || undefined;
 
             fetchQuestionsForExam(saved.examType, saved.packageId).then((questions) => {
