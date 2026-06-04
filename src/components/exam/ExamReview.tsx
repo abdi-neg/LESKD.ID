@@ -13,7 +13,7 @@ import {
   Loader2
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { supabase } from '../../lib/supabase'; // 🚀 Akses langsung ke database untuk ambil snapshot pembahasan
+import { supabase } from '../../lib/supabase';
 
 type AnswerOption = 'A' | 'B' | 'C' | 'D' | 'E';
 const OPTIONS: AnswerOption[] = ['A', 'B', 'C', 'D', 'E'];
@@ -117,7 +117,7 @@ function QuestionCard({ question, answer, index, forceExpand }: any) {
 }
 
 // ==========================================
-// MAIN COMPONENT (NAMED EXPORT) 🔑 SINKRON DENGAN APP.TSX
+// MAIN COMPONENT (NAMED EXPORT)
 // ==========================================
 export function ExamReview({ questions: propQuestions, answers: propAnswers }: any) {
   const contextData = useApp();
@@ -128,19 +128,15 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
   const [selectedCategory, setSelectedCategory] = useState<'ALL' | 'TIU' | 'TWK' | 'TKP'>('ALL');
   const [globalExpand, setGlobalExpand] = useState(false);
 
-  // State Manajemen Penarikan Data dari Supabase
   const [supabaseQuestions, setSupabaseQuestions] = useState<any[]>([]);
   const [supabaseAnswers, setSupabaseAnswers] = useState<any>({});
   const [isFetchingDb, setIsFetchingDb] = useState(false);
   const [diagnosticMessage, setDiagnosticMessage] = useState('Memeriksa ketersediaan data ulasan...');
 
-  // 1. Ambil data dari memori aplikasi (jika ada)
   const stateQuestions = state?.examSession?.questions || state?.activeQuestions || state?.questions || [];
   const stateAnswers = state?.examSession?.answers || state?.activeAnswers || state?.answers || {};
 
-  // 2. Efek Otomatis Menarik Ulang Snapshot dari Supabase jika State Kosong
   useEffect(() => {
-    // Jika data sudah di-supply lewat props atau state global, tidak perlu menembak DB
     if ((propQuestions && propQuestions.length > 0) || stateQuestions.length > 0) {
       setDiagnosticMessage('Data berhasil dibaca dari State Lokal Aplikasi! ✅');
       return;
@@ -150,7 +146,6 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
       setIsFetchingDb(true);
       setDiagnosticMessage('Mendeteksi lembar pembahasan kosong. Mencoba menarik data langsung dari database Supabase...');
       try {
-        // Cari ID hasil ujian dari berbagai kemungkinan penamaan state
         const resultId = state?.activeResultId || state?.selectedResultId || state?.reviewId || (state?.examSession as any)?.resultId;
         
         let query = supabase.from('exam_results').select('review_snapshot, id');
@@ -158,10 +153,8 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
         if (resultId) {
           query = query.eq('id', resultId);
         } else if (state?.profile?.id) {
-          // Jika ID hilang, ambil otomatis hasil ujian terselesaikan paling baru milik user aktif
           query = query.eq('participant_id', state.profile.id).order('completed_at', { ascending: false }).limit(1);
         } else {
-          // Fallback darurat terakhir: ambil baris teranyar di sistem
           query = query.order('completed_at', { ascending: false }).limit(1);
         }
 
@@ -197,7 +190,6 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
     loadSnapshotFromSupabase();
   }, [state, propQuestions, stateQuestions.length]);
 
-  // Konsolidasikan data akhir yang didapatkan dari berbagai sumber (Prop > State > Supabase Fetch)
   const finalQuestions = (propQuestions && propQuestions.length > 0) ? propQuestions :
                          (stateQuestions.length > 0) ? stateQuestions : supabaseQuestions;
 
@@ -246,7 +238,7 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
         )}
       </div>
 
-      {/* 🕵️‍♂️ PANEL MONITOR DATA (PASTI TEMBUS & MUNCUL SEKARANG) */}
+      {/* PANEL MONITOR DATA */}
       <div className="bg-gray-900 text-emerald-400 p-4 rounded-2xl font-mono text-[11px] space-y-2 border border-gray-800 shadow-inner">
         <div className="text-white font-bold text-xs border-b border-gray-800 pb-1 mb-1 flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
@@ -312,11 +304,6 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
     </div>
   );
 }
-</div>
-        )}
-      </div>
-    </div>
-  );
-}
 
-export default ExamReview; // <-- Tambahkan ini di bawah kurung kurawal penutup komponen
+// 🔑 DEFAULT EXPORT UNTUK SINKRONISASI ADMIN DASHBOARD
+export default ExamReview;
