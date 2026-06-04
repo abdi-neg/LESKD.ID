@@ -1,23 +1,10 @@
-import { useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { Clock, AlertTriangle } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 
 export default function ExamTimer() {
-  const { state, dispatch } = useApp();
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const { state } = useApp(); // Hanya membaca state global
   const timeRemaining = state.examSession?.timeRemaining ?? 0;
-  const isRunning = state.examSession?.status === 'in_progress';
-
-  useEffect(() => {
-    if (!isRunning) return;
-    intervalRef.current = setInterval(() => {
-      dispatch({ type: 'TICK_TIMER' });
-    }, 1000);
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, [isRunning, dispatch]);
 
   const hours = Math.floor(timeRemaining / 3600);
   const minutes = Math.floor((timeRemaining % 3600) / 60);
