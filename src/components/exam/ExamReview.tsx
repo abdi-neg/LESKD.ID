@@ -171,8 +171,8 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
         }
       } catch (err) {
         console.error(err);
-      } finaly {
-        setIsFetchingDb(false);
+      } finally {
+        setIsFetchingDb(false); // 🔑 PERBAIKAN: Sekarang ejaan "finally" sudah benar dan legal
       }
     }
 
