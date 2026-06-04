@@ -9,20 +9,21 @@ import {
   BookOpen,
   Search,
   Filter,
-  RefreshCw
+  RefreshCw,
+  ArrowLeft // 🔑 KUNCI PERBAIKAN 1: Mengembalikan icon tombol kembali
 } from 'lucide-react';
+import { useApp } from '../context/AppContext'; // 🔑 KUNCI PERBAIKAN 2: Hubungkan ke state global untuk navigasi back
 
 // Tipe data & konstanta pendukung opsi jawaban
 type AnswerOption = 'A' | 'B' | 'C' | 'D' | 'E';
 const OPTIONS: AnswerOption[] = ['A', 'B', 'C', 'D', 'E'];
 
-// 🔑 KUNCI PERBAIKAN 1: Detektor Gambar yang Jauh Lebih Agresif & Sensitif
+// Detektor Gambar Otomatis
 const checkIsImageUrl = (text: any) => {
   if (!text || typeof text !== 'string') return false;
   
   const str = text.trim().toLowerCase();
   
-  // Deteksi jika mengandung protokol web, keyword storage, atau ekstensi gambar umum
   return (
     str.includes('http://') || 
     str.includes('https://') || 
@@ -233,13 +234,6 @@ function QuestionCard({
 
                     const isTextAnImage = checkIsImageUrl(text);
 
-                    // 🔑 KUNCI PERBAIKAN 2: Log debugging untuk melihat data asli dari Database
-                    console.log(`[DEBUG SOAL #${index + 1} OPSI ${opt}]`, {
-                      textAsli: text,
-                      tipeData: typeof text,
-                      apakahDeteksiGambar: isTextAnImage
-                    });
-
                     let bgClass = 'bg-gray-50 border border-transparent';
                     if (isTKP) {
                       if (isChosen) bgClass = 'bg-amber-50/70 border border-amber-300';
@@ -261,14 +255,12 @@ function QuestionCard({
                         </div>
 
                         <div className="flex-1 flex flex-col gap-1.5">
-                          {/* 🔑 KUNCI PERBAIKAN 3: Render Element Gambar Otomatis jika lolos detektor */}
                           {isTextAnImage ? (
                             <div className="rounded-xl overflow-hidden bg-white border border-gray-100 max-w-full sm:max-w-md flex justify-start p-2 shadow-sm">
                               <img 
                                 src={text} 
                                 alt={`Gambar Opsi ${opt}`} 
                                 className="max-h-36 object-contain rounded-lg"
-                                onError={(e) => console.error(`Gagal me-render gambar opsi ${opt}:`, text)}
                               />
                             </div>
                           ) : (
@@ -351,33 +343,61 @@ function QuestionCard({
 }
 
 // ==========================================
-// 👑 MAIN COMPONENT: ExamReview (Default Export)
+// MAIN COMPONENT: ExamReview (Default Export)
 // ==========================================
 interface ExamReviewProps {
   questions?: any[];
-  answers?: any[];
+  answers?: any | any[];
   isLoading?: boolean;
+  onBack?: () => void;
 }
 
-export default function ExamReview({ questions = [], answers = [], isLoading = false }: ExamReviewProps) {
+export default function ExamReview({ questions = [], answers = [], isLoading = false, onBack }: ExamReviewProps) {
+  const { state, dispatch } = useApp(); // Integrasi hook global
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<'ALL' | 'TIU' | 'TWK' | 'TKP'>('ALL');
   const [selectedStatus, setSelectedStatus] = useState<'ALL' | 'CORRECT' | 'WRONG' | 'UNANSWERED'>('ALL');
 
-  // Menyelaraskan ID jawaban dengan ID Soal
+  // 🔑 KUNCI PERBAIKAN 3: Handler Jawaban Multi-Format (Aman membaca Array maupun Object Record)
   const getAnswerForQuestion = (qId: string | number) => {
-    return answers.find((ans) => ans.question_id === qId || ans.questionId === qId);
+    if (!answers) return undefined;
+    
+    if (Array.isArray(answers)) {
+      return answers.find((ans) => ans?.question_id === qId || ans?.questionId === qId || ans?.id === qId);
+    }
+    
+    if (typeof answers === 'object') {
+      if (answers[qId]) return answers[qId];
+      const values = Object.values(answers);
+      return values.find((ans: any) => ans?.questionId === qId || ans?.question_id === qId);
+    }
+    
+    return undefined;
+  };
+
+  // 🔑 KUNCI PERBAIKAN 4: Logika Fungsi Navigasi Tombol Kembali Dinamis
+  const handleBack = () => {
+    if (onBack) {
+      onBack();
+      return;
+    }
+    try {
+      if (state?.examSession) {
+        dispatch({ type: 'SET_VIEW', payload: 'exam-results' });
+      } else {
+        const isAdmin = state?.profile?.role === 'admin' || state?.profile?.role === 'super_admin';
+        dispatch({ type: 'SET_VIEW', payload: isAdmin ? 'admin-dashboard' : 'participant-dashboard' });
+      }
+    } catch (e) {
+      console.error("Gagal menavigasi kembali:", e);
+    }
   };
 
   // Logika Filter & Pencarian Soal
   const filteredQuestions = questions.filter((q) => {
-    // 1. Filter Berdasarkan Pencarian Teks
     const matchesSearch = q.question_text?.toLowerCase().includes(searchQuery.toLowerCase());
-
-    // 2. Filter Berdasarkan Kategori Materi
     const matchesCategory = selectedCategory === 'ALL' || q.category === selectedCategory;
 
-    // 3. Filter Berdasarkan Status Benar/Salah/Kosong
     const ans = getAnswerForQuestion(q.id);
     const selected = ans?.selectedAnswer ?? null;
     const isTKP = q.category === 'TKP';
@@ -388,7 +408,8 @@ export default function ExamReview({ questions = [], answers = [], isLoading = f
 
     let matchesStatus = true;
     if (selectedStatus === 'CORRECT') {
-      matchesStatus = isCorrect || (isTKP && (ans?.points > 0 || ans?.userGainedPoints > 0)); 
+      const tkpPoints = selected ? (Number(q[`points_${selected.toLowerCase()}` as keyof typeof q] ?? 0)) : 0;
+      matchesStatus = isCorrect || (isTKP && ((ans?.points > 0) || (ans?.userGainedPoints > 0) || tkpPoints > 0)); 
     } else if (selectedStatus === 'WRONG') {
       matchesStatus = isWrong;
     } else if (selectedStatus === 'UNANSWERED') {
@@ -409,6 +430,21 @@ export default function ExamReview({ questions = [], answers = [], isLoading = f
 
   return (
     <div className="space-y-6">
+      {/* 🔑 KUNCI PERBAIKAN 5: Render UI Blok Header & Tombol Back Baru */}
+      <div className="flex items-center gap-3 bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
+        <button
+          onClick={handleBack}
+          className="p-2 hover:bg-gray-100 rounded-xl transition-colors text-gray-600 flex items-center justify-center border border-gray-100"
+          title="Kembali"
+        >
+          <ArrowLeft className="w-5 h-5" />
+        </button>
+        <div>
+          <h1 className="text-base font-bold text-gray-800">Pembahasan & Review Ujian</h1>
+          <p className="text-xs text-gray-500">Evaluasi lembar kerja Anda dan pelajari solusi jawaban</p>
+        </div>
+      </div>
+
       {/* Search & Filter Panel */}
       <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm space-y-3">
         <div className="relative">
