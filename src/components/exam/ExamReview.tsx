@@ -312,3 +312,11 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
     </div>
   );
 }
+</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export default ExamReview; // <-- Tambahkan ini di bawah kurung kurawal penutup komponen
