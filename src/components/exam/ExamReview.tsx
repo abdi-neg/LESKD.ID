@@ -131,20 +131,17 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
   const [supabaseQuestions, setSupabaseQuestions] = useState<any[]>([]);
   const [supabaseAnswers, setSupabaseAnswers] = useState<any>({});
   const [isFetchingDb, setIsFetchingDb] = useState(false);
-  const [diagnosticMessage, setDiagnosticMessage] = useState('Memeriksa ketersediaan data ulasan...');
 
   const stateQuestions = state?.examSession?.questions || state?.activeQuestions || state?.questions || [];
   const stateAnswers = state?.examSession?.answers || state?.activeAnswers || state?.answers || {};
 
   useEffect(() => {
     if ((propQuestions && propQuestions.length > 0) || stateQuestions.length > 0) {
-      setDiagnosticMessage('Data berhasil dibaca dari State Lokal Aplikasi! ✅');
       return;
     }
 
     async function loadSnapshotFromSupabase() {
       setIsFetchingDb(true);
-      setDiagnosticMessage('Mendeteksi lembar pembahasan kosong. Mencoba menarik data langsung dari database Supabase...');
       try {
         const resultId = state?.activeResultId || state?.selectedResultId || state?.reviewId || (state?.examSession as any)?.resultId;
         
@@ -160,10 +157,7 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
 
         const { data, error } = await query.maybeSingle();
         
-        if (error) {
-          setDiagnosticMessage(`Gagal menarik database: ${error.message}`);
-          return;
-        }
+        if (error) return;
 
         if (data && data.review_snapshot) {
           const snapshot = typeof data.review_snapshot === 'string' 
@@ -173,16 +167,11 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
           if (snapshot && Array.isArray(snapshot.questions)) {
             setSupabaseQuestions(snapshot.questions);
             setSupabaseAnswers(snapshot.answers || {});
-            setDiagnosticMessage(`Sukses menyedot ${snapshot.questions.length} soal beserta pembahasan langsung dari Supabase! ✅`);
-          } else {
-            setDiagnosticMessage('Kunci review_snapshot ditemukan di DB, tetapi isi data di dalamnya rusak/bukan array.');
           }
-        } else {
-          setDiagnosticMessage('Gagal: Kolom review_snapshot untuk baris ujian ini kosong di database.');
         }
-      } catch (err: any) {
-        setDiagnosticMessage(`Error Sistem: ${err.message || err}`);
-      } finally {
+      } catch (err) {
+        console.error(err);
+      } finaly {
         setIsFetchingDb(false);
       }
     }
@@ -236,16 +225,6 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
             {globalExpand ? 'Tutup Semua' : 'Buka Semua'}
           </button>
         )}
-      </div>
-
-      {/* PANEL MONITOR DATA */}
-      <div className="bg-gray-900 text-emerald-400 p-4 rounded-2xl font-mono text-[11px] space-y-2 border border-gray-800 shadow-inner">
-        <div className="text-white font-bold text-xs border-b border-gray-800 pb-1 mb-1 flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-          <span>PANEL AUTOMATIC DATA RESOLVER</span>
-        </div>
-        <div className="text-amber-300">• Status Sistem: {diagnosticMessage}</div>
-        <div>• Total Soal Terdeteksi: {finalQuestions.length} item | Lolos Filter: {filteredQuestions.length} item</div>
       </div>
 
       {/* Filter Panel */}
