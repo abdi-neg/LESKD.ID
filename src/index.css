@@ -2,29 +2,27 @@
 @tailwind components;
 @tailwind utilities;
 
-.scrollbar-thin {
+/* Menghapus warna cokelat pekat secara global di seluruh aplikasi */
+::-webkit-scrollbar {
+  width: 6px !important;
+  height: 6px !important;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: rgba(156, 163, 175, 0.2) !important;
+  border-radius: 9999px !important;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(156, 163, 175, 0.45) !important;
+}
+
+/* Untuk Firefox global */
+* {
   scrollbar-width: thin;
-  /* Firefox: Menggunakan warna abu-abu transparan agar samar */
   scrollbar-color: rgba(156, 163, 175, 0.2) transparent;
-}
-
-.scrollbar-thin::-webkit-scrollbar {
-  width: 5px; /* Ukuran pas, tidak terlalu tebal dan tidak terlalu tipis */
-  height: 5px;
-}
-
-.scrollbar-thin::-webkit-scrollbar-track {
-  background: transparent; /* Track tetap transparan total */
-}
-
-.scrollbar-thin::-webkit-scrollbar-thumb {
-  /* Menggunakan RGBA dengan opacity 0.18 (sangat samar-samar) */
-  background-color: rgba(156, 163, 175, 0.18); 
-  border-radius: 9999px;
-  transition: background-color 0.2s ease;
-}
-
-.scrollbar-thin::-webkit-scrollbar-thumb:hover {
-  /* Warna akan sedikit menebal hanya saat kursor user menyentuh scrollbar */
-  background-color: rgba(156, 163, 175, 0.45);
 }
