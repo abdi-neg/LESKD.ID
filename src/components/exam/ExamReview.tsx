@@ -10,9 +10,9 @@ import {
   Search,
   Filter,
   RefreshCw,
-  ArrowLeft // 🔑 KUNCI PERBAIKAN 1: Mengembalikan icon tombol kembali
+  ArrowLeft 
 } from 'lucide-react';
-import { useApp } from '../context/AppContext'; // 🔑 KUNCI PERBAIKAN 2: Hubungkan ke state global untuk navigasi back
+import { useApp } from '../../context/AppContext'; // 🛠️ PAS PATH FIX: Naik 2 tingkat ke folder src
 
 // Tipe data & konstanta pendukung opsi jawaban
 type AnswerOption = 'A' | 'B' | 'C' | 'D' | 'E';
@@ -353,12 +353,12 @@ interface ExamReviewProps {
 }
 
 export default function ExamReview({ questions = [], answers = [], isLoading = false, onBack }: ExamReviewProps) {
-  const { state, dispatch } = useApp(); // Integrasi hook global
+  const { state, dispatch } = useApp();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<'ALL' | 'TIU' | 'TWK' | 'TKP'>('ALL');
   const [selectedStatus, setSelectedStatus] = useState<'ALL' | 'CORRECT' | 'WRONG' | 'UNANSWERED'>('ALL');
 
-  // 🔑 KUNCI PERBAIKAN 3: Handler Jawaban Multi-Format (Aman membaca Array maupun Object Record)
+  // Handler Jawaban Multi-Format
   const getAnswerForQuestion = (qId: string | number) => {
     if (!answers) return undefined;
     
@@ -375,7 +375,7 @@ export default function ExamReview({ questions = [], answers = [], isLoading = f
     return undefined;
   };
 
-  // 🔑 KUNCI PERBAIKAN 4: Logika Fungsi Navigasi Tombol Kembali Dinamis
+  // Logika Navigasi Tombol Kembali
   const handleBack = () => {
     if (onBack) {
       onBack();
@@ -430,7 +430,7 @@ export default function ExamReview({ questions = [], answers = [], isLoading = f
 
   return (
     <div className="space-y-6">
-      {/* 🔑 KUNCI PERBAIKAN 5: Render UI Blok Header & Tombol Back Baru */}
+      {/* Header & Tombol Back */}
       <div className="flex items-center gap-3 bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
         <button
           onClick={handleBack}
