@@ -1,5 +1,5 @@
 import { createContext, useContext, useReducer, useEffect, ReactNode, useState } from 'react';
-import { AppState, AppView, ExamSession, Profile, Question, ExamType, ExamPackage, AnswerOption } from '../types'; // Ditambahkan AnswerOption untuk keamanan mengetik
+import { AppState, AppView, ExamSession, Profile, Question, ExamType, ExamPackage } from '../types'; 
 import { mockQuestions, EXAM_CONFIGS } from '../data/mockData';
 import { supabase, getProfile } from '../lib/supabase';
 import {
@@ -185,7 +185,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
     }
     case 'LOGOUT':
       localStorage.removeItem('exam_active_session_id');
-      localStorage.removeItem('active_db_result_id'); // Bersihkan cadangan ID saat logout
+      localStorage.removeItem('active_db_result_id'); 
       return { ...initialState, authLoading: false };
     case 'SET_VIEW':
       return { ...state, currentView: action.payload };
@@ -236,7 +236,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
     case 'CLEAR_EXAM': {
       if (state.examSession) clearExamProgress(state.examSession.id);
       else localStorage.removeItem('exam_active_session_id');
-      localStorage.removeItem('active_db_result_id'); // Bersihkan cadangan ID saat ujian dibersihkan
+      localStorage.removeItem('active_db_result_id'); 
       const isAdmin = state.profile?.role === 'admin' || state.profile?.role === 'super_admin';
       return { ...state, examSession: null, reviewResultId: null, currentView: isAdmin ? 'admin-dashboard' : 'participant-dashboard' };
     }
@@ -273,7 +273,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (session.status === 'in_progress') {
       saveExamProgress(session);
 
-      // 🔑 PROTEKSI 1: Cek dari session, jika hilang gunakan cadangan localStorage
       const dbResultId = (session as any).resultId || localStorage.getItem('active_db_result_id');
       if (dbResultId) {
         const liveScores = calculateScores(session);
@@ -298,19 +297,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [state.examSession?.answers, state.examSession?.status, isSyncLocked]);
 
-  // Timer Ticking effect
+  // 🔄 1. Effect Jalur Utama: Mengurangi waktu 1 detik secara konsisten di background
   useEffect(() => {
     if (!state.examSession || state.examSession.status !== 'in_progress') return;
     const timer = setInterval(() => {
-      if (state.examSession && state.examSession.timeRemaining <= 1) {
-        clearInterval(timer);
-        submitExamSession();
-      } else {
-        dispatch({ type: 'TICK_TIMER' });
-      }
+      dispatch({ type: 'TICK_TIMER' });
     }, 1000);
     return () => clearInterval(timer);
   }, [state.examSession?.status, state.examSession?.id]);
+
+  // 🚨 2. Effect Satpam Otomatis: Memaksa submit ujian jika waktu menyentuh angka 0 (Anti Bocor)
+  useEffect(() => {
+    if (
+      state.examSession && 
+      state.examSession.status === 'in_progress' && 
+      state.examSession.timeRemaining <= 0
+    ) {
+      console.log("⏰ [TIMER] Waktu habis! Memicu fungsi submit otomatis...");
+      submitExamSession();
+    }
+  }, [state.examSession?.timeRemaining, state.examSession?.status]);
 
   async function refreshProfile() {
     const { data: { user } } = await supabase.auth.getUser();
@@ -343,14 +349,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       
       const session = buildSession(examType, questions, pkg);
 
-      // 1. Bersihkan semua progress menggantung milik user ini agar tidak terjadi duplikasi sampah
       await supabase
         .from('exam_results')
         .delete()
         .eq('participant_id', user.id)
         .eq('status', 'in_progress');
 
-      // 2. Selalu buat baris baru yang benar-benar bersih dan fresh
       const { data: newRow, error: insertErr } = await supabase
         .from('exam_results')
         .insert({
@@ -377,7 +381,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         packageType: pkg?.package_type || examType
       };
 
-      // 🔑 PROTEKSI 2: Kunci ID database ke localStorage mandiri agar aman dari Auto-Refresh HMR
       localStorage.setItem('active_db_result_id', finalDbRow.id);
 
       saveExamProgress(sessionWithResultId);
@@ -410,7 +413,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    // 🔑 PROTEKSI 3: Jika session.resultId hilang akibat refresh, ambil dari cadangan localStorage
     const dbResultId = (session as any).resultId || localStorage.getItem('active_db_result_id');
     console.log("🔍 [SUBMIT] dbResultId yang terbaca di session/backup:", dbResultId);
 
@@ -455,7 +457,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       clearExamProgress(session.id);
       localStorage.removeItem('exam_active_session_id');
-      localStorage.removeItem('active_db_result_id'); // 🔑 Bersihkan cadangan ID setelah sukses submit
+      localStorage.removeItem('active_db_result_id'); 
       console.log("🧹 [SUBMIT] Cache lokal exam progress dibersihkan.");
 
       const completedSession: ExamSession = {
@@ -494,7 +496,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
           const saved = loadExamProgress(savedId);
           if (saved && (saved as any).status !== 'completed') {
             
-            // 🔑 PROTEKSI 4: Ambil ID database cadangan dari localStorage jika bawaan persistence hilang
             const backupResultId = localStorage.getItem('active_db_result_id') || undefined;
 
             fetchQuestionsForExam(saved.examType, saved.packageId).then((questions) => {
@@ -505,7 +506,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
                   examType: saved.examType, questions, answers: saved.answers,
                   currentQuestionIndex: saved.currentQuestionIndex, timeRemaining: saved.timeRemaining,
                   status: 'in_progress', startedAt: new Date(saved.startedAt), 
-                  resultId: (saved as any).resultId || backupResultId || undefined // 🔑 Gabungkan cadangan ke sini
+                  resultId: (saved as any).resultId || backupResultId || undefined 
                 } as any
               });
             });
