@@ -174,7 +174,10 @@ function appReducer(state: AppState, action: AppAction): AppState {
       const examActive = state.currentView === 'exam-engine' || state.currentView === 'exam-results';
       let targetView = examActive ? state.currentView : getViewForProfile(action.payload);
       
-      if (!examActive && savedView && savedView !== 'landing') {
+      // 🌟 PERBAIKAN 1: Wajib ada agar peserta baru tidak tembus ke dashboard!
+      if (!action.payload.is_approved) {
+        targetView = 'waiting-room';
+      } else if (!examActive && savedView && savedView !== 'landing') {
         targetView = savedView;
       }
 
@@ -353,13 +356,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [state.examSession?.timeRemaining, state.examSession?.status]);
 
-  async function refreshProfile() {
+  // 🌟 PERBAIKAN 2: Wajib ada sistem Retry agar profile sempat terbentuk di Database
+  async function refreshProfile(retries = 3) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { dispatch({ type: 'SET_PROFILE', payload: null }); return; }
     try {
-      const profile = await getProfile(user.id);
+      let profile = await getProfile(user.id);
+      
+      let attempts = 0;
+      while (!profile && attempts < retries) {
+        console.log(`[AUTH] Menunggu pembuatan profil dari database... (Percobaan ${attempts + 1})`);
+        await new Promise(resolve => setTimeout(resolve, 600)); // Jeda 0.6 detik
+        profile = await getProfile(user.id);
+        attempts++;
+      }
+
       dispatch({ type: 'SET_PROFILE', payload: profile ? (profile as Profile) : null });
-    } catch { dispatch({ type: 'SET_PROFILE', payload: null }); }
+    } catch { 
+      dispatch({ type: 'SET_PROFILE', payload: null }); 
+    }
   }
 
   async function startExam(examType: ExamType, pkg?: ExamPackage) {
