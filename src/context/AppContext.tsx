@@ -168,14 +168,12 @@ function appReducer(state: AppState, action: AppAction): AppState {
     case 'SET_PROFILE': {
       if (!action.payload) return { ...state, profile: null, currentView: 'landing', authLoading: false };
       
-      // 🔑 KUNCI MEMORI 1: Ambil data backup posisi terakhir dari localStorage pasca refresh halaman
       const savedView = localStorage.getItem('leskd_saved_view') as AppView | null;
       const savedReviewId = localStorage.getItem('leskd_saved_review_id');
       
       const examActive = state.currentView === 'exam-engine' || state.currentView === 'exam-results';
       let targetView = examActive ? state.currentView : getViewForProfile(action.payload);
       
-      // Kembalikan ke posisi semula jika tidak sedang di halaman pengerjaan ujian
       if (!examActive && savedView && savedView !== 'landing') {
         targetView = savedView;
       }
@@ -191,7 +189,6 @@ function appReducer(state: AppState, action: AppAction): AppState {
     case 'LOGOUT':
       localStorage.removeItem('exam_active_session_id');
       localStorage.removeItem('active_db_result_id'); 
-      // 🔑 KUNCI MEMORI 2: Hapus backup navigasi saat user sengaja keluar (logout)
       localStorage.removeItem('leskd_saved_view');
       localStorage.removeItem('leskd_saved_review_id');
       return { ...initialState, authLoading: false };
@@ -265,6 +262,9 @@ interface AppContextType {
   startExam: (examType: ExamType, pkg?: ExamPackage) => Promise<void>;
   deleteHistory: (resultId: string) => Promise<boolean>;
   submitExamSession: () => Promise<void>;
+  // 🌟 BARU: Ekspos state dan function riwayat ke komponen luar
+  examHistory: any[];
+  fetchUserExamHistory: () => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -272,6 +272,29 @@ const AppContext = createContext<AppContextType | null>(null);
 export function AppProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(appReducer, initialState);
   const [isSyncLocked, setIsSyncLocked] = useState(false);
+  
+  // 🌟 BARU: State lokal khusus penampung list riwayat ujian peserta
+  const [examHistory, setExamHistory] = useState<any[]>([]);
+
+  // 🌟 BARU: Fungsi untuk fetch riwayat ujian peserta dari database
+  async function fetchUserExamHistory() {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data, error } = await supabase
+        .from('exam_results')
+        .select('*')
+        .eq('participant_id', user.id)
+        .eq('status', 'completed') // Hanya ambil yang sudah selesai dikerjakan
+        .order('completed_at', { ascending: false });
+
+      if (error) throw error;
+      setExamHistory(data || []);
+    } catch (err) {
+      console.error("Gagal memuat riwayat ujian:", err);
+    }
+  }
 
   // 🔑 KUNCI MEMORI 3: Jalankan perekaman otomatis setiap kali terjadi perpindahan halaman/view review
   useEffect(() => {
@@ -447,6 +470,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       if (error) throw error;
 
+      // 🌟 BARU: Tarik data riwayat terbaru agar sinkron begitu ujian selesai di-submit
+      await fetchUserExamHistory();
+
       clearExamProgress(session.id);
       localStorage.removeItem('exam_active_session_id');
       localStorage.removeItem('active_db_result_id'); 
@@ -471,7 +497,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       const { deleteExamResult } = await import('../lib/examPersistence');
       const res = await deleteExamResult(resultId);
-      if (res.success) { dispatch({ type: 'DELETE_EXAM_RESULT', payload: resultId }); return true; }
+      if (res.success) { 
+        dispatch({ type: 'DELETE_EXAM_RESULT', payload: resultId }); 
+        // 🌟 BARU: Hapus item dari local state agar tampilan langsung hilang tanpa refresh
+        setExamHistory((prev) => prev.filter((item) => item.id !== resultId));
+        return true; 
+      }
       return false;
     } catch { return false; }
   }
@@ -504,12 +535,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
           }
         }
         refreshProfile();
+        // 🌟 BARU: Fetch riwayat pertama kali saat web dibuka & user terautentikasi
+        fetchUserExamHistory();
       } else { dispatch({ type: 'SET_AUTH_LOADING', payload: false }); }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_OUT' || !session) { dispatch({ type: 'LOGOUT' }); return; }
-      if (event === 'SIGNED_IN' && session.user) refreshProfile();
+      if (event === 'SIGNED_OUT' || !session) { dispatch({ type: 'LOGOUT'); setExamHistory([]); return; }
+      if (event === 'SIGNED_IN' && session.user) {
+        refreshProfile();
+        fetchUserExamHistory(); // 🌟 BARU: Ambil riwayat saat user berhasil login
+      }
     });
     return () => subscription.unsubscribe();
   }, []);
@@ -517,7 +553,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   async function signOut() { await supabase.auth.signOut(); dispatch({ type: 'LOGOUT' }); }
 
   return (
-    <AppContext.Provider value={{ state, dispatch, signOut, refreshProfile, startExam, deleteHistory, submitExamSession }}>
+    <AppContext.Provider value={{ 
+      state, dispatch, signOut, refreshProfile, startExam, deleteHistory, submitExamSession,
+      examHistory, fetchUserExamHistory // 🌟 BARU: Masukkan ke value Context Provider
+    }}>
       {children}
     </AppContext.Provider>
   );
