@@ -1,4 +1,4 @@
-import { motion, AnimatePresence } from 'framer-motion'; // 👈 Tambahkan AnimatePresence
+import { motion, AnimatePresence } from 'framer-motion';
 import { LogOut, User, Trophy, Target, TrendingUp, History, ChevronDown, ChevronUp } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
@@ -11,12 +11,12 @@ import ExamHistory from './ExamHistory';
 export default function ParticipantDashboard() {
   const { state, dispatch, signOut } = useApp();
   const profile = state.profile;
+  
+  // State manajemen UI
   const [showHistory, setShowHistory] = useState(false);
   const [results, setResults] = useState<ExamResult[]>([]);
   const [resultsLoading, setResultsLoading] = useState(true);
-
-  // State tambahan jika ingin menggunakan fitur Detail Modal
-  const [selectedExam, setSelectedExam] = useState<any | null>(null);
+  const [selectedExam, setSelectedExam] = useState<any | null>(null); // State untuk Modal Detail
 
   useEffect(() => {
     if (!profile) return;
@@ -26,22 +26,40 @@ export default function ParticipantDashboard() {
         .from('exam_results')
         .select('*')
         .eq('participant_id', profile!.id)
-        .eq('status', 'COMPLETED')
+        .eq('status', 'COMPLETED') // Hanya mengambil ujian yang selesai
         .order('completed_at', { ascending: false });
+        
       if (data) setResults(data as ExamResult[]);
       setResultsLoading(false);
     }
     loadResults();
   }, [profile]);
 
+  // Kalkulasi Statistik Ringkas
   const totalExams = results.length;
   const avgScore = totalExams > 0
     ? Math.round(results.reduce((s, r) => s + r.total_score, 0) / totalExams)
     : 0;
   const passedCount = results.filter((r) => r.passed).length;
 
-  // Mapping data ke struktur ExamHistory
-  const historyRecords = results.map((r) => ({
+  // Tipe data khusus untuk dikirim ke komponen ExamHistory
+  type HistoryRecord = {
+    id: string;
+    package_type: 'MINI_TIU' | 'MINI_TWK' | 'MINI_TKP' | 'FULL';
+    package_name: string;
+    total_score: number;
+    score_tiu?: number;
+    score_twk?: number;
+    score_tkp?: number;
+    questions_correct: number;
+    questions_total: number;
+    passed: boolean;
+    duration_seconds: number;
+    completed_at: string;
+  };
+
+  // Mapping data dari format database ke format komponen ExamHistory
+  const historyRecords: HistoryRecord[] = results.map((r) => ({
     id: r.id,
     package_type: r.package_type,
     package_name: r.package_name,
@@ -56,6 +74,7 @@ export default function ParticipantDashboard() {
     completed_at: r.completed_at,
   }));
 
+  // Variasi Animasi Framer Motion
   const containerVariants = {
     hidden: { opacity: 0 },
     visible: { opacity: 1, transition: { staggerChildren: 0.08 } },
@@ -68,10 +87,11 @@ export default function ParticipantDashboard() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Navbar / Header */}
+      {/* Header / Navbar */}
       <header className="bg-[#1e3a8a] shadow-lg sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
           <span className="text-white font-extrabold text-lg">LESKD.ID</span>
+
           <div className="flex items-center gap-3">
             <div className="hidden sm:flex items-center gap-2 bg-white/10 rounded-xl px-3 py-2">
               <div className="w-7 h-7 bg-[#10b981] rounded-full flex items-center justify-center">
@@ -92,7 +112,7 @@ export default function ParticipantDashboard() {
         </div>
       </header>
 
-      {/* Main Content */}
+      {/* Konten Utama */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
         <motion.div
           variants={containerVariants}
@@ -142,7 +162,7 @@ export default function ParticipantDashboard() {
             <ExamCards />
           </motion.div>
 
-          {/* History Toggle */}
+          {/* History Toggle Button */}
           <motion.button
             variants={itemVariants}
             onClick={() => setShowHistory(!showHistory)}
@@ -162,15 +182,15 @@ export default function ParticipantDashboard() {
             {showHistory ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
           </motion.button>
 
-          {/* History Content dengan AnimatePresence */}
+          {/* History List dengan Animasi Smooth AnimatePresence */}
           <AnimatePresence>
             {showHistory && (
               <motion.div
                 variants={itemVariants}
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }} // 👈 Menutup dengan animasi smooth
-                className="overflow-hidden"       // 👈 Mencegah glitch layout saat transisi tinggi
+                exit={{ opacity: 0, height: 0 }}
+                className="overflow-hidden"
               >
                 {resultsLoading ? (
                   <div className="text-center py-8 text-sm text-gray-400 bg-white rounded-2xl border border-gray-100">
@@ -180,7 +200,7 @@ export default function ParticipantDashboard() {
                   <ExamHistory
                     records={historyRecords}
                     onViewReview={(resultId) => dispatch({ type: 'OPEN_REVIEW', payload: resultId })}
-                    onViewDetails={(record) => setSelectedExam(record)} // 👈 Mengaktifkan tombol Lihat
+                    onViewDetails={(record) => setSelectedExam(record)} // Memicu modal detail
                   />
                 )}
               </motion.div>
@@ -193,6 +213,107 @@ export default function ParticipantDashboard() {
           </motion.div>
         </motion.div>
       </main>
+
+      {/* MODAL POPUP DETAIL SKOR (TAMPIL SAAT TOMBOL 'LIHAT' DIKLIK) */}
+      <AnimatePresence>
+        {selectedExam && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            {/* Backdrop Layar Gelap (Blur) */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setSelectedExam(null)} // Menutup modal jika area luar diklik
+              className="fixed inset-0 bg-black/50 backdrop-blur-sm"
+            />
+
+            {/* Kotak Card Modal */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="bg-white rounded-3xl p-6 w-full max-w-md shadow-xl relative z-10 border border-gray-100"
+            >
+              {/* Header Modal */}
+              <div className="mb-4">
+                <span className="text-xs font-bold px-2.5 py-1 bg-blue-50 text-blue-700 rounded-full">
+                  Detail Hasil Ujian
+                </span>
+                <h3 className="text-lg font-bold text-gray-800 mt-2 truncate">
+                  {selectedExam.package_name}
+                </h3>
+                <p className="text-xs text-gray-400">
+                  Dikerjakan pada: {new Date(selectedExam.completed_at).toLocaleDateString('id-ID', {
+                    day: 'numeric',
+                    month: 'long',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                  })}
+                </p>
+              </div>
+
+              {/* Skor Utama SKD */}
+              <div className="bg-gray-50 rounded-2xl p-4 text-center mb-4 border border-gray-100">
+                <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Skor Total SKD</p>
+                <p className="text-4xl font-black text-gray-800 my-1">{selectedExam.total_score}</p>
+                <span className={`text-xs font-semibold px-3 py-1 rounded-full ${
+                  selectedExam.passed ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'
+                }`}>
+                  {selectedExam.passed ? 'Lulus Passing Grade' : 'Belum Lulus Passing Grade'}
+                </span>
+              </div>
+
+              {/* Rincian Per Pilar Soal (Hanya muncul jika paket FULL SKD) */}
+              {selectedExam.package_type === 'FULL' ? (
+                <div className="space-y-2 mb-6">
+                  <div className="flex justify-between items-center p-2.5 bg-blue-50/50 rounded-xl">
+                    <span className="text-sm font-medium text-gray-700">Tes Inteligensia Umum (TIU)</span>
+                    <span className="font-bold text-blue-700 text-sm">{selectedExam.score_tiu ?? 0}</span>
+                  </div>
+                  <div className="flex justify-between items-center p-2.5 bg-emerald-50/50 rounded-xl">
+                    <span className="text-sm font-medium text-gray-700">Tes Wawasan Kebangsaan (TWK)</span>
+                    <span className="font-bold text-emerald-700 text-sm">{selectedExam.score_twk ?? 0}</span>
+                  </div>
+                  <div className="flex justify-between items-center p-2.5 bg-rose-50/50 rounded-xl">
+                    <span className="text-sm font-medium text-gray-700">Tes Karakteristik Pribadi (TKP)</span>
+                    <span className="font-bold text-rose-700 text-sm">{selectedExam.score_tkp ?? 0}</span>
+                  </div>
+                </div>
+              ) : (
+                // Tampilan jika yang dikerjakan adalah Mini Tryout
+                <div className="mb-6 p-3 bg-gray-50 rounded-xl text-center text-sm text-gray-600">
+                  Jenis Paket Mini: <span className="font-bold text-gray-800">{selectedExam.package_type}</span>
+                </div>
+              )}
+
+              {/* Statistik Tambahan */}
+              <div className="grid grid-cols-2 gap-3 mb-6 text-center">
+                <div className="p-3 bg-gray-50 rounded-xl">
+                  <p className="text-[10px] text-gray-400 font-medium uppercase">Akurasi Jawaban</p>
+                  <p className="text-sm font-bold text-gray-700 mt-0.5">
+                    {selectedExam.questions_correct} / {selectedExam.questions_total} Soal
+                  </p>
+                </div>
+                <div className="p-3 bg-gray-50 rounded-xl">
+                  <p className="text-[10px] text-gray-400 font-medium uppercase">Durasi Pengerjaan</p>
+                  <p className="text-sm font-bold text-gray-700 mt-0.5">
+                    {Math.floor(selectedExam.duration_seconds / 60)} Menit
+                  </p>
+                </div>
+              </div>
+
+              {/* Tombol Tutup */}
+              <button
+                onClick={() => setSelectedExam(null)}
+                className="w-full bg-gray-800 hover:bg-gray-900 text-white font-semibold py-2.5 rounded-xl transition-colors text-sm"
+              >
+                Tutup Detail
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
