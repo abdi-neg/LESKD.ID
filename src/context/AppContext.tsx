@@ -262,7 +262,6 @@ interface AppContextType {
   startExam: (examType: ExamType, pkg?: ExamPackage) => Promise<void>;
   deleteHistory: (resultId: string) => Promise<boolean>;
   submitExamSession: () => Promise<void>;
-  // 🌟 BARU: Ekspos state dan function riwayat ke komponen luar
   examHistory: any[];
   fetchUserExamHistory: () => Promise<void>;
 }
@@ -272,11 +271,8 @@ const AppContext = createContext<AppContextType | null>(null);
 export function AppProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(appReducer, initialState);
   const [isSyncLocked, setIsSyncLocked] = useState(false);
-  
-  // 🌟 BARU: State lokal khusus penampung list riwayat ujian peserta
   const [examHistory, setExamHistory] = useState<any[]>([]);
 
-  // 🌟 BARU: Fungsi untuk fetch riwayat ujian peserta dari database
   async function fetchUserExamHistory() {
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -286,7 +282,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         .from('exam_results')
         .select('*')
         .eq('participant_id', user.id)
-        .eq('status', 'completed') // Hanya ambil yang sudah selesai dikerjakan
+        .eq('status', 'completed') 
         .order('completed_at', { ascending: false });
 
       if (error) throw error;
@@ -296,7 +292,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  // 🔑 KUNCI MEMORI 3: Jalankan perekaman otomatis setiap kali terjadi perpindahan halaman/view review
   useEffect(() => {
     if (state.currentView && state.currentView !== 'landing') {
       localStorage.setItem('leskd_saved_view', state.currentView);
@@ -308,7 +303,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [state.currentView, state.reviewResultId]);
 
-  // 🔄 Realtime Auto Save Sync Effect
   useEffect(() => {
     const session = state.examSession;
     if (!session || session.status === 'completed' || isSyncLocked) return;
@@ -340,7 +334,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [state.examSession?.answers, state.examSession?.status, isSyncLocked]);
 
-  // 🔄 1. Effect Jalur Utama Pengurangan Timer Waktu Ujian
   useEffect(() => {
     if (!state.examSession || state.examSession.status !== 'in_progress') return;
     const timer = setInterval(() => {
@@ -349,7 +342,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(timer);
   }, [state.examSession?.status, state.examSession?.id]);
 
-  // 🚨 2. Effect Satpam Otomatis Paksa Submit Ujian
   useEffect(() => {
     if (
       state.examSession && 
@@ -370,7 +362,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } catch { dispatch({ type: 'SET_PROFILE', payload: null }); }
   }
 
-  // 🛠️ FUNGSI START EXAM
   async function startExam(examType: ExamType, pkg?: ExamPackage) {
     if (isStartingExam) return;
 
@@ -437,7 +428,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  // 🛠️ FUNGSI SUBMIT EXAM
   async function submitExamSession() {
     const session = state.examSession;
     if (!session || isSyncLocked) return;
@@ -470,7 +460,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       if (error) throw error;
 
-      // 🌟 BARU: Tarik data riwayat terbaru agar sinkron begitu ujian selesai di-submit
       await fetchUserExamHistory();
 
       clearExamProgress(session.id);
@@ -499,7 +488,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const res = await deleteExamResult(resultId);
       if (res.success) { 
         dispatch({ type: 'DELETE_EXAM_RESULT', payload: resultId }); 
-        // 🌟 BARU: Hapus item dari local state agar tampilan langsung hilang tanpa refresh
         setExamHistory((prev) => prev.filter((item) => item.id !== resultId));
         return true; 
       }
@@ -507,7 +495,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } catch { return false; }
   }
 
-  // 🔄 INITIAL LOAD EFFECT
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
@@ -535,16 +522,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
           }
         }
         refreshProfile();
-        // 🌟 BARU: Fetch riwayat pertama kali saat web dibuka & user terautentikasi
         fetchUserExamHistory();
       } else { dispatch({ type: 'SET_AUTH_LOADING', payload: false }); }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_OUT' || !session) { dispatch({ type: 'LOGOUT'); setExamHistory([]); return; }
+      if (event === 'SIGNED_OUT' || !session) { dispatch({ type: 'LOGOUT' }); setExamHistory([]); return; }
       if (event === 'SIGNED_IN' && session.user) {
         refreshProfile();
-        fetchUserExamHistory(); // 🌟 BARU: Ambil riwayat saat user berhasil login
+        fetchUserExamHistory(); 
       }
     });
     return () => subscription.unsubscribe();
@@ -555,7 +541,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   return (
     <AppContext.Provider value={{ 
       state, dispatch, signOut, refreshProfile, startExam, deleteHistory, submitExamSession,
-      examHistory, fetchUserExamHistory // 🌟 BARU: Masukkan ke value Context Provider
+      examHistory, fetchUserExamHistory 
     }}>
       {children}
     </AppContext.Provider>
