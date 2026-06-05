@@ -1,4 +1,4 @@
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion'; // 👈 Tambahkan AnimatePresence
 import { LogOut, User, Trophy, Target, TrendingUp, History, ChevronDown, ChevronUp } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
@@ -8,7 +8,6 @@ import ExamCards from './ExamCards';
 import Leaderboard from './Leaderboard';
 import ExamHistory from './ExamHistory';
 
-
 export default function ParticipantDashboard() {
   const { state, dispatch, signOut } = useApp();
   const profile = state.profile;
@@ -16,22 +15,24 @@ export default function ParticipantDashboard() {
   const [results, setResults] = useState<ExamResult[]>([]);
   const [resultsLoading, setResultsLoading] = useState(true);
 
- // Di dalam ParticipantDashboard.tsx
-useEffect(() => {
-  if (!profile) return;
-  async function loadResults() {
-    setResultsLoading(true);
-    const { data } = await supabase
-      .from('exam_results')
-      .select('*')
-      .eq('participant_id', profile!.id)
-      .eq('status', 'COMPLETED') // 🔥 Cukup tambahkan baris ini saja!
-      .order('completed_at', { ascending: false });
-    if (data) setResults(data as ExamResult[]);
-    setResultsLoading(false);
-  }
-  loadResults();
-}, [profile]);
+  // State tambahan jika ingin menggunakan fitur Detail Modal
+  const [selectedExam, setSelectedExam] = useState<any | null>(null);
+
+  useEffect(() => {
+    if (!profile) return;
+    async function loadResults() {
+      setResultsLoading(true);
+      const { data } = await supabase
+        .from('exam_results')
+        .select('*')
+        .eq('participant_id', profile!.id)
+        .eq('status', 'COMPLETED')
+        .order('completed_at', { ascending: false });
+      if (data) setResults(data as ExamResult[]);
+      setResultsLoading(false);
+    }
+    loadResults();
+  }, [profile]);
 
   const totalExams = results.length;
   const avgScore = totalExams > 0
@@ -39,22 +40,8 @@ useEffect(() => {
     : 0;
   const passedCount = results.filter((r) => r.passed).length;
 
-  type HistoryRecord = {
-    id: string;
-    package_type: 'MINI_TIU' | 'MINI_TWK' | 'MINI_TKP' | 'FULL';
-    package_name: string;
-    total_score: number;
-    score_tiu?: number;
-    score_twk?: number;
-    score_tkp?: number;
-    questions_correct: number;
-    questions_total: number;
-    passed: boolean;
-    duration_seconds: number;
-    completed_at: string;
-  };
-
-  const historyRecords: HistoryRecord[] = results.map((r) => ({
+  // Mapping data ke struktur ExamHistory
+  const historyRecords = results.map((r) => ({
     id: r.id,
     package_type: r.package_type,
     package_name: r.package_name,
@@ -81,10 +68,10 @@ useEffect(() => {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Navbar / Header */}
       <header className="bg-[#1e3a8a] shadow-lg sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
           <span className="text-white font-extrabold text-lg">LESKD.ID</span>
-
           <div className="flex items-center gap-3">
             <div className="hidden sm:flex items-center gap-2 bg-white/10 rounded-xl px-3 py-2">
               <div className="w-7 h-7 bg-[#10b981] rounded-full flex items-center justify-center">
@@ -105,6 +92,7 @@ useEffect(() => {
         </div>
       </header>
 
+      {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
         <motion.div
           variants={containerVariants}
@@ -174,18 +162,30 @@ useEffect(() => {
             {showHistory ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
           </motion.button>
 
-          {showHistory && (
-            <motion.div
-              variants={itemVariants}
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-            >
-              <ExamHistory
-                records={historyRecords}
-                onViewReview={(resultId) => dispatch({ type: 'OPEN_REVIEW', payload: resultId })}
-              />
-            </motion.div>
-          )}
+          {/* History Content dengan AnimatePresence */}
+          <AnimatePresence>
+            {showHistory && (
+              <motion.div
+                variants={itemVariants}
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }} // 👈 Menutup dengan animasi smooth
+                className="overflow-hidden"       // 👈 Mencegah glitch layout saat transisi tinggi
+              >
+                {resultsLoading ? (
+                  <div className="text-center py-8 text-sm text-gray-400 bg-white rounded-2xl border border-gray-100">
+                    Memuat riwayat pengerjaan...
+                  </div>
+                ) : (
+                  <ExamHistory
+                    records={historyRecords}
+                    onViewReview={(resultId) => dispatch({ type: 'OPEN_REVIEW', payload: resultId })}
+                    onViewDetails={(record) => setSelectedExam(record)} // 👈 Mengaktifkan tombol Lihat
+                  />
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {/* Leaderboard */}
           <motion.div variants={itemVariants}>
