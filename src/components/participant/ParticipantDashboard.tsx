@@ -2,47 +2,37 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { LogOut, User, Trophy, Target, TrendingUp, History, ChevronDown, ChevronUp } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
-import { supabase } from '../../lib/supabase';
 import { ExamResult } from '../../types';
 import ExamCards from './ExamCards';
 import Leaderboard from './Leaderboard';
 import ExamHistory from './ExamHistory';
 
 export default function ParticipantDashboard() {
-  const { state, dispatch, signOut } = useApp();
+  // 🌟 PERBAIKAN 1: Ambil examHistory dan fungsi fetch-nya dari AppContext global
+  const { state, dispatch, signOut, examHistory, fetchUserExamHistory } = useApp();
   const profile = state.profile;
   
   // State manajemen UI
   const [showHistory, setShowHistory] = useState(false);
-  const [results, setResults] = useState<ExamResult[]>([]);
   const [resultsLoading, setResultsLoading] = useState(true);
-  const [selectedExam, setSelectedExam] = useState<any | null>(null); // State untuk Modal Detail
+  const [selectedExam, setSelectedExam] = useState<any | null>(null);
 
+  // 🌟 PERBAIKAN 2: Trigger fetch global saat profile siap, mengandalkan query terpusat yang aman dari typo
   useEffect(() => {
     if (!profile) return;
-    async function loadResults() {
-      setResultsLoading(true);
-      const { data } = await supabase
-        .from('exam_results')
-        .select('*')
-        .eq('participant_id', profile!.id)
-        .eq('status', 'COMPLETED') // Hanya mengambil ujian yang selesai
-        .order('completed_at', { ascending: false });
-        
-      if (data) setResults(data as ExamResult[]);
+    setResultsLoading(true);
+    fetchUserExamHistory().finally(() => {
       setResultsLoading(false);
-    }
-    loadResults();
+    });
   }, [profile]);
 
-  // Kalkulasi Statistik Ringkas
-  const totalExams = results.length;
+  // 🌟 PERBAIKAN 3: Kalkulasi Statistik Ringkas langsung menggunakan data 'examHistory' global
+  const totalExams = examHistory.length;
   const avgScore = totalExams > 0
-    ? Math.round(results.reduce((s, r) => s + r.total_score, 0) / totalExams)
+    ? Math.round(examHistory.reduce((s, r) => s + (r.total_score || 0), 0) / totalExams)
     : 0;
-  const passedCount = results.filter((r) => r.passed).length;
+  const passedCount = examHistory.filter((r) => r.passed).length;
 
-  // Tipe data khusus untuk dikirim ke komponen ExamHistory
   type HistoryRecord = {
     id: string;
     package_type: 'MINI_TIU' | 'MINI_TWK' | 'MINI_TKP' | 'FULL';
@@ -58,8 +48,8 @@ export default function ParticipantDashboard() {
     completed_at: string;
   };
 
-  // Mapping data dari format database ke format komponen ExamHistory
-  const historyRecords: HistoryRecord[] = results.map((r) => ({
+  // 🌟 PERBAIKAN 4: Mapping records bersumber dari 'examHistory'
+  const historyRecords: HistoryRecord[] = examHistory.map((r) => ({
     id: r.id,
     package_type: r.package_type,
     package_name: r.package_name,
@@ -74,7 +64,6 @@ export default function ParticipantDashboard() {
     completed_at: r.completed_at,
   }));
 
-  // Variasi Animasi Framer Motion
   const containerVariants = {
     hidden: { opacity: 0 },
     visible: { opacity: 1, transition: { staggerChildren: 0.08 } },
@@ -182,7 +171,7 @@ export default function ParticipantDashboard() {
             {showHistory ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
           </motion.button>
 
-          {/* History List dengan Animasi Smooth AnimatePresence */}
+          {/* History List */}
           <AnimatePresence>
             {showHistory && (
               <motion.div
@@ -196,11 +185,15 @@ export default function ParticipantDashboard() {
                   <div className="text-center py-8 text-sm text-gray-400 bg-white rounded-2xl border border-gray-100">
                     Memuat riwayat pengerjaan...
                   </div>
+                ) : historyRecords.length === 0 ? (
+                  <div className="text-center py-8 text-sm text-gray-400 bg-white rounded-2xl border border-gray-100">
+                    Belum ada ujian yang diselesaikan.
+                  </div>
                 ) : (
                   <ExamHistory
                     records={historyRecords}
                     onViewReview={(resultId) => dispatch({ type: 'OPEN_REVIEW', payload: resultId })}
-                    onViewDetails={(record) => setSelectedExam(record)} // Memicu modal detail
+                    onViewDetails={(record) => setSelectedExam(record)}
                   />
                 )}
               </motion.div>
@@ -214,27 +207,24 @@ export default function ParticipantDashboard() {
         </motion.div>
       </main>
 
-      {/* MODAL POPUP DETAIL SKOR (TAMPIL SAAT TOMBOL 'LIHAT' DIKLIK) */}
+      {/* MODAL POPUP DETAIL SKOR */}
       <AnimatePresence>
         {selectedExam && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            {/* Backdrop Layar Gelap (Blur) */}
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              onClick={() => setSelectedExam(null)} // Menutup modal jika area luar diklik
+              onClick={() => setSelectedExam(null)}
               className="fixed inset-0 bg-black/50 backdrop-blur-sm"
             />
 
-            {/* Kotak Card Modal */}
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
               className="bg-white rounded-3xl p-6 w-full max-w-md shadow-xl relative z-10 border border-gray-100"
             >
-              {/* Header Modal */}
               <div className="mb-4">
                 <span className="text-xs font-bold px-2.5 py-1 bg-blue-50 text-blue-700 rounded-full">
                   Detail Hasil Ujian
@@ -253,7 +243,6 @@ export default function ParticipantDashboard() {
                 </p>
               </div>
 
-              {/* Skor Utama SKD */}
               <div className="bg-gray-50 rounded-2xl p-4 text-center mb-4 border border-gray-100">
                 <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Skor Total SKD</p>
                 <p className="text-4xl font-black text-gray-800 my-1">{selectedExam.total_score}</p>
@@ -264,7 +253,6 @@ export default function ParticipantDashboard() {
                 </span>
               </div>
 
-              {/* Rincian Per Pilar Soal (Hanya muncul jika paket FULL SKD) */}
               {selectedExam.package_type === 'FULL' ? (
                 <div className="space-y-2 mb-6">
                   <div className="flex justify-between items-center p-2.5 bg-blue-50/50 rounded-xl">
@@ -281,13 +269,11 @@ export default function ParticipantDashboard() {
                   </div>
                 </div>
               ) : (
-                // Tampilan jika yang dikerjakan adalah Mini Tryout
                 <div className="mb-6 p-3 bg-gray-50 rounded-xl text-center text-sm text-gray-600">
                   Jenis Paket Mini: <span className="font-bold text-gray-800">{selectedExam.package_type}</span>
                 </div>
               )}
 
-              {/* Statistik Tambahan */}
               <div className="grid grid-cols-2 gap-3 mb-6 text-center">
                 <div className="p-3 bg-gray-50 rounded-xl">
                   <p className="text-[10px] text-gray-400 font-medium uppercase">Akurasi Jawaban</p>
@@ -303,7 +289,6 @@ export default function ParticipantDashboard() {
                 </div>
               </div>
 
-              {/* Tombol Tutup */}
               <button
                 onClick={() => setSelectedExam(null)}
                 className="w-full bg-gray-800 hover:bg-gray-900 text-white font-semibold py-2.5 rounded-xl transition-colors text-sm"
