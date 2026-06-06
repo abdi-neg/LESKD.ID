@@ -2,7 +2,7 @@ import { motion } from 'framer-motion';
 import { Clock, LogOut, MessageCircle } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 
-const WA_NUMBER = '628124483868'; // Nomor Admin LESKD.ID Berhasil Diperbarui
+const WA_NUMBER = '628175201122'; // Nomor Admin LESKD.ID Berhasil Diperbarui
 
 export default function WaitingRoom() {
   const { state, signOut } = useApp();
