@@ -42,7 +42,7 @@ export default function LiveScoreMonitor() {
   const [countdown, setCountdown] = useState<number>(5); 
   
   const [filter, setFilter] = useState<'ALL' | PackageType>('ALL');
-  const [isFilterOpen, setIsFilterOpen] = useState(false); // State untuk kustom dropdown
+  const [isFilterOpen, setIsFilterOpen] = useState(false); 
   
   const syncRef = useRef<() => Promise<void>>(async () => {});
 
@@ -112,36 +112,46 @@ export default function LiveScoreMonitor() {
     };
   }, [isRealtime]);
 
+  // 🌟 PENTING: Memindahkan deklarasi filteredResults ke atas agar bisa dibaca oleh handleClearData
+  const filteredResults = results.filter((r) => filter === 'ALL' || r.package_type === filter);
+
+  // 🌟 PERBAIKAN LOGIKA HAPUS: Menghapus khusus ID yang sedang tampil di layar
   const handleClearData = async () => {
+    // Kumpulkan semua ID baris yang saat ini terlihat di tabel sesuai filter
+    const idsToDelete = filteredResults.map(r => r.id);
+
+    if (idsToDelete.length === 0) {
+      alert("Tabel sudah kosong, tidak ada data yang bisa dihapus pada filter ini.");
+      return;
+    }
+
     const confirmMsg = filter === 'ALL' 
-      ? "PERINGATAN BAHAYA: Anda akan menghapus SELURUH data riwayat ujian semua peserta dari semua paket! Apakah Anda sangat yakin?"
-      : `Anda akan menghapus seluruh data ujian yang masuk untuk paket: ${PKG_LABELS[filter]}. Lanjutkan?`;
+      ? `PERINGATAN BAHAYA: Anda akan menghapus SELURUH data (${idsToDelete.length} riwayat) yang tampil di layar saat ini! Lanjutkan?`
+      : `Anda akan menghapus ${idsToDelete.length} data riwayat khusus untuk paket ${PKG_LABELS[filter]}. Lanjutkan?`;
       
     if (!window.confirm(confirmMsg)) return;
     
     setLoading(true);
     try {
-      let query = supabase.from('exam_results').delete();
+      // 1. Eksekusi Hapus di Supabase hanya untuk ID yang spesifik (Sangat Aman & Pasti Berhasil)
+      const { error } = await supabase
+        .from('exam_results')
+        .delete()
+        .in('id', idsToDelete);
       
-      if (filter !== 'ALL') {
-        query = query.eq('package_type', filter);
-      } else {
-        query = query.neq('package_type', 'HAPUS_SEMUA'); 
-      }
-      
-      const { error } = await query;
       if (error) throw error;
       
+      // 2. Langsung hapus dari layar (UI) tanpa perlu fetch ulang, agar tabel seketika bersih
+      setResults(prev => prev.filter(r => !idsToDelete.includes(r.id)));
+      
       alert('Berhasil! Data sesi telah dibersihkan.');
-      await syncLiveMonitorData();
     } catch (err) {
       console.error("Gagal menghapus data:", err);
-      alert('Terjadi kesalahan saat menghapus data.');
+      alert('Terjadi kesalahan saat menghapus data. Pastikan jaringan stabil.');
+    } finally {
       setLoading(false);
     }
   };
-
-  const filteredResults = results.filter((r) => filter === 'ALL' || r.package_type === filter);
 
   const sortedResults = [...filteredResults].sort((a, b) => {
     if (b.total_score !== a.total_score) {
@@ -179,7 +189,6 @@ export default function LiveScoreMonitor() {
         
         <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
           
-          {/* CUSTOM DROPDOWN FILTER ELEGAN */}
           <div className="relative flex-grow lg:flex-grow-0 z-50">
             <button
               onClick={() => setIsFilterOpen(!isFilterOpen)}
@@ -195,13 +204,11 @@ export default function LiveScoreMonitor() {
             <AnimatePresence>
               {isFilterOpen && (
                 <>
-                  {/* Layar transparan untuk mendeteksi klik di luar menu (menutup dropdown otomatis) */}
                   <div 
                     className="fixed inset-0 z-40 cursor-default" 
                     onClick={() => setIsFilterOpen(false)}
                   />
                   
-                  {/* Kotak Menu Opsi */}
                   <motion.div
                     initial={{ opacity: 0, y: 8, scale: 0.95 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -236,7 +243,7 @@ export default function LiveScoreMonitor() {
 
           <button
             onClick={handleClearData}
-            title="Bersihkan Data Tabel"
+            title="Bersihkan Data Tabel Sesuai Filter"
             className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20 hover:bg-rose-500 hover:text-white transition-colors"
           >
             <Trash2 className="w-4 h-4" />
