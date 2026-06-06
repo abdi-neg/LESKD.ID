@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Activity, Users, CheckCircle, Clock, Trophy, RefreshCw, BarChart3, Award, TrendingUp, Filter, Trash2 } from 'lucide-react';
+import { Activity, Users, CheckCircle, Clock, Trophy, RefreshCw, BarChart3, Award, TrendingUp, Filter, Trash2, ChevronDown } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { ExamResult, PackageType } from '../../types';
 
@@ -18,6 +18,14 @@ const PKG_LABELS: Record<PackageType, string> = {
   FULL: 'Full CAT',
 };
 
+const FILTER_OPTIONS: { value: 'ALL' | PackageType; label: string }[] = [
+  { value: 'ALL', label: 'Semua Paket Ujian' },
+  { value: 'MINI_TIU', label: 'Mini TIU' },
+  { value: 'MINI_TWK', label: 'Mini TWK' },
+  { value: 'MINI_TKP', label: 'Mini TKP' },
+  { value: 'FULL', label: 'Full CAT (110 Soal)' },
+];
+
 type ResultWithName = ExamResult & { participant_name: string };
 
 function formatDuration(seconds: number) {
@@ -33,8 +41,8 @@ export default function LiveScoreMonitor() {
   const [isRealtime, setIsRealtime] = useState(true); 
   const [countdown, setCountdown] = useState<number>(5); 
   
-  // 🌟 FITUR BARU: State untuk Filter Paket
   const [filter, setFilter] = useState<'ALL' | PackageType>('ALL');
+  const [isFilterOpen, setIsFilterOpen] = useState(false); // State untuk kustom dropdown
   
   const syncRef = useRef<() => Promise<void>>(async () => {});
 
@@ -104,7 +112,6 @@ export default function LiveScoreMonitor() {
     };
   }, [isRealtime]);
 
-  // 🌟 FITUR BARU: Fungsi untuk Menghapus Data Tabel
   const handleClearData = async () => {
     const confirmMsg = filter === 'ALL' 
       ? "PERINGATAN BAHAYA: Anda akan menghapus SELURUH data riwayat ujian semua peserta dari semua paket! Apakah Anda sangat yakin?"
@@ -119,7 +126,7 @@ export default function LiveScoreMonitor() {
       if (filter !== 'ALL') {
         query = query.eq('package_type', filter);
       } else {
-        query = query.neq('package_type', 'HAPUS_SEMUA'); // Trik aman untuk menghapus semua baris
+        query = query.neq('package_type', 'HAPUS_SEMUA'); 
       }
       
       const { error } = await query;
@@ -134,10 +141,8 @@ export default function LiveScoreMonitor() {
     }
   };
 
-  // 🌟 FITUR BARU: Filter Hasil Berdasarkan Pilihan Dropdown
   const filteredResults = results.filter((r) => filter === 'ALL' || r.package_type === filter);
 
-  // Sorting dan Ranking (Hanya untuk data yang sudah difilter)
   const sortedResults = [...filteredResults].sort((a, b) => {
     if (b.total_score !== a.total_score) {
       return b.total_score - a.total_score;
@@ -151,7 +156,6 @@ export default function LiveScoreMonitor() {
     return b.score_twk - a.score_twk;
   });
 
-  // Kalkulasi Statistik Dinamis berdasarkan Filter
   const totalCount = filteredResults.length;
   const passedCount = filteredResults.filter((r) => r.passed).length;
   const failedCount = filteredResults.filter((r) => !r.passed).length;
@@ -163,7 +167,6 @@ export default function LiveScoreMonitor() {
   return (
     <div className="space-y-6 p-6 bg-slate-950 text-slate-100 rounded-3xl border border-slate-900 shadow-2xl font-sans">
       
-      {/* Header Ala Monitor Broadcast BKN */}
       <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between border-b border-slate-900 pb-5 gap-4">
         <div>
           <h2 className="text-2xl font-black uppercase tracking-wider text-amber-400 flex items-center gap-2">
@@ -174,26 +177,63 @@ export default function LiveScoreMonitor() {
           </p>
         </div>
         
-        {/* Kontrol Dashboard (Filter, Clear, Auto Refresh, Re-Sync) */}
         <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
           
-          {/* Dropdown Filter */}
-          <div className="flex items-center bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 flex-grow lg:flex-grow-0">
-            <Filter className="w-4 h-4 text-slate-400 mr-2" />
-            <select 
-              value={filter} 
-              onChange={(e) => setFilter(e.target.value as 'ALL' | PackageType)}
-              className="bg-transparent text-sm font-semibold text-slate-300 focus:outline-none cursor-pointer w-full"
+          {/* CUSTOM DROPDOWN FILTER ELEGAN */}
+          <div className="relative flex-grow lg:flex-grow-0 z-50">
+            <button
+              onClick={() => setIsFilterOpen(!isFilterOpen)}
+              className="flex items-center justify-between w-full lg:w-56 bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-xl px-4 py-2 transition-all shadow-sm"
             >
-              <option value="ALL">Semua Paket Ujian</option>
-              <option value="MINI_TIU">Mini TIU</option>
-              <option value="MINI_TWK">Mini TWK</option>
-              <option value="MINI_TKP">Mini TKP</option>
-              <option value="FULL">Full CAT (110 Soal)</option>
-            </select>
+              <div className="flex items-center gap-2 text-sm font-semibold text-slate-300">
+                <Filter className="w-4 h-4 text-slate-400" />
+                <span className="truncate">{FILTER_OPTIONS.find(opt => opt.value === filter)?.label}</span>
+              </div>
+              <ChevronDown className={`w-4 h-4 text-slate-500 transition-transform duration-300 ${isFilterOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            <AnimatePresence>
+              {isFilterOpen && (
+                <>
+                  {/* Layar transparan untuk mendeteksi klik di luar menu (menutup dropdown otomatis) */}
+                  <div 
+                    className="fixed inset-0 z-40 cursor-default" 
+                    onClick={() => setIsFilterOpen(false)}
+                  />
+                  
+                  {/* Kotak Menu Opsi */}
+                  <motion.div
+                    initial={{ opacity: 0, y: 8, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 8, scale: 0.95 }}
+                    transition={{ duration: 0.15, ease: "easeOut" }}
+                    className="absolute left-0 right-0 lg:right-auto top-full mt-2 w-full lg:w-56 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl overflow-hidden z-50"
+                  >
+                    <div className="py-1 flex flex-col">
+                      {FILTER_OPTIONS.map((opt) => (
+                        <button
+                          key={opt.value}
+                          onClick={() => {
+                            setFilter(opt.value);
+                            setIsFilterOpen(false);
+                          }}
+                          className={`text-left px-4 py-3 text-sm font-semibold transition-colors flex items-center justify-between ${
+                            filter === opt.value
+                              ? 'bg-indigo-500/10 text-indigo-400'
+                              : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                          }`}
+                        >
+                          {opt.label}
+                          {filter === opt.value && <CheckCircle className="w-4 h-4 text-indigo-400" />}
+                        </button>
+                      ))}
+                    </div>
+                  </motion.div>
+                </>
+              )}
+            </AnimatePresence>
           </div>
 
-          {/* Tombol Hapus Data */}
           <button
             onClick={handleClearData}
             title="Bersihkan Data Tabel"
@@ -221,7 +261,6 @@ export default function LiveScoreMonitor() {
         </div>
       </div>
 
-      {/* Summary Stats Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
           { icon: Users, label: 'Total Sesi', value: totalCount, color: 'text-blue-400', bg: 'bg-blue-500/5 border border-blue-500/10' },
@@ -239,7 +278,6 @@ export default function LiveScoreMonitor() {
         ))}
       </div>
 
-      {/* Papan Peringkat Utama */}
       <div className="bg-slate-900/40 rounded-2xl border border-slate-900 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse min-w-[800px]">
