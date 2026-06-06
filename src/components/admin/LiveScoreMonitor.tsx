@@ -112,12 +112,9 @@ export default function LiveScoreMonitor() {
     };
   }, [isRealtime]);
 
-  // 🌟 PENTING: Memindahkan deklarasi filteredResults ke atas agar bisa dibaca oleh handleClearData
   const filteredResults = results.filter((r) => filter === 'ALL' || r.package_type === filter);
 
-  // 🌟 PERBAIKAN LOGIKA HAPUS: Menghapus khusus ID yang sedang tampil di layar
   const handleClearData = async () => {
-    // Kumpulkan semua ID baris yang saat ini terlihat di tabel sesuai filter
     const idsToDelete = filteredResults.map(r => r.id);
 
     if (idsToDelete.length === 0) {
@@ -133,7 +130,6 @@ export default function LiveScoreMonitor() {
     
     setLoading(true);
     try {
-      // 1. Eksekusi Hapus di Supabase hanya untuk ID yang spesifik (Sangat Aman & Pasti Berhasil)
       const { error } = await supabase
         .from('exam_results')
         .delete()
@@ -141,7 +137,6 @@ export default function LiveScoreMonitor() {
       
       if (error) throw error;
       
-      // 2. Langsung hapus dari layar (UI) tanpa perlu fetch ulang, agar tabel seketika bersih
       setResults(prev => prev.filter(r => !idsToDelete.includes(r.id)));
       
       alert('Berhasil! Data sesi telah dibersihkan.');
@@ -189,7 +184,8 @@ export default function LiveScoreMonitor() {
         
         <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
           
-          <div className="relative flex-grow lg:flex-grow-0 z-50">
+          {/* Perbaikan z-index diturunkan ke z-20 di wrapper dropdown */}
+          <div className="relative flex-grow lg:flex-grow-0 z-20">
             <button
               onClick={() => setIsFilterOpen(!isFilterOpen)}
               className="flex items-center justify-between w-full lg:w-56 bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-xl px-4 py-2 transition-all shadow-sm"
@@ -204,17 +200,19 @@ export default function LiveScoreMonitor() {
             <AnimatePresence>
               {isFilterOpen && (
                 <>
+                  {/* Perbaikan z-index diturunkan ke z-10 di layar overlay transparan */}
                   <div 
-                    className="fixed inset-0 z-40 cursor-default" 
+                    className="fixed inset-0 z-10 cursor-default" 
                     onClick={() => setIsFilterOpen(false)}
                   />
                   
+                  {/* Perbaikan z-index diturunkan ke z-20 di kotak menu options */}
                   <motion.div
                     initial={{ opacity: 0, y: 8, scale: 0.95 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: 8, scale: 0.95 }}
                     transition={{ duration: 0.15, ease: "easeOut" }}
-                    className="absolute left-0 right-0 lg:right-auto top-full mt-2 w-full lg:w-56 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl overflow-hidden z-50"
+                    className="absolute left-0 right-0 lg:right-auto top-full mt-2 w-full lg:w-56 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl overflow-hidden z-20"
                   >
                     <div className="py-1 flex flex-col">
                       {FILTER_OPTIONS.map((opt) => (
