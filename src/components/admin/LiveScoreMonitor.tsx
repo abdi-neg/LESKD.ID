@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Activity, Users, CheckCircle, Clock, Trophy, RefreshCw, BarChart3, Award, TrendingUp } from 'lucide-react';
+import { Activity, Users, CheckCircle, Clock, Trophy, RefreshCw, BarChart3, Award, TrendingUp, Filter, Trash2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { ExamResult, PackageType } from '../../types';
 
@@ -30,18 +30,20 @@ export default function LiveScoreMonitor() {
   const [results, setResults] = useState<ResultWithName[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(new Date());
-  const [isRealtime, setIsRealtime] = useState(true); // Di sini berfungsi sebagai toggle "Auto Refresh / Polling"
-  const [countdown, setCountdown] = useState<number>(5); // Indikator visual detik untuk request berikutnya
+  const [isRealtime, setIsRealtime] = useState(true); 
+  const [countdown, setCountdown] = useState<number>(5); 
+  
+  // 🌟 FITUR BARU: State untuk Filter Paket
+  const [filter, setFilter] = useState<'ALL' | PackageType>('ALL');
   
   const syncRef = useRef<() => Promise<void>>(async () => {});
 
-  // 1. Fungsi Utama Sinkronisasi Data via HTTP REST (Kebal Proxy)
   const syncLiveMonitorData = useCallback(async () => {
     const { data: examData, error: examError } = await supabase
       .from('exam_results')
       .select('*') 
       .order('id', { ascending: false })
-      .limit(150);
+      .limit(200);
 
     if (examError || !examData) {
       console.error("Supabase Fetch Error:", examError);
@@ -49,7 +51,6 @@ export default function LiveScoreMonitor() {
       return;
     }
 
-    // Ambil daftar ID peserta yang unik
     const participantIds = Array.from(new Set(examData.map(r => r.participant_id).filter(Boolean)));
     
     let nameMap: Record<string, string> = {};
@@ -66,7 +67,6 @@ export default function LiveScoreMonitor() {
       }
     }
 
-    // Gabungkan data ujian dengan nama (memprioritaskan cache user_name dari tabel exam_results)
     const mapped = examData.map((r) => ({
       ...r,
       participant_name: r.user_name || nameMap[r.participant_id] || 'Peserta SKD',
@@ -81,36 +81,64 @@ export default function LiveScoreMonitor() {
     syncRef.current = syncLiveMonitorData;
   }, [syncLiveMonitorData]);
 
-  // Jalankan sync saat pertama kali komponen dimuat
   useEffect(() => {
     setLoading(true);
     syncLiveMonitorData();
   }, [syncLiveMonitorData]);
 
-  // 2. SOLUSI FIX: Mengganti WebSocket dengan Sistem HTTP Polling Berkala (Setiap 5 Detik)
   useEffect(() => {
     if (!isRealtime) return;
 
-    // Trigger hit data otomatis setiap 5 detik sekali
     const pollingTimer = setInterval(() => {
       syncRef.current();
-      setCountdown(5); // Reset visual countdown kembali ke angka 5
+      setCountdown(5); 
     }, 5000);
 
-    // Mengatur pengurangan angka detik visual (5..4..3..2..1) di layar monitor
     const visualTimer = setInterval(() => {
       setCountdown((prev) => (prev > 1 ? prev - 1 : 5));
     }, 1000);
 
-    // Bersihkan memori interval ketika admin keluar dari halaman monitor ini
     return () => {
       clearInterval(pollingTimer);
       clearInterval(visualTimer);
     };
   }, [isRealtime]);
 
-  // 3. ALGORITMA RANKING + BREAK-THE-TIE BKN
-  const sortedResults = [...results].sort((a, b) => {
+  // 🌟 FITUR BARU: Fungsi untuk Menghapus Data Tabel
+  const handleClearData = async () => {
+    const confirmMsg = filter === 'ALL' 
+      ? "PERINGATAN BAHAYA: Anda akan menghapus SELURUH data riwayat ujian semua peserta dari semua paket! Apakah Anda sangat yakin?"
+      : `Anda akan menghapus seluruh data ujian yang masuk untuk paket: ${PKG_LABELS[filter]}. Lanjutkan?`;
+      
+    if (!window.confirm(confirmMsg)) return;
+    
+    setLoading(true);
+    try {
+      let query = supabase.from('exam_results').delete();
+      
+      if (filter !== 'ALL') {
+        query = query.eq('package_type', filter);
+      } else {
+        query = query.neq('package_type', 'HAPUS_SEMUA'); // Trik aman untuk menghapus semua baris
+      }
+      
+      const { error } = await query;
+      if (error) throw error;
+      
+      alert('Berhasil! Data sesi telah dibersihkan.');
+      await syncLiveMonitorData();
+    } catch (err) {
+      console.error("Gagal menghapus data:", err);
+      alert('Terjadi kesalahan saat menghapus data.');
+      setLoading(false);
+    }
+  };
+
+  // 🌟 FITUR BARU: Filter Hasil Berdasarkan Pilihan Dropdown
+  const filteredResults = results.filter((r) => filter === 'ALL' || r.package_type === filter);
+
+  // Sorting dan Ranking (Hanya untuk data yang sudah difilter)
+  const sortedResults = [...filteredResults].sort((a, b) => {
     if (b.total_score !== a.total_score) {
       return b.total_score - a.total_score;
     }
@@ -123,43 +151,72 @@ export default function LiveScoreMonitor() {
     return b.score_twk - a.score_twk;
   });
 
-  // 4. KALKULASI STATISTIK SECARA DINAMIS
-  const totalCount = results.length;
-  const passedCount = results.filter((r) => r.passed).length;
-  const failedCount = results.filter((r) => !r.passed).length;
+  // Kalkulasi Statistik Dinamis berdasarkan Filter
+  const totalCount = filteredResults.length;
+  const passedCount = filteredResults.filter((r) => r.passed).length;
+  const failedCount = filteredResults.filter((r) => !r.passed).length;
   
   const avgScore = totalCount > 0
-    ? Math.round(results.reduce((s, r) => s + r.total_score, 0) / totalCount)
+    ? Math.round(filteredResults.reduce((s, r) => s + r.total_score, 0) / totalCount)
     : 0;
 
   return (
     <div className="space-y-6 p-6 bg-slate-950 text-slate-100 rounded-3xl border border-slate-900 shadow-2xl font-sans">
+      
       {/* Header Ala Monitor Broadcast BKN */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b border-slate-900 pb-5 gap-4">
+      <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between border-b border-slate-900 pb-5 gap-4">
         <div>
           <h2 className="text-2xl font-black uppercase tracking-wider text-amber-400 flex items-center gap-2">
-            <Trophy className="w-7 h-7 text-amber-500" /> LIVE MONITOR MONITORING SKD
+            <Trophy className="w-7 h-7 text-amber-500" /> LIVE MONITORING SKD
           </h2>
           <p className="text-slate-400 text-xs mt-1">
             Aturan Perangkingan: Total Skor &rarr; TKP &rarr; TIU &rarr; TWK &bull; Sinkronisasi: {lastUpdated.toLocaleTimeString('id-ID')}
           </p>
         </div>
-        <div className="flex items-center gap-2 self-end sm:self-center">
-          {/* Tombol Stream Switcher (Sekarang berganti fungsi menjadi Auto Polling) */}
+        
+        {/* Kontrol Dashboard (Filter, Clear, Auto Refresh, Re-Sync) */}
+        <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
+          
+          {/* Dropdown Filter */}
+          <div className="flex items-center bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 flex-grow lg:flex-grow-0">
+            <Filter className="w-4 h-4 text-slate-400 mr-2" />
+            <select 
+              value={filter} 
+              onChange={(e) => setFilter(e.target.value as 'ALL' | PackageType)}
+              className="bg-transparent text-sm font-semibold text-slate-300 focus:outline-none cursor-pointer w-full"
+            >
+              <option value="ALL">Semua Paket Ujian</option>
+              <option value="MINI_TIU">Mini TIU</option>
+              <option value="MINI_TWK">Mini TWK</option>
+              <option value="MINI_TKP">Mini TKP</option>
+              <option value="FULL">Full CAT (110 Soal)</option>
+            </select>
+          </div>
+
+          {/* Tombol Hapus Data */}
+          <button
+            onClick={handleClearData}
+            title="Bersihkan Data Tabel"
+            className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20 hover:bg-rose-500 hover:text-white transition-colors"
+          >
+            <Trash2 className="w-4 h-4" />
+            <span className="hidden sm:inline">Bersihkan Data</span>
+          </button>
+
           <button
             onClick={() => setIsRealtime(!isRealtime)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold tracking-wide uppercase transition-colors
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold tracking-wide uppercase transition-colors flex-grow lg:flex-grow-0 justify-center
               ${isRealtime ? 'bg-emerald-500 text-slate-950 shadow-lg shadow-emerald-500/20' : 'bg-slate-900 text-slate-400 border border-slate-800'}`}
           >
-            <span className={`w-2 h-2 rounded-full ${isRealtime ? 'bg-slate-950 animate-pulse' : 'bg-slate-500'}`} />
-            {isRealtime ? `AUTO REFRESH (${countdown}s)` : 'PAUSED'}
+            <span className={`w-2 h-2 rounded-full flex-shrink-0 ${isRealtime ? 'bg-slate-950 animate-pulse' : 'bg-slate-500'}`} />
+            <span className="whitespace-nowrap">{isRealtime ? `AUTO (${countdown}s)` : 'PAUSED'}</span>
           </button>
+          
           <button
             onClick={() => { setLoading(true); syncLiveMonitorData(); }}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-slate-900 border border-slate-800 text-slate-300 hover:bg-slate-800 transition-colors"
+            className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-semibold bg-slate-900 border border-slate-800 text-slate-300 hover:bg-slate-800 transition-colors"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-            Re-Sync
           </button>
         </div>
       </div>
@@ -185,7 +242,7 @@ export default function LiveScoreMonitor() {
       {/* Papan Peringkat Utama */}
       <div className="bg-slate-900/40 rounded-2xl border border-slate-900 overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
+          <table className="w-full text-left border-collapse min-w-[800px]">
             <thead>
               <tr className="bg-slate-900/90 text-slate-400 text-xs uppercase tracking-wider font-bold border-b border-slate-800">
                 <th className="px-5 py-3.5 text-center w-20">Rank</th>
@@ -283,8 +340,12 @@ export default function LiveScoreMonitor() {
           {sortedResults.length === 0 && (
             <div className="text-center py-20 bg-slate-950/40">
               <BarChart3 className="w-12 h-12 text-slate-800 mx-auto mb-3 animate-pulse" />
-              <p className="text-slate-400 font-bold uppercase tracking-wider text-sm">Belum Ada Sesi Ujian Berakhir</p>
-              <p className="text-slate-500 text-xs mt-1">Papan skor akan otomatis bergeser begitu peserta mengirimkan jawaban mereka</p>
+              <p className="text-slate-400 font-bold uppercase tracking-wider text-sm">
+                {filter === 'ALL' ? 'Belum Ada Sesi Ujian Berakhir' : `Belum Ada Data Untuk ${PKG_LABELS[filter]}`}
+              </p>
+              <p className="text-slate-500 text-xs mt-1">
+                Papan skor akan otomatis bergeser begitu peserta mengirimkan jawaban mereka
+              </p>
             </div>
           )}
         </div>
