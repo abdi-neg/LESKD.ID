@@ -1,4 +1,5 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { useEffect } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { AppProvider, useApp } from './context/AppContext';
 
 // Import Komponen Halaman
@@ -16,7 +17,6 @@ import AdminDashboard from './components/admin/AdminDashboard';
 function ProtectedRoute({ children, allowedRoles }: { children: JSX.Element, allowedRoles?: string[] }) {
   const { state } = useApp();
 
-  // 1. Jika masih loading, jangan tampilkan apa-apa dulu
   if (state.authLoading) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
@@ -28,17 +28,14 @@ function ProtectedRoute({ children, allowedRoles }: { children: JSX.Element, all
     );
   }
 
-  // 2. Jika belum login, tendang ke halaman depan
   if (!state.profile) {
     return <Navigate to="/" replace />;
   }
 
-  // 3. Jika belum di-approve, tendang ke ruang tunggu
   if (!state.profile.is_approved) {
     return <Navigate to="/waiting-room" replace />;
   }
 
-  // 4. Jika halaman ini khusus role tertentu (misal admin), tapi yang masuk peserta, tendang ke dashboard!
   if (allowedRoles) {
     const userRole = state.profile.role.toLowerCase();
     if (!allowedRoles.includes(userRole)) {
@@ -46,7 +43,6 @@ function ProtectedRoute({ children, allowedRoles }: { children: JSX.Element, all
     }
   }
 
-  // 5. Aman! Silakan masuk.
   return children;
 }
 
@@ -55,13 +51,42 @@ function ProtectedRoute({ children, allowedRoles }: { children: JSX.Element, all
 // ==================================================
 function AppRouter() {
   const { state } = useApp();
+  const navigate = useNavigate();
+  const location = useLocation();
 
-  // Logika untuk menentukan halaman awal setelah login (sebelum masuk ke rute)
+  // ==================================================
+  // 🔄 JEMBATAN SINKRONISASI PUSAT (State to URL Bridge)
+  // ==================================================
+  useEffect(() => {
+    const viewToPath: Record<string, string> = {
+      'landing': '/',
+      'waiting-room': '/waiting-room',
+      'participant-dashboard': '/dashboard',
+      'exam-engine': '/exam',
+      'exam-results': '/exam/results',
+      'exam-review': '/exam/review',
+      'admin-dashboard': '/admin',
+    };
+
+    const targetPath = viewToPath[state.currentView];
+
+    // Proteksi khusus rute admin: Jika sedang membuka sub-menu admin (misal: /admin/live), 
+    // jangan paksa browser kembali melompat ke /admin utama.
+    if (state.currentView === 'admin-dashboard' && location.pathname.startsWith('/admin')) {
+      return;
+    }
+
+    // Jika URL saat ini berbeda dengan rute panggung yang aktif, paksa URL mengikuti panggung
+    if (targetPath && location.pathname !== targetPath) {
+      navigate(targetPath, { replace: true });
+    }
+  }, [state.currentView, location.pathname, navigate]);
+
   const getHomeRoute = () => {
     if (!state.profile) return '/';
     if (!state.profile.is_approved) return '/waiting-room';
     if (state.profile.role.toLowerCase() === 'participant') return '/dashboard';
-    return '/admin'; // Untuk admin dan super_admin
+    return '/admin';
   };
 
   if (state.authLoading) {
@@ -108,20 +133,19 @@ function AppRouter() {
       />
 
       {/* --- RUTE KHUSUS ADMIN --- */}
-      {/* Tanda /* artinya mencakup semua sub-menu admin seperti /admin/live, /admin/users, dll */}
       <Route 
         path="/admin/*" 
         element={<ProtectedRoute allowedRoles={['admin', 'super_admin']}><AdminDashboard /></ProtectedRoute>} 
       />
 
-      {/* --- RUTE NYASAR (404) --- */}
+      {/* --- RUTE NYASAR (404 Fallback) --- */}
       <Route path="*" element={<Navigate to={getHomeRoute()} replace />} />
     </Routes>
   );
 }
 
 // ==================================================
-// 🚀 ROOT APP (Bungkus dengan BrowserRouter)
+// 🚀 ROOT APP
 // ==================================================
 export default function App() {
   return (
