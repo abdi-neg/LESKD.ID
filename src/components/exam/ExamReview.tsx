@@ -76,7 +76,7 @@ function QuestionCard({ question, answer, index, forceExpand }: any) {
           <p className={`text-sm font-medium text-gray-800 whitespace-pre-wrap ${expanded ? '' : 'line-clamp-2'}`}><span className="text-gray-400 mr-1">#{index + 1}</span>{qText}</p>
           <div className="flex items-center gap-2 mt-1.5 flex-wrap">
             <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-gray-100 text-gray-700">{category}</span>
-            <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-gray-50 text-gray-600">Jawaban Anda: {selected || 'Kosong'}</span>
+            <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-gray-50 text-gray-600">Jawaban Peserta: {selected || 'Kosong'}</span>
             {!isTKP && correctAns && <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700">Kunci: {correctAns}</span>}
           </div>
         </div>
@@ -124,6 +124,9 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
   const state = contextData?.state || {};
   const dispatch = contextData?.dispatch;
 
+  // 🔑 PERBAIKAN 1: Deteksi apakah yang membuka halaman ini adalah Admin
+  const isAdmin = state?.user?.role === 'admin' || state?.profile?.role === 'admin';
+
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<'ALL' | 'TIU' | 'TWK' | 'TKP'>('ALL');
   const [globalExpand, setGlobalExpand] = useState(false);
@@ -136,6 +139,7 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
   const stateAnswers = state?.examSession?.answers || state?.activeAnswers || state?.answers || {};
 
   useEffect(() => {
+    // Jika data soal sudah dilempar langsung (biasanya saat user baru saja selesai ujian), tidak perlu fetch.
     if ((propQuestions && propQuestions.length > 0) || stateQuestions.length > 0) {
       return;
     }
@@ -143,7 +147,8 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
     async function loadSnapshotFromSupabase() {
       setIsFetchingDb(true);
       try {
-        const resultId = state?.activeResultId || state?.selectedResultId || state?.reviewId || (state?.examSession as any)?.resultId;
+        // 🔑 PERBAIKAN 2: Pastikan mengambil ID yang diklik Admin dari state payload OPEN_REVIEW
+        const resultId = state?.activeReviewId || state?.activeResultId || state?.selectedResultId || state?.reviewId || (state?.examSession as any)?.resultId;
         
         let query = supabase.from('exam_results').select('review_snapshot, id');
         
@@ -172,7 +177,7 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
       } catch (err) {
         console.error(err);
       } finally {
-        setIsFetchingDb(false); // 🔑 PERBAIKAN: Sekarang ejaan "finally" sudah benar dan legal
+        setIsFetchingDb(false);
       }
     }
 
@@ -201,20 +206,33 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
     return true;
   });
 
+  // 🔑 PERBAIKAN 3: Logika Tombol "Kembali" yang memisahkan Admin dan Peserta
+  const handleGoBack = () => {
+    if (isAdmin) {
+      // Jika Admin, kembalikan ke dashboard admin/master results
+      dispatch({ type: 'SET_VIEW', payload: 'admin-dashboard' }); 
+    } else {
+      // Jika Peserta biasa
+      dispatch({ type: 'SET_VIEW', payload: state?.examSession ? 'exam-results' : 'participant-dashboard' });
+    }
+  };
+
   return (
     <div className="space-y-6 max-w-4xl mx-auto px-2 py-4">
       {/* Header */}
       <div className="flex items-center justify-between bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
         <div className="flex items-center gap-3">
           <button 
-            onClick={() => dispatch({ type: 'SET_VIEW', payload: state?.examSession ? 'exam-results' : 'participant-dashboard' })} 
+            onClick={handleGoBack} 
             className="p-2 hover:bg-gray-100 rounded-xl border transition-colors"
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div>
             <h1 className="text-base font-bold text-gray-800">Pembahasan & Review Ujian</h1>
-            <p className="text-xs text-gray-500">Ditemukan {finalQuestions.length} soal ujian</p>
+            <p className="text-xs text-gray-500">
+              {isAdmin ? 'Mode Tinjauan Admin' : 'Lembar Evaluasi Pribadi'} &bull; Ditemukan {finalQuestions.length} soal
+            </p>
           </div>
         </div>
         {finalQuestions.length > 0 && (
@@ -258,7 +276,7 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
         {isFetchingDb ? (
           <div className="text-center py-12 bg-white rounded-2xl border flex flex-col items-center justify-center gap-3">
             <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
-            <p className="text-xs text-gray-500 font-medium animate-pulse">Sedang menyinkronkan data pembahasan dari Supabase...</p>
+            <p className="text-xs text-gray-500 font-medium animate-pulse">Menarik ringkasan lembar jawaban dari Supabase...</p>
           </div>
         ) : filteredQuestions.length > 0 ? (
           filteredQuestions.map((q: any, idx: number) => (
@@ -275,7 +293,7 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
             <AlertTriangle className="w-8 h-8 text-amber-500" />
             <h3 className="text-sm font-bold text-gray-700">Lembar Pembahasan Kosong</h3>
             <p className="text-xs text-gray-400 max-w-sm leading-relaxed">
-              Sistem tidak menemukan ringkasan ulasan di memori maupun database. Pastikan ulasan tersimpan dengan benar saat klik selesaikan ujian.
+              Sistem tidak dapat memuat snapshot pembahasan. Hal ini wajar jika data ini berasal dari simulasi "Mini Tryout" tanpa terkoneksi dengan database utama.
             </p>
           </div>
         )}
@@ -284,5 +302,4 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
   );
 }
 
-// 🔑 DEFAULT EXPORT UNTUK SINKRONISASI ADMIN DASHBOARD
 export default ExamReview;
