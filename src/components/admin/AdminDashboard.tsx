@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useState, useEffect } from 'react'; // 🌟 PERBAIKAN: useState sekarang sudah didefinisikan kembali
 import { motion } from 'framer-motion';
 import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import {
@@ -15,7 +15,6 @@ import ManageAdmins from './ManageAdmins';
 import ManageParticipants from './ManageParticipants';
 import ExamReview from '../exam/ExamReview'; 
 
-// Mengubah tipe tab agar sinkron dengan jalur sub-URL
 type TabPath = 'overview' | 'packages' | 'questions' | 'participants' | 'results' | 'live' | 'admins';
 
 interface DashboardStats {
@@ -27,17 +26,15 @@ interface DashboardStats {
 }
 
 export default function AdminDashboard() {
-  const { state, signOut, dispatch } = useApp();
+  const { state, signOut } = useApp();
   const navigate = useNavigate();
   const location = useLocation();
 
   const profile = state.profile;
   const isSuperAdmin = profile?.role === 'super_admin';
 
-  // Mendapatkan path sub-menu aktif saat ini dari URL (misal: /admin/live -> 'live')
   const currentSubPath = location.pathname.split('/admin/')[1] || 'overview';
 
-  // 👈 JIKA SEDANG MEMBUKA DETAIL PEMBAHASAN, AMANKAN TAMPILAN
   if (state.reviewResultId) {
     return <ExamReview />;
   }
@@ -54,7 +51,6 @@ export default function AdminDashboard() {
   
   const tabs = allTabs.filter((t) => !t.superAdminOnly || isSuperAdmin);
 
-  // Fungsi navigasi internal menggunakan URL Router
   const handleTabChange = (targetPath: TabPath) => {
     if (targetPath === 'overview') {
       navigate('/admin');
@@ -118,9 +114,6 @@ export default function AdminDashboard() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.2 }}
         >
-          {/* ==================================================
-              🗺️ SUB-ROUTES DI DALAM DASHBOARD ADMIN
-             ================================================== */}
           <Routes>
             <Route path="/" element={<AdminOverview onNavigate={handleTabChange} isSuperAdmin={isSuperAdmin} />} />
             <Route path="packages" element={<PackageManager />} />
@@ -132,7 +125,6 @@ export default function AdminDashboard() {
               path="admins" 
               element={isSuperAdmin ? <ManageAdmins /> : <Navigate to="/admin" replace />} 
             />
-            {/* Fallback jika sub-url salah ketik, balikkan ke ringkasan */}
             <Route path="*" element={<Navigate to="/admin" replace />} />
           </Routes>
         </motion.div>
@@ -197,7 +189,6 @@ function AdminOverview({ onNavigate, isSuperAdmin }: { onNavigate: (tab: TabPath
         <p className="text-gray-500 text-sm mt-1">Pantau aktivitas platform secara keseluruhan</p>
       </div>
 
-      {/* Pending approvals alerts */}
       {(stats.pendingParticipants > 0 || (isSuperAdmin && stats.pendingAdmins > 0)) && (
         <div className="space-y-2">
           {isSuperAdmin && stats.pendingAdmins > 0 && (
