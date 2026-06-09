@@ -174,7 +174,6 @@ function appReducer(state: AppState, action: AppAction): AppState {
       const examActive = state.currentView === 'exam-engine' || state.currentView === 'exam-results';
       let targetView = examActive ? state.currentView : getViewForProfile(action.payload);
       
-      // 🌟 PERBAIKAN 1: Wajib ada agar peserta baru tidak tembus ke dashboard!
       if (!action.payload.is_approved) {
         targetView = 'waiting-room';
       } else if (!examActive && savedView && savedView !== 'landing') {
@@ -356,7 +355,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [state.examSession?.timeRemaining, state.examSession?.status]);
 
-  // 🌟 PERBAIKAN 2: Wajib ada sistem Retry agar profile sempat terbentuk di Database
   async function refreshProfile(retries = 3) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { dispatch({ type: 'SET_PROFILE', payload: null }); return; }
@@ -458,6 +456,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const scores = calculateScores(session);
       const isPassed = checkPassedStatus(session.examType, scores);
       
+      // 🌟 PERBAIKAN: Bungkus snapshot jawaban dan soal untuk dikirim ke DB
+      const snapshotPayload = {
+        questions: session.questions,
+        answers: session.answers
+      };
+      
       const { error } = await supabase
         .from('exam_results')
         .update({
@@ -469,7 +473,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
           passed: isPassed,
           status: 'completed', 
           completed_at: new Date().toISOString(),
-          duration_seconds: Math.max(0, (EXAM_CONFIGS[session.examType].timeMinutes * 60) - session.timeRemaining)
+          duration_seconds: Math.max(0, (EXAM_CONFIGS[session.examType].timeMinutes * 60) - session.timeRemaining),
+          // 🌟 INILAH KUNCINYA: Simpan data jawaban dan soal secara permanen
+          review_snapshot: JSON.stringify(snapshotPayload) 
         })
         .eq('id', dbResultId);
 
