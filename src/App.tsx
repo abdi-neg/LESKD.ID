@@ -50,13 +50,45 @@ function ProtectedRoute({ children, allowedRoles }: { children: JSX.Element, all
 // 🗺️ PEMETAAN RUTE URL (ROUTER)
 // ==================================================
 function AppRouter() {
-  const { state } = useApp();
+  const { state, dispatch } = useApp();
   const navigate = useNavigate();
   const location = useLocation();
 
   // ==================================================
-  // 🔄 JEMBATAN SINKRONISASI PUSAT (State to URL Bridge)
+  // 🔄 JEMBATAN SINKRONISASI PUSAT (Dua Arah & Anti-Gagal)
   // ==================================================
+  
+  // Efek A: URL Membimbing State (Saat reload / history browser dibuka)
+  useEffect(() => {
+    if (state.authLoading || !state.profile) return;
+
+    const currentPath = location.pathname;
+
+    // Kasus 1: User membuka kembali riwayat browser di rute /exam secara paksa
+    if (currentPath === '/exam' && state.currentView !== 'exam-engine') {
+      const activeSessionId = localStorage.getItem('exam_active_session_id');
+      if (activeSessionId) {
+        // Jika data backup pengerjaan ada di komputer mereka, paksa State masuk ke mode ujian kembali
+        dispatch({ type: 'SET_VIEW', payload: 'exam-engine' });
+      } else {
+        // Jika tidak sedang ada ujian aktif, pulangkan dengan aman ke dashboard
+        navigate('/dashboard', { replace: true });
+      }
+    }
+
+    // Kasus 2: User melakukan refresh di halaman pembahasan review
+    if (currentPath === '/exam/review' && state.currentView !== 'exam-review') {
+      const savedReviewId = localStorage.getItem('leskd_saved_review_id');
+      if (savedReviewId) {
+        dispatch({ type: 'SET_VIEW', payload: 'exam-review' });
+      } else {
+        navigate('/dashboard', { replace: true });
+      }
+    }
+  }, [location.pathname, state.authLoading, state.profile]);
+
+
+  // Efek B: State Membimbing URL (Navigasi Tombol Internal Aplikasi)
   useEffect(() => {
     const viewToPath: Record<string, string> = {
       'landing': '/',
@@ -70,14 +102,15 @@ function AppRouter() {
 
     const targetPath = viewToPath[state.currentView];
 
-    // Proteksi khusus rute admin: Jika sedang membuka sub-menu admin (misal: /admin/live), 
-    // jangan paksa browser kembali melompat ke /admin utama.
     if (state.currentView === 'admin-dashboard' && location.pathname.startsWith('/admin')) {
       return;
     }
 
-    // Jika URL saat ini berbeda dengan rute panggung yang aktif, paksa URL mengikuti panggung
     if (targetPath && location.pathname !== targetPath) {
+      // Tolak pembalikan otomatis jika user sedang mencoba mengakses rute backup /exam lewat history
+      if (location.pathname === '/exam' && localStorage.getItem('exam_active_session_id')) {
+        return;
+      }
       navigate(targetPath, { replace: true });
     }
   }, [state.currentView, location.pathname, navigate]);
@@ -102,7 +135,6 @@ function AppRouter() {
 
   return (
     <Routes>
-      {/* --- RUTE PUBLIK --- */}
       <Route 
         path="/" 
         element={!state.profile ? <LandingPage /> : <Navigate to={getHomeRoute()} replace />} 
@@ -112,7 +144,7 @@ function AppRouter() {
         element={!state.profile?.is_approved ? <WaitingRoom /> : <Navigate to={getHomeRoute()} replace />} 
       />
 
-      {/* --- RUTE KHUSUS PESERTA (PARTICIPANT) --- */}
+      {/* --- RUTE KHUSUS PESERTA --- */}
       <Route 
         path="/dashboard" 
         element={<ProtectedRoute allowedRoles={['participant']}><ParticipantDashboard /></ProtectedRoute>} 
@@ -126,7 +158,7 @@ function AppRouter() {
         element={<ProtectedRoute allowedRoles={['participant']}><ExamResults /></ProtectedRoute>} 
       />
 
-      {/* --- RUTE GABUNGAN (BISA PESERTA & ADMIN) --- */}
+      {/* --- RUTE GABUNGAN --- */}
       <Route 
         path="/exam/review" 
         element={<ProtectedRoute><ExamReview /></ProtectedRoute>} 
@@ -138,15 +170,12 @@ function AppRouter() {
         element={<ProtectedRoute allowedRoles={['admin', 'super_admin']}><AdminDashboard /></ProtectedRoute>} 
       />
 
-      {/* --- RUTE NYASAR (404 Fallback) --- */}
+      {/* --- FALLBACK RUTE NYASAR --- */}
       <Route path="*" element={<Navigate to={getHomeRoute()} replace />} />
     </Routes>
   );
 }
 
-// ==================================================
-// 🚀 ROOT APP
-// ==================================================
 export default function App() {
   return (
     <BrowserRouter>
