@@ -18,9 +18,6 @@ import { supabase } from '../../lib/supabase';
 type AnswerOption = 'A' | 'B' | 'C' | 'D' | 'E';
 const OPTIONS: AnswerOption[] = ['A', 'B', 'C', 'D', 'E'];
 
-// ==========================================
-// COMPONENT: QuestionCard
-// ==========================================
 function QuestionCard({ question, answer, index, forceExpand }: any) {
   const [localExpanded, setLocalExpanded] = useState(false);
   const expanded = forceExpand || localExpanded;
@@ -116,16 +113,13 @@ function QuestionCard({ question, answer, index, forceExpand }: any) {
   );
 }
 
-// ==========================================
-// MAIN COMPONENT (NAMED EXPORT)
-// ==========================================
 export function ExamReview({ questions: propQuestions, answers: propAnswers }: any) {
   const contextData = useApp();
   const state = contextData?.state || {};
   const dispatch = contextData?.dispatch;
 
-  // 🔑 PERBAIKAN 1: Deteksi apakah yang membuka halaman ini adalah Admin
-  const isAdmin = state?.user?.role === 'admin' || state?.profile?.role === 'admin';
+  // 1. PERBAIKAN PERAN: Memastikan mencakup 'super_admin' juga jika ada
+  const isAdmin = state?.profile?.role === 'admin' || state?.profile?.role === 'super_admin';
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<'ALL' | 'TIU' | 'TWK' | 'TKP'>('ALL');
@@ -139,7 +133,6 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
   const stateAnswers = state?.examSession?.answers || state?.activeAnswers || state?.answers || {};
 
   useEffect(() => {
-    // Jika data soal sudah dilempar langsung (biasanya saat user baru saja selesai ujian), tidak perlu fetch.
     if ((propQuestions && propQuestions.length > 0) || stateQuestions.length > 0) {
       return;
     }
@@ -147,22 +140,28 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
     async function loadSnapshotFromSupabase() {
       setIsFetchingDb(true);
       try {
-        // 🔑 PERBAIKAN 2: Pastikan mengambil ID yang diklik Admin dari state payload OPEN_REVIEW
-        const resultId = state?.activeReviewId || state?.activeResultId || state?.selectedResultId || state?.reviewId || (state?.examSession as any)?.resultId;
+        // 2. PERBAIKAN NAMA VARIABEL: Ini yang bikin kosong! Harus ada state?.reviewResultId
+        const resultId = state?.reviewResultId || state?.activeReviewId || state?.activeResultId || state?.selectedResultId || state?.reviewId || (state?.examSession as any)?.resultId;
         
         let query = supabase.from('exam_results').select('review_snapshot, id');
         
+        // Memastikan query mencari berdasarkan ID Ujian yang diklik, bukan ID profil admin
         if (resultId) {
           query = query.eq('id', resultId);
-        } else if (state?.profile?.id) {
+        } else if (state?.profile?.id && !isAdmin) {
           query = query.eq('participant_id', state.profile.id).order('completed_at', { ascending: false }).limit(1);
         } else {
-          query = query.order('completed_at', { ascending: false }).limit(1);
+          // Fallback terakhir jika ID benar-benar hilang
+          setIsFetchingDb(false);
+          return;
         }
 
         const { data, error } = await query.maybeSingle();
         
-        if (error) return;
+        if (error) {
+          console.error("Gagal menarik snapshot dari Supabase", error);
+          return;
+        }
 
         if (data && data.review_snapshot) {
           const snapshot = typeof data.review_snapshot === 'string' 
@@ -182,7 +181,7 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
     }
 
     loadSnapshotFromSupabase();
-  }, [state, propQuestions, stateQuestions.length]);
+  }, [state, propQuestions, stateQuestions.length, isAdmin]);
 
   const finalQuestions = (propQuestions && propQuestions.length > 0) ? propQuestions :
                          (stateQuestions.length > 0) ? stateQuestions : supabaseQuestions;
@@ -206,20 +205,17 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
     return true;
   });
 
-  // 🔑 PERBAIKAN 3: Logika Tombol "Kembali" yang memisahkan Admin dan Peserta
+  // 3. PERBAIKAN TOMBOL BACK: Murni mengarahkan Admin ke Admin Dashboard
   const handleGoBack = () => {
     if (isAdmin) {
-      // Jika Admin, kembalikan ke dashboard admin/master results
       dispatch({ type: 'SET_VIEW', payload: 'admin-dashboard' }); 
     } else {
-      // Jika Peserta biasa
       dispatch({ type: 'SET_VIEW', payload: state?.examSession ? 'exam-results' : 'participant-dashboard' });
     }
   };
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto px-2 py-4">
-      {/* Header */}
       <div className="flex items-center justify-between bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
         <div className="flex items-center gap-3">
           <button 
@@ -245,7 +241,6 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
         )}
       </div>
 
-      {/* Filter Panel */}
       <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm space-y-3">
         <div className="relative">
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
@@ -271,12 +266,11 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
         </div>
       </div>
 
-      {/* Area Daftar Soal */}
       <div className="space-y-4">
         {isFetchingDb ? (
           <div className="text-center py-12 bg-white rounded-2xl border flex flex-col items-center justify-center gap-3">
             <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
-            <p className="text-xs text-gray-500 font-medium animate-pulse">Menarik ringkasan lembar jawaban dari Supabase...</p>
+            <p className="text-xs text-gray-500 font-medium animate-pulse">Menarik lembar jawaban peserta dari database...</p>
           </div>
         ) : filteredQuestions.length > 0 ? (
           filteredQuestions.map((q: any, idx: number) => (
@@ -291,9 +285,9 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
         ) : (
           <div className="text-center py-12 bg-white rounded-2xl border border-dashed border-gray-200 p-6 flex flex-col items-center justify-center gap-2">
             <AlertTriangle className="w-8 h-8 text-amber-500" />
-            <h3 className="text-sm font-bold text-gray-700">Lembar Pembahasan Kosong</h3>
+            <h3 className="text-sm font-bold text-gray-700">Data Pembahasan Kosong</h3>
             <p className="text-xs text-gray-400 max-w-sm leading-relaxed">
-              Sistem tidak dapat memuat snapshot pembahasan. Hal ini wajar jika data ini berasal dari simulasi "Mini Tryout" tanpa terkoneksi dengan database utama.
+              Peserta ini melaksanakan ujian sebelum sistem sinkronisasi otomatis (*snapshot*) diperbarui, sehingga detail jawabannya tidak terekam secara permanen di server.
             </p>
           </div>
         )}
