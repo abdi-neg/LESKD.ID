@@ -118,8 +118,9 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
   const state = contextData?.state || {};
   const dispatch = contextData?.dispatch;
 
-  // 1. PERBAIKAN PERAN: Memastikan mencakup 'super_admin' juga jika ada
-  const isAdmin = state?.profile?.role === 'admin' || state?.profile?.role === 'super_admin';
+  // 🛡️ PERBAIKAN 1: Logika Deteksi Admin Anti-Gagal
+  const userRole = state?.profile?.role?.toLowerCase() || 'participant';
+  const isAdmin = userRole !== 'participant'; // Jika dia bukan participant, pasti dia Admin/Super Admin
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<'ALL' | 'TIU' | 'TWK' | 'TKP'>('ALL');
@@ -140,18 +141,16 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
     async function loadSnapshotFromSupabase() {
       setIsFetchingDb(true);
       try {
-        // 2. PERBAIKAN NAMA VARIABEL: Ini yang bikin kosong! Harus ada state?.reviewResultId
-        const resultId = state?.reviewResultId || state?.activeReviewId || state?.activeResultId || state?.selectedResultId || state?.reviewId || (state?.examSession as any)?.resultId;
+        // 🛡️ Memastikan selalu menangkap payload ID dari Master Results
+        const resultId = state?.reviewResultId || state?.activeReviewId || state?.activeResultId || state?.selectedResultId || state?.reviewId;
         
         let query = supabase.from('exam_results').select('review_snapshot, id');
         
-        // Memastikan query mencari berdasarkan ID Ujian yang diklik, bukan ID profil admin
         if (resultId) {
           query = query.eq('id', resultId);
         } else if (state?.profile?.id && !isAdmin) {
           query = query.eq('participant_id', state.profile.id).order('completed_at', { ascending: false }).limit(1);
         } else {
-          // Fallback terakhir jika ID benar-benar hilang
           setIsFetchingDb(false);
           return;
         }
@@ -159,7 +158,7 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
         const { data, error } = await query.maybeSingle();
         
         if (error) {
-          console.error("Gagal menarik snapshot dari Supabase", error);
+          console.error("Gagal menarik snapshot:", error);
           return;
         }
 
@@ -205,7 +204,7 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
     return true;
   });
 
-  // 3. PERBAIKAN TOMBOL BACK: Murni mengarahkan Admin ke Admin Dashboard
+  // 🛡️ PERBAIKAN 2: Rute Kembali yang Aman
   const handleGoBack = () => {
     if (isAdmin) {
       dispatch({ type: 'SET_VIEW', payload: 'admin-dashboard' }); 
@@ -287,7 +286,7 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
             <AlertTriangle className="w-8 h-8 text-amber-500" />
             <h3 className="text-sm font-bold text-gray-700">Data Pembahasan Kosong</h3>
             <p className="text-xs text-gray-400 max-w-sm leading-relaxed">
-              Peserta ini melaksanakan ujian sebelum sistem sinkronisasi otomatis (*snapshot*) diperbarui, sehingga detail jawabannya tidak terekam secara permanen di server.
+              Sistem tidak dapat menampilkan detail. Pastikan Anda telah membuat kolom "review_snapshot" di tabel Supabase dan merekam sesi ujian baru.
             </p>
           </div>
         )}
