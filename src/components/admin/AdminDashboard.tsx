@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import { motion } from 'framer-motion';
+import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import {
   LogOut, LayoutDashboard, BookOpen, Activity, History,
   Package, Users, Shield, Menu, X, UserCheck
@@ -12,10 +13,10 @@ import MasterResults from './MasterResults';
 import PackageManager from './PackageManager';
 import ManageAdmins from './ManageAdmins';
 import ManageParticipants from './ManageParticipants';
-// 🔑 PERBAIKAN: Mengubah menjadi Default Import tanpa {} agar proses build Vercel sukses
 import ExamReview from '../exam/ExamReview'; 
 
-type Tab = 'overview' | 'questions' | 'live' | 'results' | 'packages' | 'admins' | 'participants';
+// Mengubah tipe tab agar sinkron dengan jalur sub-URL
+type TabPath = 'overview' | 'packages' | 'questions' | 'participants' | 'results' | 'live' | 'admins';
 
 interface DashboardStats {
   totalQuestions: number;
@@ -26,19 +27,22 @@ interface DashboardStats {
 }
 
 export default function AdminDashboard() {
-  const { state, signOut } = useApp();
-  const [activeTab, setActiveTab] = useState<Tab>('overview');
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { state, signOut, dispatch } = useApp();
+  const navigate = useNavigate();
+  const location = useLocation();
 
   const profile = state.profile;
   const isSuperAdmin = profile?.role === 'super_admin';
 
-  // 👈 JIKA SEDANG MEMBUKA DETAIL PEMBAHASAN (reviewResultId ada), AMANKAN TAMPILAN
+  // Mendapatkan path sub-menu aktif saat ini dari URL (misal: /admin/live -> 'live')
+  const currentSubPath = location.pathname.split('/admin/')[1] || 'overview';
+
+  // 👈 JIKA SEDANG MEMBUKA DETAIL PEMBAHASAN, AMANKAN TAMPILAN
   if (state.reviewResultId) {
     return <ExamReview />;
   }
 
-  const allTabs: { id: Tab; label: string; icon: React.ElementType; superAdminOnly?: boolean }[] = [
+  const allTabs: { id: TabPath; label: string; icon: React.ElementType; superAdminOnly?: boolean }[] = [
     { id: 'overview', label: 'Ringkasan', icon: LayoutDashboard },
     { id: 'packages', label: 'Paket Ujian', icon: Package },
     { id: 'questions', label: 'Kelola Soal', icon: BookOpen },
@@ -47,14 +51,29 @@ export default function AdminDashboard() {
     { id: 'live', label: 'Monitor Live', icon: Activity },
     { id: 'admins', label: 'Kelola Admin', icon: Shield, superAdminOnly: true },
   ];
+  
   const tabs = allTabs.filter((t) => !t.superAdminOnly || isSuperAdmin);
+
+  // Fungsi navigasi internal menggunakan URL Router
+  const handleTabChange = (targetPath: TabPath) => {
+    if (targetPath === 'overview') {
+      navigate('/admin');
+    } else {
+      navigate(`/admin/${targetPath}`);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <header className="bg-[#1e3a8a] text-white shadow-lg sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <span className="text-white font-extrabold text-lg">LESKD.ID</span>
+            <span 
+              className="text-white font-extrabold text-lg cursor-pointer"
+              onClick={() => handleTabChange('overview')}
+            >
+              LESKD.ID
+            </span>
             <span className="hidden sm:inline text-xs font-semibold px-2.5 py-1 rounded-full bg-white/20 text-white">
               {isSuperAdmin ? 'Super Admin' : 'Admin'}
             </span>
@@ -69,12 +88,6 @@ export default function AdminDashboard() {
               <LogOut className="w-4 h-4" />
               <span className="hidden sm:inline">Keluar</span>
             </button>
-            <button
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="sm:hidden w-9 h-9 bg-white/10 rounded-xl flex items-center justify-center"
-            >
-              {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-            </button>
           </div>
         </div>
 
@@ -83,9 +96,9 @@ export default function AdminDashboard() {
             {tabs.map((tab) => (
               <button
                 key={tab.id}
-                onClick={() => { setActiveTab(tab.id); setMobileMenuOpen(false); }}
+                onClick={() => handleTabChange(tab.id)}
                 className={`flex items-center gap-2 px-3 sm:px-4 py-3 text-sm font-medium transition-colors border-b-2 whitespace-nowrap
-                  ${activeTab === tab.id
+                  ${currentSubPath === tab.id
                     ? 'text-white border-[#10b981]'
                     : 'text-blue-300 border-transparent hover:text-white'
                   }`}
@@ -100,25 +113,35 @@ export default function AdminDashboard() {
 
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 py-8">
         <motion.div
-          key={activeTab}
+          key={currentSubPath}
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.2 }}
         >
-          {activeTab === 'overview' && <AdminOverview onNavigate={setActiveTab} isSuperAdmin={isSuperAdmin} />}
-          {activeTab === 'packages' && <PackageManager />}
-          {activeTab === 'questions' && <QuestionManager />}
-          {activeTab === 'participants' && <ManageParticipants />}
-          {activeTab === 'results' && <MasterResults />}
-          {activeTab === 'live' && <LiveScoreMonitor />}
-          {activeTab === 'admins' && isSuperAdmin && <ManageAdmins />}
+          {/* ==================================================
+              🗺️ SUB-ROUTES DI DALAM DASHBOARD ADMIN
+             ================================================== */}
+          <Routes>
+            <Route path="/" element={<AdminOverview onNavigate={handleTabChange} isSuperAdmin={isSuperAdmin} />} />
+            <Route path="packages" element={<PackageManager />} />
+            <Route path="questions" element={<QuestionManager />} />
+            <Route path="participants" element={<ManageParticipants />} />
+            <Route path="results" element={<MasterResults />} />
+            <Route path="live" element={<LiveScoreMonitor />} />
+            <Route 
+              path="admins" 
+              element={isSuperAdmin ? <ManageAdmins /> : <Navigate to="/admin" replace />} 
+            />
+            {/* Fallback jika sub-url salah ketik, balikkan ke ringkasan */}
+            <Route path="*" element={<Navigate to="/admin" replace />} />
+          </Routes>
         </motion.div>
       </main>
     </div>
   );
 }
 
-function AdminOverview({ onNavigate, isSuperAdmin }: { onNavigate: (tab: Tab) => void; isSuperAdmin: boolean }) {
+function AdminOverview({ onNavigate, isSuperAdmin }: { onNavigate: (tab: TabPath) => void; isSuperAdmin: boolean }) {
   const [stats, setStats] = useState<DashboardStats>({
     totalQuestions: 0,
     totalParticipants: 0,
@@ -161,10 +184,10 @@ function AdminOverview({ onNavigate, isSuperAdmin }: { onNavigate: (tab: Tab) =>
   }, [isSuperAdmin]);
 
   const statCards = [
-    { label: 'Total Soal', value: loading ? '...' : stats.totalQuestions.toString(), tab: 'questions' as Tab },
-    { label: 'Peserta Aktif', value: loading ? '...' : stats.totalParticipants.toString(), tab: 'participants' as Tab },
-    { label: 'Total Hasil Ujian', value: loading ? '...' : stats.totalResults.toString(), tab: 'results' as Tab },
-    { label: 'Peserta Pending', value: loading ? '...' : stats.pendingParticipants.toString(), tab: 'participants' as Tab },
+    { label: 'Total Soal', value: loading ? '...' : stats.totalQuestions.toString(), tab: 'questions' as TabPath },
+    { label: 'Peserta Aktif', value: loading ? '...' : stats.totalParticipants.toString(), tab: 'participants' as TabPath },
+    { label: 'Total Hasil Ujian', value: loading ? '...' : stats.totalResults.toString(), tab: 'results' as TabPath },
+    { label: 'Peserta Pending', value: loading ? '...' : stats.pendingParticipants.toString(), tab: 'participants' as TabPath },
   ];
 
   return (
