@@ -1,6 +1,7 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { LogOut, User, Trophy, Target, TrendingUp, History, ChevronDown, ChevronUp } from 'lucide-react';
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom'; // 🌟 1. IMPORT NAVIGATE BROWSER
 import { useApp } from '../../context/AppContext';
 import { ExamResult } from '../../types';
 import ExamCards from './ExamCards';
@@ -8,16 +9,14 @@ import Leaderboard from './Leaderboard';
 import ExamHistory from './ExamHistory';
 
 export default function ParticipantDashboard() {
-  // 🌟 PERBAIKAN 1: Ambil examHistory dan fungsi fetch-nya dari AppContext global
   const { state, dispatch, signOut, examHistory, fetchUserExamHistory } = useApp();
   const profile = state.profile;
+  const navigate = useNavigate(); // 🌟 2. INISIALISASI NAVIGATE
   
-  // State manajemen UI
   const [showHistory, setShowHistory] = useState(false);
   const [resultsLoading, setResultsLoading] = useState(true);
   const [selectedExam, setSelectedExam] = useState<any | null>(null);
 
-  // 🌟 PERBAIKAN 2: Trigger fetch global saat profile siap, mengandalkan query terpusat yang aman dari typo
   useEffect(() => {
     if (!profile) return;
     setResultsLoading(true);
@@ -26,7 +25,6 @@ export default function ParticipantDashboard() {
     });
   }, [profile]);
 
-  // 🌟 PERBAIKAN 3: Kalkulasi Statistik Ringkas langsung menggunakan data 'examHistory' global
   const totalExams = examHistory.length;
   const avgScore = totalExams > 0
     ? Math.round(examHistory.reduce((s, r) => s + (r.total_score || 0), 0) / totalExams)
@@ -48,7 +46,6 @@ export default function ParticipantDashboard() {
     completed_at: string;
   };
 
-  // 🌟 PERBAIKAN 4: Mapping records bersumber dari 'examHistory'
   const historyRecords: HistoryRecord[] = examHistory.map((r) => ({
     id: r.id,
     package_type: r.package_type,
@@ -137,8 +134,10 @@ export default function ParticipantDashboard() {
                 whileHover={{ y: -3 }}
                 className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100"
               >
-                <div className={`w-10 h-10 ${stat.bg} rounded-xl flex items-center justify-center mb-3`}>
-                  <stat.icon className={`w-5 h-5 ${stat.color}`} />
+                <div className="make-flex-center mb-3">
+                  <div className={`w-10 h-10 ${stat.bg} rounded-xl flex items-center justify-center`}>
+                    <stat.icon className={`w-5 h-5 ${stat.color}`} />
+                  </div>
                 </div>
                 <p className="text-2xl font-bold text-gray-800">{stat.value}</p>
                 <p className="text-gray-500 text-xs mt-0.5">{stat.label}</p>
@@ -192,7 +191,11 @@ export default function ParticipantDashboard() {
                 ) : (
                   <ExamHistory
                     records={historyRecords}
-                    onViewReview={(resultId) => dispatch({ type: 'OPEN_REVIEW', payload: resultId })}
+                    // 🌟 3. PERBAIKAN UTAMA: Sekali klik, ubah State dan paksa URL melompat bersamaan
+                    onViewReview={(resultId) => {
+                      dispatch({ type: 'OPEN_REVIEW', payload: resultId });
+                      navigate('/exam/review');
+                    }}
                     onViewDetails={(record) => setSelectedExam(record)}
                   />
                 )}
@@ -233,7 +236,7 @@ export default function ParticipantDashboard() {
                   {selectedExam.package_name}
                 </h3>
                 <p className="text-xs text-gray-400">
-                  Dikerjakan pada: {new Date(selectedExam.completed_at).toLocaleDateString('id-ID', {
+                  Dickerjakan pada: {new Date(selectedExam.completed_at).toLocaleDateString('id-ID', {
                     day: 'numeric',
                     month: 'long',
                     year: 'numeric',
