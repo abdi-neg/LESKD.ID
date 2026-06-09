@@ -54,6 +54,11 @@ function AppRouter() {
   const navigate = useNavigate();
   const location = useLocation();
 
+  // 🌟 PERBAIKAN UTAMA: Deteksi apakah aplikasi sedang dalam proses memulihkan data ujian dari database
+  const isResumingExam = location.pathname === '/exam' && 
+                         localStorage.getItem('exam_active_session_id') && 
+                         !state.examSession;
+
   // ==================================================
   // 🔄 JEMBATAN SINKRONISASI PUSAT (Dua Arah & Anti-Gagal)
   // ==================================================
@@ -64,19 +69,15 @@ function AppRouter() {
 
     const currentPath = location.pathname;
 
-    // Kasus 1: User membuka kembali riwayat browser di rute /exam secara paksa
     if (currentPath === '/exam' && state.currentView !== 'exam-engine') {
       const activeSessionId = localStorage.getItem('exam_active_session_id');
       if (activeSessionId) {
-        // Jika data backup pengerjaan ada di komputer mereka, paksa State masuk ke mode ujian kembali
         dispatch({ type: 'SET_VIEW', payload: 'exam-engine' });
       } else {
-        // Jika tidak sedang ada ujian aktif, pulangkan dengan aman ke dashboard
         navigate('/dashboard', { replace: true });
       }
     }
 
-    // Kasus 2: User melakukan refresh di halaman pembahasan review
     if (currentPath === '/exam/review' && state.currentView !== 'exam-review') {
       const savedReviewId = localStorage.getItem('leskd_saved_review_id');
       if (savedReviewId) {
@@ -107,7 +108,6 @@ function AppRouter() {
     }
 
     if (targetPath && location.pathname !== targetPath) {
-      // Tolak pembalikan otomatis jika user sedang mencoba mengakses rute backup /exam lewat history
       if (location.pathname === '/exam' && localStorage.getItem('exam_active_session_id')) {
         return;
       }
@@ -122,12 +122,15 @@ function AppRouter() {
     return '/admin';
   };
 
-  if (state.authLoading) {
+  // 🌟 Sabuk Pengaman: Jika sedang loading auth ATAU sedang mengambil data soal resume, kunci di layar loading
+  if (state.authLoading || isResumingExam) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
         <div className="text-center">
           <div className="w-10 h-10 border-4 border-[#1e3a8a] border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-gray-500 text-sm font-medium">Menghubungkan...</p>
+          <p className="text-gray-500 text-sm font-medium">
+            {isResumingExam ? "Memulihkan sesi ujian Anda..." : "Menghubungkan..."}
+          </p>
         </div>
       </div>
     );
