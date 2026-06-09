@@ -118,9 +118,8 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
   const state = contextData?.state || {};
   const dispatch = contextData?.dispatch;
 
-  // 🛡️ PERBAIKAN 1: Logika Deteksi Admin Anti-Gagal
   const userRole = state?.profile?.role?.toLowerCase() || 'participant';
-  const isAdmin = userRole !== 'participant'; // Jika dia bukan participant, pasti dia Admin/Super Admin
+  const isAdmin = userRole !== 'participant'; 
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<'ALL' | 'TIU' | 'TWK' | 'TKP'>('ALL');
@@ -141,7 +140,6 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
     async function loadSnapshotFromSupabase() {
       setIsFetchingDb(true);
       try {
-        // 🛡️ Memastikan selalu menangkap payload ID dari Master Results
         const resultId = state?.reviewResultId || state?.activeReviewId || state?.activeResultId || state?.selectedResultId || state?.reviewId;
         
         let query = supabase.from('exam_results').select('review_snapshot, id');
@@ -204,8 +202,14 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
     return true;
   });
 
-  // 🛡️ PERBAIKAN 2: Rute Kembali yang Aman
+  // 🛡️ PERBAIKAN 3: Menghapus ingatan ID sebelum kembali ke halaman sebelumnya
   const handleGoBack = () => {
+    // Langkah 1: Wajib bersihkan ID dari ingatan State agar aplikasi tidak nyangkut
+    if (state?.reviewResultId) {
+      dispatch({ type: 'DELETE_EXAM_RESULT', payload: state.reviewResultId });
+    }
+
+    // Langkah 2: Arahkan layar kembali ke jalurnya
     if (isAdmin) {
       dispatch({ type: 'SET_VIEW', payload: 'admin-dashboard' }); 
     } else {
