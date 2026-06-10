@@ -24,6 +24,7 @@ export type OptionType = 'text' | 'image';
 export interface Question {
   id: string;
   category: Category;
+  sub_category: string; // 🌟 TAMBAHKAN BARIS INI: Penanda sub-materi (cth: Silogisme, Nasionalisme)
   question_text: string;
   option_a: string;
   option_b: string;
@@ -97,6 +98,8 @@ export interface ExamResult {
   duration_seconds: number;
   completed_at: string;
   participant_name?: string;
+  // 🌟 TAMBAHKAN BARIS INI: Untuk menampung data objek diagnosis mikro dari database JSONB
+  diagnostic_breakdown?: Record<string, { correct: number; total: number; percentage: number }>;
 }
 
 export interface LeaderboardEntry {
