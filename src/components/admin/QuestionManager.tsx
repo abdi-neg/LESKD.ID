@@ -12,7 +12,6 @@ import DocxImporter from './DocxImporter';
 const CATEGORIES: Category[] = ['TIU', 'TWK', 'TKP'];
 const OPTIONS: AnswerOption[] = ['A', 'B', 'C', 'D', 'E'];
 
-// Required questions per category per package type
 const PACKAGE_REQUIREMENTS: Record<PackageType, Partial<Record<Category, number>>> = {
   MINI_TIU: { TIU: 35 },
   MINI_TWK: { TWK: 30 },
@@ -29,6 +28,7 @@ const TYPE_LABELS: Record<PackageType, string> = {
 
 const emptyForm = {
   category: 'TIU' as Category,
+  sub_category: 'Umum', // 🌟 TAMBAHKAN BARIS INI: Nilai bawaan sub-materi
   question_text: '',
   option_a: '',
   option_b: '',
@@ -80,17 +80,14 @@ export default function QuestionManager() {
   const [search, setSearch] = useState('');
   const [deleteId, setDeleteId] = useState<string | null>(null);
   
-  // State untuk Gambar Soal
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // State khusus untuk Gambar Pembahasan
   const [expImageFile, setExpImageFile] = useState<File | null>(null);
   const [expImagePreview, setExpImagePreview] = useState<string | null>(null);
   const expFileInputRef = useRef<HTMLInputElement>(null);
 
-  // 🚀 REKAYASA BARU: State khusus File & Preview Gambar Opsi (A-E)
   const [optImageFiles, setOptImageFiles] = useState<Record<string, File | null>>({
     A: null, B: null, C: null, D: null, E: null
   });
@@ -122,7 +119,7 @@ export default function QuestionManager() {
       .eq('package_id', selectedPkg.id)
       .order('category')
       .order('created_at');
-    if (data) setQuestions(data as Question[]);
+    if (data) setQuestions(data as unknown as Question[]);
     setLoading(false);
   }
 
@@ -157,7 +154,8 @@ export default function QuestionManager() {
 
   const filtered = questions.filter((q) => {
     const matchCat = filterCat === 'ALL' || q.category === filterCat;
-    const matchSearch = q.question_text.toLowerCase().includes(search.toLowerCase());
+    const matchSearch = q.question_text.toLowerCase().includes(search.toLowerCase()) || 
+                        (q.sub_category && q.sub_category.toLowerCase().includes(search.toLowerCase()));
     return matchCat && matchSearch;
   });
 
@@ -189,7 +187,6 @@ export default function QuestionManager() {
     if (expFileInputRef.current) expFileInputRef.current.value = '';
   }
 
-  // 🚀 REKAYASA BARU: Handler Pilih Gambar Opsi A-E
   function handleOptImageChange(e: React.ChangeEvent<HTMLInputElement>, optKey: string) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -197,7 +194,6 @@ export default function QuestionManager() {
     setOptImagePreviews(prev => ({ ...prev, [optKey]: URL.createObjectURL(file) }));
   }
 
-  // 🚀 REKAYASA BARU: Handler Hapus Gambar Opsi A-E
   function removeOptImage(optKey: string) {
     setOptImageFiles(prev => ({ ...prev, [optKey]: null }));
     setOptImagePreviews(prev => ({ ...prev, [optKey]: null }));
@@ -231,21 +227,18 @@ export default function QuestionManager() {
       option_e: form.option_e,
     };
 
-    // Proses unggah gambar soal jika ada
     if (imageFile) {
       setUploadingImage(true);
       imageUrl = await uploadImage(imageFile);
       setUploadingImage(false);
     }
 
-    // Proses unggah gambar pembahasan jika ada
     if (expImageFile) {
       setUploadingImage(true);
       explanationImageUrl = await uploadImage(expImageFile);
       setUploadingImage(false);
     }
 
-    // 🚀 REKAYASA BARU: Proses unggah file fisik gambar opsi A-E (jika tipe opsi == 'image')
     if (form.option_type === 'image') {
       setUploadingImage(true);
       for (const opt of OPTIONS) {
@@ -282,6 +275,7 @@ export default function QuestionManager() {
   function startEdit(q: any) {
     setForm({
       category: q.category,
+      sub_category: q.sub_category ?? 'Umum', // 🌟 TAMBAHKAN BARIS INI: Memuat data edit sub-materi
       question_text: q.question_text,
       option_a: q.option_a,
       option_b: q.option_b,
@@ -305,7 +299,6 @@ export default function QuestionManager() {
     setExpImageFile(null);
     setExpImagePreview(q.explanation_image_url ?? null);
 
-    // 🚀 REKAYASA BARU: Sinkronisasi data edit gambar opsi figural
     const initialPreviews: Record<string, string | null> = { A: null, B: null, C: null, D: null, E: null };
     if (q.option_type === 'image') {
       OPTIONS.forEach(opt => {
@@ -339,7 +332,6 @@ export default function QuestionManager() {
     setExpImagePreview(null);
     if (expFileInputRef.current) expFileInputRef.current.value = '';
 
-    // 🚀 REKAYASA BARU: Reset state gambar opsi
     setOptImageFiles({ A: null, B: null, C: null, D: null, E: null });
     setOptImagePreviews({ A: null, B: null, C: null, D: null, E: null });
   }
@@ -507,7 +499,8 @@ export default function QuestionManager() {
                     <span className="text-sm font-semibold text-[#1e3a8a]">{selectedPkg.name}</span>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                  {/* 🌟 PERBAIKAN FORM META: Mengubah grid menjadi 3-Kolom untuk memasukkan kolom Sub-Materi */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1.5">Kategori</label>
                       <select
@@ -521,10 +514,24 @@ export default function QuestionManager() {
                         {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
                       </select>
                       {selectedPkg?.package_type !== 'FULL' && (
-                        <p className="text-[11px] text-gray-400 mt-1">Kategori dikunci otomatis sesuai jenis paket mini tryout.</p>
+                        <p className="text-[11px] text-gray-400 mt-1">Kategori dikunci otomatis sesuai jenis paket.</p>
                       )}
                     </div>
-                    {form.category !== 'TKP' && (
+
+                    {/* 🌟 FORM INPUT BARU: Sub-Materi Spesifik */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1.5">Sub-Materi / Topik Bab</label>
+                      <input
+                        type="text"
+                        value={form.sub_category}
+                        onChange={(e) => setForm({ ...form, sub_category: e.target.value })}
+                        required
+                        placeholder="Contoh: Silogisme, Nasionalisme, TKP Jejaring"
+                        className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/30 focus:border-[#1e3a8a] bg-white text-gray-800"
+                      />
+                    </div>
+
+                    {form.category !== 'TKP' ? (
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1.5">Jawaban Benar</label>
                         <select
@@ -535,6 +542,8 @@ export default function QuestionManager() {
                           {OPTIONS.map((o) => <option key={o} value={o}>Opsi {o}</option>)}
                         </select>
                       </div>
+                    ) : (
+                      <div className="hidden md:block" /> /* Placeholder penyeimbang grid jika kategori TKP */
                     )}
                   </div>
 
@@ -596,7 +605,6 @@ export default function QuestionManager() {
                             <div className="flex-1 w-full">
                               <label className="block text-xs font-medium text-gray-600 mb-1">Opsi {opt}</label>
                               
-                              {/* 🚀 INTEGRASI SEMPURNA: Kondisional Render Input Teks ATAU File Upload Gambar sesuai Tipe Opsi */}
                               {form.option_type === 'image' ? (
                                 <div className="space-y-2">
                                   {optImagePreviews[opt] ? (
@@ -611,7 +619,6 @@ export default function QuestionManager() {
                                       <input type="file" accept="image/*" onChange={(e) => handleOptImageChange(e, opt)} className="hidden" />
                                     </label>
                                   )}
-                                  {/* Hidden input to maintain string value validation if needed */}
                                   <input type="hidden" value={form[keyTxt] as string} required={!optImagePreviews[opt]} />
                                 </div>
                               ) : (
@@ -658,7 +665,7 @@ export default function QuestionManager() {
 
                   {/* Komponen Upload Gambar Pembahasan */}
                   <div className="mb-6">
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Gambar Pembahasan (opsional - Sangat cocok untuk TIU)</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Gambar Pembahasan (opsional)</label>
                     {expImagePreview ? (
                       <div className="relative inline-block">
                         <img src={expImagePreview} alt="Preview pembahasan" className="max-h-48 max-w-full rounded-xl border border-gray-200 object-contain" />
@@ -689,7 +696,7 @@ export default function QuestionManager() {
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex flex-wrap gap-3 items-center">
             <div className="relative flex-1 min-w-48">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Cari soal..." className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-xl" />
+              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Cari teks soal atau sub-materi..." className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-xl" />
             </div>
             <div className="flex items-center gap-2">
               <Filter className="w-4 h-4 text-gray-400" />
@@ -707,8 +714,14 @@ export default function QuestionManager() {
               <motion.div key={q.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.02 }} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-2">
+                    <div className="flex items-center gap-2 mb-2 flex-wrap">
                       <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${catColors[q.category]}`}>{q.category}</span>
+                      
+                      {/* 🌟 EMBED BARU: Tampilkan Tag Sub-Materi Spesifik di Sebelah Kategori Soal */}
+                      <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-gray-100 text-gray-600 border border-gray-200/60 uppercase tracking-wide">
+                        {q.sub_category || 'Umum'}
+                      </span>
+
                       <span className="text-xs text-gray-400">#{q.id.slice(0, 8)}</span>
                     </div>
                     <p className="text-sm text-gray-700 font-medium line-clamp-2">{q.question_text}</p>
