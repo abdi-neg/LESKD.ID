@@ -8,6 +8,7 @@ import { supabase } from '../../lib/supabase';
 
 interface ParsedQuestion {
   category: Category;
+  sub_category: string; // 🌟 TAMBAHKAN BARIS INI: Kolom sub-materi baru
   question_text: string;
   option_a: string;
   option_b: string;
@@ -17,7 +18,6 @@ interface ParsedQuestion {
   correct_answer: AnswerOption;
   explanation: string;
   package_id: string;
-  // Tambahan kolom poin opsional untuk TKP
   points_a?: number | null;
   points_b?: number | null;
   points_c?: number | null;
@@ -25,7 +25,6 @@ interface ParsedQuestion {
   points_e?: number | null;
 }
 
-// Which categories are valid for each package type
 const PKG_CATEGORIES: Record<PackageType, Category[]> = {
   MINI_TIU: ['TIU'],
   MINI_TWK: ['TWK'],
@@ -61,7 +60,6 @@ function parseDocxText(rawText: string, category: Category): { questions: Parsed
     .replace(/\u00a0/g, ' ')
     .trim();
 
-  // Split by [SOAL] marker (case-insensitive)
   const blocks = normalizedText.split(/\[SOAL\]/i).filter((b) => b.trim().length > 0);
 
   if (blocks.length === 0) {
@@ -72,13 +70,21 @@ function parseDocxText(rawText: string, category: Category): { questions: Parsed
   blocks.forEach((block, idx) => {
     const lineNum = idx + 1;
     try {
+      // 🌟 PERBAIKAN REGEX LOOKAHEAD: Memasukkan SUB_KATEGORI agar teks tidak tumpang tindih
       const extract = (marker: string): string => {
-        const regex = new RegExp(`\\[${marker}\\]([\\s\\S]*?)(?=\\[(?:A|B|C|D|E|KUNCI|PEMBAHASAN|SOAL)\\]|$)`, 'i');
+        const regex = new RegExp(`\\[${marker}\\]([\\s\\S]*?)(?=\\[(?:A|B|C|D|E|KUNCI|PEMBAHASAN|SOAL|SUB_KATEGORI)\\]|$)`, 'i');
         const match = block.match(regex);
         return match ? match[1].trim() : '';
       };
 
-      const question_text = block.split(/\[A\]/i)[0].trim();
+      // 🌟 MESIN PARSER BARU: Ambil nilai SUB_KATEGORI, jika kosong isi dengan 'Umum'
+      const sub_category = extract('SUB_KATEGORI') || 'Umum';
+
+      let question_text = block.split(/\[A\]/i)[0].trim();
+      
+      // Bersihkan teks pertanyaan dari sisa penanda [SUB_KATEGORI] agar tidak ikut tampil di layar ujian
+      question_text = question_text.replace(/\[SUB_KATEGORI\]([\s\S]*?)(?=\\[(?:A|B|C|D|E|KUNCI|PEMBAHASAN|SOAL|SUB_KATEGORI)\\]|$)/i, '').trim();
+
       let rawA = extract('A');
       let rawB = extract('B');
       let rawC = extract('C');
@@ -96,31 +102,26 @@ function parseDocxText(rawText: string, category: Category): { questions: Parsed
         return;
       }
 
-      // Validasi kunci jawaban hanya mengikat secara ketat pada TIU dan TWK
-      if (category !== 'TKP' && !['A', 'B', 'C', 'D', 'E'].includes(rawKunci)) {
+      if (category !== 'TXT' && category !== 'TKP' && !['A', 'B', 'C', 'D', 'E'].includes(rawKunci)) {
         errors.push(`Soal #${lineNum}: kunci jawaban "${rawKunci}" tidak valid untuk TIU/TWK. Gunakan A, B, C, D, atau E.`);
         return;
       }
 
-      // Inisialisasi poin kosong
       let pA: number | null = null;
       let pB: number | null = null;
       let pC: number | null = null;
       let pD: number | null = null;
       let pE: number | null = null;
 
-      // MESIN PEMOTONG POIN OPSI (KHUSUS TKP)
       if (category === 'TKP') {
         const parseOpsiPoin = (rawOpsi: string, label: string) => {
           if (rawOpsi.includes('|')) {
             const parts = rawOpsi.split('|');
             const teks = parts[0].trim();
-            // Mencari angka di dalam potongan string setelah tanda "|"
             const matchPoin = parts[1].match(/\d+/);
             const poin = matchPoin ? parseInt(matchPoin[0], 10) : 0;
             return { teks, poin };
           }
-          // Fallback jika admin lupa menulis "| Poin: X"
           errors.push(`Soal #${lineNum} (Opsi ${label}): Format poin "|" tidak ditemukan. Diatur otomatis ke 0 poin.`);
           return { teks: rawOpsi, poin: 0 };
         };
@@ -134,13 +135,13 @@ function parseDocxText(rawText: string, category: Category): { questions: Parsed
 
       questions.push({
         category,
+        sub_category, // 🌟 PETAKKAN KE DATABASE
         question_text,
         option_a: rawA,
         option_b: rawB,
         option_c: rawC,
         option_d: rawD,
         option_e: rawE,
-        // Untuk TKP, kunci diisi default 'A' jika kolom [KUNCI] kosong di berkas template Word
         correct_answer: (category === 'TKP' ? (rawKunci || 'A') : rawKunci) as AnswerOption,
         explanation,
         package_id: '',
@@ -190,18 +191,18 @@ function wMarkerLine(marker: string, content: string, markerColor = '1e3a8a') {
   );
 }
 
-const EXAMPLES: Record<Category, { q: string; opts: string[]; key: string; exp: string }[]> = {
+const EXAMPLES: Record<Category, { q: string; sub: string; opts: string[]; key: string; exp: string }[]> = {
   TIU: [
-    { q: 'Jika 2x + 4 = 12, maka nilai x adalah...', opts: ['2', '3', '4', '5', '6'], key: 'C', exp: 'Dari 2x + 4 = 12, maka 2x = 8, sehingga x = 4.' },
-    { q: 'Antonim dari kata EKSPANSIF adalah...', opts: ['Menyebar', 'Meluas', 'Berkembang', 'Menyempit', 'Bertambah'], key: 'D', exp: 'Antonim ekspansif (meluas) adalah menyempit.' },
+    { q: 'Jika 2x + 4 = 12, maka nilai x adalah...', sub: 'Berhitung Cepat', opts: ['2', '3', '4', '5', '6'], key: 'C', exp: 'Dari 2x + 4 = 12, maka 2x = 8, sehingga x = 4.' },
+    { q: 'Antonim dari kata EKSPANSIF adalah...', sub: 'Analogi Kata', opts: ['Menyebar', 'Meluas', 'Berkembang', 'Menyempit', 'Bertambah'], key: 'D', exp: 'Antonim ekspansif (meluas) adalah menyempit.' },
   ],
   TWK: [
-    { q: 'Pancasila sebagai dasar negara pertama kali diusulkan oleh...', opts: ['Mohammad Hatta', 'Soekarno', 'Mohammad Yamin', 'Soepomo', 'Agus Salim'], key: 'B', exp: 'Pancasila diusulkan oleh Soekarno dalam sidang BPUPKI pada 1 Juni 1945.' },
-    { q: 'Sila ke-3 Pancasila berbunyi...', opts: ['Ketuhanan Yang Maha Esa', 'Kemanusiaan yang Adil dan Beradab', 'Persatuan Indonesia', 'Kerakyatan yang Dipimpin oleh Hikmat', 'Keadilan Sosial'], key: 'C', exp: 'Sila ke-3 Pancasila adalah Persatuan Indonesia.' },
+    { q: 'Pancasila sebagai dasar negara pertama kali diusulkan oleh...', sub: 'Nasionalisme', opts: ['Mohammad Hatta', 'Soekarno', 'Mohammad Yamin', 'Soepomo', 'Agus Salim'], key: 'B', exp: 'Pancasila diusulkan oleh Soekarno dalam sidang BPUPKI pada 1 Juni 1945.' },
+    { q: 'Sila ke-3 Pancasila berbunyi...', sub: 'Pilar Negara', opts: ['Ketuhanan Yang Maha Esa', 'Kemanusiaan yang Adil dan Beradab', 'Persatuan Indonesia', 'Kerakyatan yang Dipimpin oleh Hikmat', 'Keadilan Sosial'], key: 'C', exp: 'Sila ke-3 Pancasila adalah Persatuan Indonesia.' },
   ],
   TKP: [
-    { q: 'Atasan meminta Anda memalsukan laporan keuangan demi kelancaran proyek perusahaan. Bagaimana tindakan Anda?', opts: ['Langsung menolak dengan keras dan mengancam akan melaporkan hal tersebut ke pihak berwajib | Poin: 2', 'Menolak dengan sopan serta menjelaskan risiko hukum dan dampak buruknya bagi perusahaan | Poin: 5', 'Melaksanakan instruksi tersebut demi menjaga loyalitas kerja dan posisi aman | Poin: 1', 'Pura-pura menyetujui hal tersebut tetapi sengaja menunda-nunda penyelesaian tugasnya | Poin: 3', 'Mengajak rekan kerja yang lain untuk bersama-sama melakukan protes kepada atasan | Poin: 4'], key: 'B', exp: 'Menolak secara sopan merefleksikan integritas kerja yang tinggi tanpa memicu gesekan destruktif.' },
-    { q: 'Seorang rekan dalam tim Anda tampak mengalami penurunan produktivitas yang mengganggu ritme kerja kelompok. Sikap Anda?', opts: ['Melaporkan penurunan kinerja tersebut langsung kepada atasan tanpa diskusi internal | Poin: 2', 'Mengabaikan kondisi tersebut karena merasa itu adalah urusan pribadi masing-masing | Poin: 1', 'Mengajak berbicara dari hati ke hati secara santun dan menawarkan solusi atau bantuan | Poin: 5', 'Membicarakan keluhan tersebut di belakangnya bersama dengan rekan kerja yang lain | Poin: 3', 'Membantu mengambil alih seluruh beban tugasnya secara diam-diam agar tim tetap aman | Poin: 4'], key: 'C', exp: 'Komunikasi persuasif interpersonal melambangkan kompetensi jejaring kerja dan kepedulian yang sehat.' },
+    { q: 'Atasan meminta Anda memalsukan laporan keuangan demi kelancaran proyek perusahaan. Bagaimana tindakan Anda?', sub: 'Integritas Diri', opts: ['Langsung menolak dengan keras dan mengancam akan melaporkan hal tersebut ke pihak berwajib | Poin: 2', 'Menolak dengan sopan serta menjelaskan risiko hukum dan dampak buruknya bagi perusahaan | Poin: 5', 'Melaksanakan instruksi tersebut demi menjaga loyalitas kerja dan posisi aman | Poin: 1', 'Pura-pura menyetujui hal tersebut tetapi sengaja menunda-nunda penyelesaian tugasnya | Poin: 3', 'Mengajak rekan kerja yang lain untuk bersama-sama melakukan protes kepada atasan | Poin: 4'], key: 'B', exp: 'Menolak secara sopan merefleksikan integritas kerja yang tinggi tanpa memicu gesekan destruktif.' },
+    { q: 'Seorang rekan dalam tim Anda tampak mengalami penurunan produktivitas yang mengganggu ritme kerja kelompok. Sikap Anda?', sub: 'Jejaring Kerja', opts: ['Melaporkan penurunan kinerja tersebut langsung kepada atasan tanpa diskusi internal | Poin: 2', 'Mengabaikan kondisi tersebut karena merasa itu adalah urusan pribadi masing-masing | Poin: 1', 'Mengajak berbicara dari hati ke hati secara santun dan menawarkan solusi atau bantuan | Poin: 5', 'Membicarakan keluhan tersebut di belakangnya bersama dengan rekan kerja yang lain | Poin: 3', 'Membantu mengambil alih seluruh beban tugasnya secara diam-diam agar tim tetap aman | Poin: 4'], key: 'C', exp: 'Komunikasi persuasif interpersonal melambangkan kompetensi jejaring kerja dan kepedulian yang sehat.' },
   ],
 };
 
@@ -210,6 +211,8 @@ async function downloadTemplate(category: Category) {
 
   const exampleParagraphs = examples.flatMap((ex) => [
     wParagraph(wRun('[SOAL]', { bold: true, color: '1e3a8a', size: 22 }), '<w:pPr><w:spacing w:before="320" w:after="80"/></w:pPr>'),
+    // 🌟 SEBARKAN BARIS PENANDA DI CONTOH TEMPLATE WORD
+    wMarkerLine('SUB_KATEGORI', ex.sub, '4b5563'),
     wParagraph(wRun(ex.q, { size: 22 }), '<w:pPr><w:spacing w:after="100"/></w:pPr>'),
     ...(['A', 'B', 'C', 'D', 'E'] as const).map((opt, i) => wMarkerLine(opt, ex.opts[i])),
     wMarkerLine('KUNCI', ex.key, '059669'),
@@ -217,8 +220,10 @@ async function downloadTemplate(category: Category) {
     wParagraph('', '<w:pPr><w:spacing w:after="160"/></w:pPr>'),
   ]);
 
+  // 🌟 SEBARKAN INFORMASI DI TABEL PANDUAN WORD
   const guideRows = [
-    { marker: '[SOAL]', desc: 'Awal setiap soal baru' },
+    { marker: '[SOAL]', desc: 'Awal setiap nomor soal baru' },
+    { marker: '[SUB_KATEGORI]', desc: 'Nama materi bab spesifik untuk rapor analisis diagnosis (cth: Silogisme, Nasionalisme, Integritas)' },
     { marker: '[A] hingga [E]', desc: category === 'TKP' ? 'Isi jawaban diakhiri tanda pipa dan poin. Contoh: Teks Jawaban | Poin: 5' : 'Pilihan jawaban A sampai E biasa' },
     { marker: '[KUNCI]', desc: category === 'TKP' ? 'Bisa diisi huruf opsi dengan poin tertinggi (Opsi formalitas)' : 'Huruf jawaban benar (A, B, C, D, atau E)' },
     { marker: '[PEMBAHASAN]', desc: 'Penjelasan analisis soal (opsional)' },
@@ -289,7 +294,7 @@ async function downloadTemplate(category: Category) {
 </Relationships>`;
 
   const stylesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+<w:styles xmlns:w="http://schemas.openxmlformats.org/main">
   <w:style w:type="paragraph" w:styleId="Normal"><w:name w:val="Normal"/><w:rPr><w:sz w:val="22"/><w:szCs w:val="22"/></w:rPr></w:style>
   <w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:before="240" w:after="120"/></w:pPr><w:rPr><w:b/><w:sz w:val="36"/><w:szCs w:val="36"/></w:rPr></w:style>
   <w:style w:type="paragraph" w:styleId="Heading2"><w:name w:val="heading 2"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:before="200" w:after="100"/></w:pPr><w:rPr><w:b/><w:sz w:val="28"/><w:szCs w:val="28"/></w:rPr></w:style>
@@ -364,7 +369,7 @@ export default function DocxImporter({ packageId, packageType, onImported }: Pro
     if (parsedQuestions.length === 0) return;
     setSaving(true);
     const { error } = await supabase.from('questions').insert(parsedQuestions);
-    setSaving(false);
+    setSaving(true);
     if (!error) {
       setSavedCount(parsedQuestions.length);
       setParsedQuestions([]);
@@ -374,7 +379,23 @@ export default function DocxImporter({ packageId, packageType, onImported }: Pro
     } else {
       setParseErrors([`Gagal menyimpan ke database: ${error.message}`]);
     }
+    setSaving(false);
   }
+
+  type HistoryRecord = {
+    id: string;
+    package_type: 'MINI_TIU' | 'MINI_TWK' | 'MINI_TKP' | 'FULL';
+    package_name: string;
+    total_score: number;
+    score_tiu?: number;
+    score_twk?: number;
+    score_tkp?: number;
+    questions_correct: number;
+    questions_total: number;
+    passed: boolean;
+    duration_seconds: number;
+    completed_at: string;
+  };
 
   function reset() {
     setParsedQuestions([]);
@@ -490,6 +511,7 @@ export default function DocxImporter({ packageId, packageType, onImported }: Pro
             {parsedQuestions.map((q, i) => (
               <div key={i} className="bg-gray-50 border border-gray-200 rounded-2xl overflow-hidden">
                 <button
+                  type="button"
                   onClick={() => setExpandedIdx(expandedIdx === i ? null : i)}
                   className="w-full flex items-center gap-3 p-3 text-left hover:bg-gray-100 transition-colors"
                 >
@@ -497,6 +519,12 @@ export default function DocxImporter({ packageId, packageType, onImported }: Pro
                     {i + 1}
                   </span>
                   <p className="text-sm text-gray-700 font-medium flex-1 line-clamp-1">{q.question_text}</p>
+                  
+                  {/* 🌟 EMBED BARU: Tampilkan hasil bacaan tag sub-kategori di layar pratinjau */}
+                  <span className="text-xs font-bold bg-gray-200 text-gray-600 px-2 py-0.5 rounded border border-gray-300 flex-shrink-0 uppercase tracking-wide">
+                    {q.sub_category}
+                  </span>
+
                   <span className="text-xs font-bold bg-[#10b981] text-white px-2 py-0.5 rounded-md flex-shrink-0">
                     {category === 'TKP' ? 'TKP Poin' : q.correct_answer}
                   </span>
