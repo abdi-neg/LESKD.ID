@@ -5,7 +5,7 @@ import {
   XCircle, Clock, Trash2, Undo, ArrowLeft, Loader2, AlertCircle, BookOpen 
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { useApp } from '../../context/AppContext'; // 🌟 1. IMPORT USEAPP UNTUK AKSES DISPATCH VIEW REVIEW
+import { useApp } from '../../context/AppContext';
 
 interface HistoryRecord {
   id: string;
@@ -21,7 +21,7 @@ interface HistoryRecord {
 }
 
 export default function ExamHistoryMonitor() {
-  const { dispatch } = useApp(); // 🌟 2. INISIALISASI MESIN PENGALIH HALAMAN REVIEW
+  const { dispatch } = useApp(); 
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState<'ALL' | 'FULL' | 'TIU' | 'TWK' | 'TKP'>('ALL');
   
@@ -41,7 +41,6 @@ export default function ExamHistoryMonitor() {
         .order('completed_at', { ascending: false });
 
       if (!error && data) {
-        // 🌟 3. AMBIL SEMUA VARIABEL SKOR MIKRO KATEGORI DARI DB SUPABASE
         const mappedRecords: HistoryRecord[] = data.map((r: any) => ({
           id: r.id,
           participant_name: r.user_name || r.participant_name || 'Peserta',
@@ -251,7 +250,7 @@ export default function ExamHistoryMonitor() {
                 <tr className="bg-gray-50 text-left">
                   <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase">Peserta</th>
                   <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase">Jenis Ujian</th>
-                  <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase text-right">Skor</th>
+                  <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase text-right w-44">Skor</th>
                   <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase text-center">Status</th>
                   <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase">Waktu</th>
                   <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase">Tanggal</th>
@@ -281,17 +280,25 @@ export default function ExamHistoryMonitor() {
                       </span>
                     </td>
                     
-                    {/* 🌟 4. DETAIL BREAKDOWN SKOR MIKRO DI BAWAH TOTAL SKOR */}
+                    {/* 🌟 PERBAIKAN: RE-DESIGN TOTAL DETAIL SCORE ROW (Jauh Lebih Rapi & Profesional) */}
                     <td className="px-5 py-4 text-right">
-                      <div className="text-sm font-bold text-gray-800">{record.total_score}</div>
+                      <div className="text-base font-black text-gray-900 tracking-tight">{record.total_score}</div>
                       {record.exam_type === 'FULL' ? (
-                        <div className="flex gap-1 justify-end text-[10px] font-bold mt-0.5 whitespace-nowrap">
-                          <span className="text-blue-600 bg-blue-50 px-1 py-0.5 rounded">TIU:{record.score_tiu}</span>
-                          <span className="text-emerald-600 bg-emerald-50 px-1 py-0.5 rounded">TWK:{record.score_twk}</span>
-                          <span className="text-rose-600 bg-rose-50 px-1 py-0.5 rounded">TKP:{record.score_tkp}</span>
+                        <div className="flex items-center gap-1 justify-end mt-1.5 text-[10px] font-extrabold tracking-wide">
+                          <span className="px-1.5 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-100/60">
+                            TIU <span className="font-black ml-0.5">{record.score_tiu}</span>
+                          </span>
+                          <span className="px-1.5 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-100/60">
+                            TWK <span className="font-black ml-0.5">{record.score_twk}</span>
+                          </span>
+                          <span className="px-1.5 py-0.5 rounded-md bg-rose-50 text-rose-700 border border-rose-100/60">
+                            TKP <span className="font-black ml-0.5">{record.score_tkp}</span>
+                          </span>
                         </div>
                       ) : (
-                        <div className="text-[10px] text-gray-400">Mini Tryout</div>
+                        <span className="text-[10px] text-gray-400 font-medium inline-block mt-1 bg-gray-100 px-2 py-0.5 rounded-md">
+                          Mini Paket
+                        </span>
                       )}
                     </td>
 
@@ -315,13 +322,12 @@ export default function ExamHistoryMonitor() {
                       {formatDate(record.completed_at)}
                     </td>
                     
-                    {/* 🌟 5. SUNTIKAN TOMBOL AKSI UNTUK PEMBAHASAN / REVIEW LEMBAR JAWABAN PESERTA */}
                     <td className="px-5 py-4 text-center">
                       <div className="flex items-center justify-center gap-2">
                         {!showTrash && (
                           <button
                             onClick={() => dispatch({ type: 'OPEN_REVIEW', payload: record.id })}
-                            className="px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs rounded-xl transition-colors inline-flex items-center gap-1"
+                            className="px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs rounded-xl transition-colors inline-flex items-center gap-1 shadow-sm"
                             title="Lihat Detail Pembahasan & Lembar Jawaban Peserta"
                           >
                             <BookOpen className="w-3.5 h-3.5" />
@@ -346,7 +352,7 @@ export default function ExamHistoryMonitor() {
                           <button
                             disabled={actionId === record.id}
                             onClick={() => handleSoftDelete(record.id)}
-                            className="p-2 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl transition-colors inline-flex items-center disabled:opacity-40"
+                            className="p-2 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl transition-colors inline-flex items-center disabled:opacity-40 shadow-sm"
                             title="Pindahkan ke Kotak Sampah"
                           >
                             {actionId === record.id ? (
