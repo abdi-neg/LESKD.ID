@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { supabase } from '../../lib/supabase';
+import DiagnosticReport from './DiagnosticReport'; // 🌟 1. IMPORT KOMPONEN GRAFIK RAPOR
 
 type AnswerOption = 'A' | 'B' | 'C' | 'D' | 'E';
 const OPTIONS: AnswerOption[] = ['A', 'B', 'C', 'D', 'E'];
@@ -202,14 +203,53 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
     return true;
   });
 
-  // 🛡️ PERBAIKAN 3: Menghapus ingatan ID sebelum kembali ke halaman sebelumnya
+  // ====================================================================
+  // 🧠 KALKULATOR PENYEIMBANG: Membaca snapshot untuk dirakit jadi Grafik Review Paket
+  // ====================================================================
+  const currentDiagnostic = (() => {
+    if (!finalQuestions || finalQuestions.length === 0) return {};
+    const breakdown: Record<string, { correct: number; total: number; percentage: number }> = {};
+
+    finalQuestions.forEach((q: any) => {
+      if (!q) return;
+      const subCat = q.sub_category || q.sub_kategori || 'Umum';
+      const ans = getAnswerForQuestion(q.id);
+      
+      const selected = typeof ans === 'string' 
+        ? ans 
+        : (ans?.selectedAnswer || ans?.answer || ans?.user_answer || ans?.selected_answer || null);
+
+      if (!breakdown[subCat]) {
+        breakdown[subCat] = { correct: 0, total: 0, percentage: 0 };
+      }
+
+      const category = q.category || q.kategori || 'TIU';
+      if (category === 'TKP') {
+        const key = selected ? `points_${String(selected).toLowerCase()}` : '';
+        const keyIndo = selected ? `poin_${String(selected).toLowerCase()}` : '';
+        const points = selected ? (q[key] ?? q[keyIndo] ?? 0) : 0;
+        breakdown[subCat].correct += Number(points);
+        breakdown[subCat].total += 5;
+      } else {
+        const correctAns = q.correct_answer || q.kunci_jawaban || q.kunci || '';
+        const isCorrect = selected !== null && String(selected).toUpperCase() === String(correctAns).toUpperCase();
+        breakdown[subCat].correct += isCorrect ? 1 : 0;
+        breakdown[subCat].total += 1;
+      }
+    });
+
+    Object.keys(breakdown).forEach((key) => {
+      const item = breakdown[key];
+      item.percentage = item.total > 0 ? Math.round((item.correct / item.total) * 100) : 0;
+    });
+
+    return breakdown;
+  })();
+
   const handleGoBack = () => {
-    // Langkah 1: Wajib bersihkan ID dari ingatan State agar aplikasi tidak nyangkut
     if (state?.reviewResultId) {
       dispatch({ type: 'DELETE_EXAM_RESULT', payload: state.reviewResultId });
     }
-
-    // Langkah 2: Arahkan layar kembali ke jalurnya
     if (isAdmin) {
       dispatch({ type: 'SET_VIEW', payload: 'admin-dashboard' }); 
     } else {
@@ -219,6 +259,7 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto px-2 py-4">
+      {/* Header */}
       <div className="flex items-center justify-between bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
         <div className="flex items-center gap-3">
           <button 
@@ -244,6 +285,7 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
         )}
       </div>
 
+      {/* Bar Pencarian & Filter */}
       <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm space-y-3">
         <div className="relative">
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
@@ -269,6 +311,18 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
         </div>
       </div>
 
+      {/* 🌟 SUNTIKAN GRAFIK BARU: Tampilkan Grafik Diagnosis Paket Spesifik di halaman Pembahasan */}
+      {!isFetchingDb && finalQuestions.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="clear-both"
+        >
+          <DiagnosticReport breakdown={currentDiagnostic} />
+        </motion.div>
+      )}
+
+      {/* Daftar Soal Pembahasan */}
       <div className="space-y-4">
         {isFetchingDb ? (
           <div className="text-center py-12 bg-white rounded-2xl border flex flex-col items-center justify-center gap-3">
