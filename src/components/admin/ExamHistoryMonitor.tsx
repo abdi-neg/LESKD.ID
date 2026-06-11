@@ -11,7 +11,7 @@ import { useApp } from '../../context/AppContext';
 interface HistoryRecord {
   id: string;
   participant_name: string;
-  exam_type: 'TIU' | 'TWK' | 'TKP' | 'FULL';
+  exam_type: 'TIU' | 'TWK' | 'TKP' | 'FULL' | 'MINI_TIU' | 'MINI_TWK' | 'MINI_TKP';
   total_score: number;
   score_tiu: number;
   score_twk: number;
@@ -102,9 +102,12 @@ export default function ExamHistoryMonitor() {
     setActionId(null);
   }
 
+  // 🌟 1. PERBAIKAN LOGIKA FILTER: Mendukung pencarian tipe 'TWK' DAN 'MINI_TWK' sekaligus
   const filtered = records.filter((h) => {
     const matchName = h.participant_name.toLowerCase().includes(search.toLowerCase());
-    const matchType = filterType === 'ALL' || h.exam_type === filterType;
+    const matchType = filterType === 'ALL' || 
+                      h.exam_type === filterType || 
+                      h.exam_type === `MINI_${filterType}`;
     return matchName && matchType;
   });
 
@@ -135,13 +138,22 @@ export default function ExamHistoryMonitor() {
     return `${minutes}m`;
   };
 
+  // 🌟 2. PERBAIKAN SAKELAR WARNA BADGE: Mengenali tipe data MINI_ agar warna badge menyala sesuai jalurnya
   const getExamTypeColor = (type: string) => {
     switch (type) {
-      case 'TIU': return 'bg-blue-50 text-blue-700 border border-blue-100';
-      case 'TWK': return 'bg-emerald-50 text-emerald-700 border border-emerald-100';
-      case 'TKP': return 'bg-rose-50 text-rose-700 border border-rose-100';
-      case 'FULL': return 'bg-gray-100 text-gray-700 border border-gray-200';
-      default: return 'bg-gray-50 text-gray-600 border border-gray-100';
+      case 'TIU':
+      case 'MINI_TIU': 
+        return 'bg-blue-50 text-blue-700 border border-blue-100';
+      case 'TWK':
+      case 'MINI_TWK': 
+        return 'bg-emerald-50 text-emerald-700 border border-emerald-100';
+      case 'TKP':
+      case 'MINI_TKP': 
+        return 'bg-rose-50 text-rose-700 border border-rose-100';
+      case 'FULL': 
+        return 'bg-gray-100 text-gray-700 border border-gray-200';
+      default: 
+        return 'bg-gray-50 text-gray-600 border border-gray-100';
     }
   };
 
@@ -249,14 +261,12 @@ export default function ExamHistoryMonitor() {
           ) : (
             <table className="w-full text-left border-collapse">
               <thead>
-                {/* 🌟 RE-DESIGN HEADER: Menjadi abu-abu flat seragam profesional tanpa distorsi warna */}
                 <tr className="bg-gray-50/80 text-gray-500 text-[11px] font-bold uppercase tracking-wider border-b border-gray-100">
                   <th className="px-5 py-4 pl-6">Peserta</th>
                   <th className="px-3 py-4">Jenis</th>
                   <th className="px-3 py-4 text-center">TIU</th>
                   <th className="px-3 py-4 text-center">TWK</th>
                   <th className="px-3 py-4 text-center">TKP</th>
-                  {/* Pembeda kolom total menggunakan border-l tipis */}
                   <th className="px-4 py-4 text-center border-l border-gray-100 text-gray-700 font-extrabold">TOTAL</th>
                   <th className="px-3 py-4 text-center">Status</th>
                   <th className="px-3 py-4">Durasi</th>
@@ -266,10 +276,11 @@ export default function ExamHistoryMonitor() {
               </thead>
               <tbody className="divide-y divide-gray-100 text-sm text-gray-700 bg-white">
                 {filtered.map((record, i) => {
+                  // 🌟 3. NORMALISASI LOGIKA DETEKSI KOLOM: Berlaku untuk Full Simulasi maupun Mini Paket
                   const isFull = record.exam_type === 'FULL';
-                  const isTIU = record.exam_type === 'TIU';
-                  const isTWK = record.exam_type === 'TWK';
-                  const isTKP = record.exam_type === 'TKP';
+                  const isTIU = record.exam_type === 'TIU' || record.exam_type === 'MINI_TIU';
+                  const isTWK = record.exam_type === 'TWK' || record.exam_type === 'MINI_TWK';
+                  const isTKP = record.exam_type === 'TKP' || record.exam_type === 'MINI_TKP';
 
                   return (
                     <motion.tr
@@ -296,22 +307,22 @@ export default function ExamHistoryMonitor() {
                         </span>
                       </td>
                       
-                      {/* 🌟 SKOR TIU (Sama besar, text-sm font-medium) */}
+                      {/* SKOR TIU */}
                       <td className="px-3 py-3.5 text-center text-sm font-medium text-gray-600">
                         {isFull || isTIU ? record.score_tiu : <span className="text-gray-300">-</span>}
                       </td>
 
-                      {/* 🌟 SKOR TWK (Sama besar, text-sm font-medium) */}
+                      {/* SKOR TWK */}
                       <td className="px-3 py-3.5 text-center text-sm font-medium text-gray-600">
                         {isFull || isTWK ? record.score_twk : <span className="text-gray-300">-</span>}
                       </td>
 
-                      {/* 🌟 SKOR TKP (Sama besar, text-sm font-medium) */}
+                      {/* SKOR TKP */}
                       <td className="px-3 py-3.5 text-center text-sm font-medium text-gray-600">
                         {isFull || isTKP ? record.score_tkp : <span className="text-gray-300">-</span>}
                       </td>
 
-                      {/* 🌟 SKOR TOTAL (Sama besar text-sm, tapi bold & menggunakan warna identitas #1e3a8a) */}
+                      {/* SKOR TOTAL */}
                       <td className="px-4 py-3.5 text-center text-sm font-bold text-[#1e3a8a] bg-blue-50/20 border-l border-gray-100">
                         {record.total_score}
                       </td>
