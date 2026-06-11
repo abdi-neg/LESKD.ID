@@ -4,7 +4,7 @@ import {
   BarChart3, Search, Filter, TrendingUp, CheckCircle, 
   XCircle, Clock, Trash2, Undo, ArrowLeft, Loader2, AlertCircle, BookOpen 
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom'; // 🌟 1. IMPORT NAVIGATE FOR ROUTING
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { useApp } from '../../context/AppContext';
 
@@ -23,7 +23,7 @@ interface HistoryRecord {
 
 export default function ExamHistoryMonitor() {
   const { dispatch } = useApp(); 
-  const navigate = useNavigate(); // 🌟 2. INISIALISASI PENDORONG URL
+  const navigate = useNavigate(); 
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState<'ALL' | 'FULL' | 'TIU' | 'TWK' | 'TKP'>('ALL');
   
@@ -247,131 +247,148 @@ export default function ExamHistoryMonitor() {
               {showTrash ? 'Keranjang sampah kosong.' : 'Tidak ditemukan riwayat pengerjaan ujian peserta.'}
             </div>
           ) : (
-            <table className="w-full">
+            <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="bg-gray-50 text-left">
-                  <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase">Peserta</th>
-                  <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase">Jenis Ujian</th>
-                  <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase text-right w-44">Skor</th>
-                  <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase text-center">Status</th>
-                  <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase">Waktu</th>
-                  <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase">Tanggal</th>
-                  <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase text-center">Aksi</th>
+                <tr className="bg-gray-50/70 text-gray-500 text-xs font-bold uppercase tracking-wider border-b border-gray-100">
+                  <th className="px-4 py-3.5 pl-6">Peserta</th>
+                  <th className="px-3 py-3.5">Jenis</th>
+                  {/* 🌟 FORMULASI BARU: PEMISAHAN MATERI MENJADI SPESIFIK KOLOM */}
+                  <th className="px-3 py-3.5 text-center bg-blue-50/20 text-blue-700">TIU</th>
+                  <th className="px-3 py-3.5 text-center bg-emerald-50/20 text-emerald-700">TWK</th>
+                  <th className="px-3 py-3.5 text-center bg-rose-50/20 text-rose-700">TKP</th>
+                  <th className="px-3 py-3.5 text-center bg-gray-50 font-extrabold text-gray-800">TOTAL</th>
+                  <th className="px-3 py-3.5 text-center">Status</th>
+                  <th className="px-3 py-3.5">Durasi</th>
+                  <th className="px-3 py-3.5">Tanggal Pengerjaan</th>
+                  <th className="px-4 py-3.5 pr-6 text-center">Aksi</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-50">
-                {filtered.map((record, i) => (
-                  <motion.tr
-                    key={record.id}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: i * 0.03 }}
-                    className="hover:bg-gray-50/50 transition-colors"
-                  >
-                    <td className="px-5 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 bg-gradient-to-br from-[#1e3a8a] to-blue-600 rounded-full flex items-center justify-center text-white text-xs font-bold">
-                          {record.participant_name.charAt(0)}
+              <tbody className="divide-y divide-gray-100/70 text-sm text-gray-700">
+                {filtered.map((record, i) => {
+                  const isFull = record.exam_type === 'FULL';
+                  const isTIU = record.exam_type === 'TIU';
+                  const isTWK = record.exam_type === 'TWK';
+                  const isTKP = record.exam_type === 'TKP';
+
+                  return (
+                    <motion.tr
+                      key={record.id}
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ delay: i * 0.02 }}
+                      className="hover:bg-gray-50/40 transition-colors"
+                    >
+                      {/* Kolom Peserta */}
+                      <td className="px-4 py-3.5 pl-6">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-7 h-7 bg-gradient-to-br from-[#1e3a8a] to-blue-600 rounded-full flex items-center justify-center text-white text-[11px] font-bold shrink-0 shadow-sm">
+                            {record.participant_name.charAt(0).toUpperCase()}
+                          </div>
+                          <span className="font-semibold text-gray-800 max-w-[140px] truncate">{record.participant_name}</span>
                         </div>
-                        <span className="text-sm font-medium text-gray-800">{record.participant_name}</span>
-                      </div>
-                    </td>
-                    <td className="px-5 py-4">
-                      <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${getExamTypeColor(record.exam_type)}`}>
-                        {record.exam_type}
-                      </span>
-                    </td>
-                    
-                    <td className="px-5 py-4 text-right">
-                      <div className="text-base font-black text-gray-900 tracking-tight">{record.total_score}</div>
-                      {record.exam_type === 'FULL' ? (
-                        <div className="flex items-center gap-1 justify-end mt-1.5 text-[10px] font-extrabold tracking-wide">
-                          <span className="px-1.5 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-100/60">
-                            TIU <span className="font-black ml-0.5">{record.score_tiu}</span>
-                          </span>
-                          <span className="px-1.5 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-100/60">
-                            TWK <span className="font-black ml-0.5">{record.score_twk}</span>
-                          </span>
-                          <span className="px-1.5 py-0.5 rounded-md bg-rose-50 text-rose-700 border border-rose-100/60">
-                            TKP <span className="font-black ml-0.5">{record.score_tkp}</span>
-                          </span>
-                        </div>
-                      ) : (
-                        <span className="text-[10px] text-gray-400 font-medium inline-block mt-1 bg-gray-100 px-2 py-0.5 rounded-md">
-                          Mini Paket
+                      </td>
+                      
+                      {/* Kolom Jenis Ujian */}
+                      <td className="px-3 py-3.5">
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md tracking-wide ${getExamTypeColor(record.exam_type)}`}>
+                          {record.exam_type}
                         </span>
-                      )}
-                    </td>
+                      </td>
+                      
+                      {/* 🌟 KOLOM TIU SCORE */}
+                      <td className="px-3 py-3.5 text-center font-bold text-blue-900 bg-blue-50/5">
+                        {isFull || isTIU ? record.score_tiu : <span className="text-gray-300 font-normal">-</span>}
+                      </td>
 
-                    <td className="px-5 py-4 text-center">
-                      <div className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full
-                        ${record.passed ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-600'}`}>
-                        {record.passed ? (
-                          <><CheckCircle className="w-3 h-3" /> Lulus</>
-                        ) : (
-                          <><XCircle className="w-3 h-3" /> Belum</>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-5 py-4">
-                      <div className="flex items-center gap-1.5 text-sm text-gray-600">
-                        <Clock className="w-3.5 h-3.5" />
-                        {formatDuration(record.duration_seconds)}
-                      </div>
-                    </td>
-                    <td className="px-5 py-4 text-sm text-gray-600">
-                      {formatDate(record.completed_at)}
-                    </td>
-                    
-                    <td className="px-5 py-4 text-center">
-                      <div className="flex items-center justify-center gap-2">
-                        {!showTrash && (
-                          <button
-                            /* 🌟 3. PERBAIKAN AKSI: Trigger state global sekaligus dorong Router URL */
-                            onClick={() => {
-                              dispatch({ type: 'OPEN_REVIEW', payload: record.id });
-                              navigate('/admin/results/review');
-                            }}
-                            className="px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs rounded-xl transition-colors inline-flex items-center gap-1 shadow-sm"
-                            title="Lihat Detail Pembahasan & Lembar Jawaban Peserta"
-                          >
-                            <BookOpen className="w-3.5 h-3.5" />
-                            <span>Pembahasan</span>
-                          </button>
-                        )}
-                        
-                        {showTrash ? (
-                          <button
-                            disabled={actionId === record.id}
-                            onClick={() => handleRestore(record.id)}
-                            className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-xs rounded-xl transition-colors inline-flex items-center gap-1 disabled:opacity-40"
-                          >
-                            {actionId === record.id ? (
-                              <Loader2 className="w-3 h-3 animate-spin" />
-                            ) : (
-                              <Undo className="w-3 h-3" />
-                            )}
-                            <span>Pulihkan</span>
-                          </button>
-                        ) : (
-                          <button
-                            disabled={actionId === record.id}
-                            onClick={() => handleSoftDelete(record.id)}
-                            className="p-2 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl transition-colors inline-flex items-center disabled:opacity-40 shadow-sm"
-                            title="Pindahkan ke Kotak Sampah"
-                          >
-                            {actionId === record.id ? (
-                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                            ) : (
-                              <Trash2 className="w-3.5 h-3.5" />
-                            )}
-                          </button>
-                        )}
-                      </div>
-                    </td>
+                      {/* 🌟 KOLOM TWK SCORE */}
+                      <td className="px-3 py-3.5 text-center font-bold text-emerald-900 bg-emerald-50/5">
+                        {isFull || isTWK ? record.score_twk : <span className="text-gray-300 font-normal">-</span>}
+                      </td>
 
-                  </motion.tr>
-                ))}
+                      {/* 🌟 KOLOM TKP SCORE */}
+                      <td className="px-3 py-3.5 text-center font-bold text-rose-900 bg-rose-50/5">
+                        {isFull || isTKP ? record.score_tkp : <span className="text-gray-300 font-normal">-</span>}
+                      </td>
+
+                      {/* 🌟 KOLOM TOTAL SCORE (Lebih Tebal dan Terang) */}
+                      <td className="px-3 py-3.5 text-center font-black text-gray-900 bg-gray-50/50 text-base">
+                        {record.total_score}
+                      </td>
+
+                      {/* Kolom Status Kelulusan */}
+                      <td className="px-3 py-3.5 text-center">
+                        <div className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full
+                          ${record.passed ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-red-100 text-red-700 border border-red-200'}`}>
+                          {record.passed ? (
+                            <><CheckCircle className="w-3 h-3" /> Lulus</>
+                          ) : (
+                            <><XCircle className="w-3 h-3" /> Belum</>
+                          )}
+                        </div>
+                      </td>
+                      
+                      {/* Kolom Durasi */}
+                      <td className="px-3 py-3.5 font-medium text-gray-600 text-xs">
+                        <div className="flex items-center gap-1">
+                          <Clock className="w-3.5 h-3.5 text-gray-400" />
+                          {formatDuration(record.duration_seconds)}
+                        </div>
+                      </td>
+                      
+                      {/* Kolom Tanggal */}
+                      <td className="px-3 py-3.5 text-xs text-gray-500 font-medium">
+                        {formatDate(record.completed_at)}
+                      </td>
+                      
+                      {/* Kolom Aksi */}
+                      <td className="px-4 py-3.5 pr-6 text-center">
+                        <div className="flex items-center justify-center gap-1.5">
+                          {!showTrash && (
+                            <button
+                              onClick={() => {
+                                dispatch({ type: 'OPEN_REVIEW', payload: record.id });
+                                navigate('/admin/results/review');
+                              }}
+                              className="px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs rounded-lg transition-colors inline-flex items-center gap-1 border border-blue-200/50"
+                              title="Lihat Detail Pembahasan & Lembar Jawaban Peserta"
+                            >
+                              <BookOpen className="w-3 h-3" />
+                              <span>Tinjau</span>
+                            </button>
+                          )}
+                          
+                          {showTrash ? (
+                            <button
+                              disabled={actionId === record.id}
+                              onClick={() => handleRestore(record.id)}
+                              className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-xs rounded-lg transition-colors inline-flex items-center gap-1 disabled:opacity-40 border border-emerald-200"
+                            >
+                              {actionId === record.id ? (
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                              ) : (
+                                <Undo className="w-3 h-3" />
+                              )}
+                              <span>Pulihkan</span>
+                            </button>
+                          ) : (
+                            <button
+                              disabled={actionId === record.id}
+                              onClick={() => handleSoftDelete(record.id)}
+                              className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg transition-colors inline-flex items-center disabled:opacity-40 border border-rose-100"
+                              title="Pindahkan ke Kotak Sampah"
+                            >
+                              {actionId === record.id ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <Trash2 className="w-3.5 h-3.5" />
+                              )}
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </motion.tr>
+                  );
+                })}
               </tbody>
             </table>
           )}
