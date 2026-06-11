@@ -4,6 +4,7 @@ import {
   BarChart3, Search, Filter, TrendingUp, CheckCircle, 
   XCircle, Clock, Trash2, Undo, ArrowLeft, Loader2, AlertCircle, BookOpen 
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom'; // 🌟 1. IMPORT NAVIGATE FOR ROUTING
 import { supabase } from '../../lib/supabase';
 import { useApp } from '../../context/AppContext';
 
@@ -22,6 +23,7 @@ interface HistoryRecord {
 
 export default function ExamHistoryMonitor() {
   const { dispatch } = useApp(); 
+  const navigate = useNavigate(); // 🌟 2. INISIALISASI PENDORONG URL
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState<'ALL' | 'FULL' | 'TIU' | 'TWK' | 'TKP'>('ALL');
   
@@ -280,7 +282,6 @@ export default function ExamHistoryMonitor() {
                       </span>
                     </td>
                     
-                    {/* 🌟 PERBAIKAN: RE-DESIGN TOTAL DETAIL SCORE ROW (Jauh Lebih Rapi & Profesional) */}
                     <td className="px-5 py-4 text-right">
                       <div className="text-base font-black text-gray-900 tracking-tight">{record.total_score}</div>
                       {record.exam_type === 'FULL' ? (
@@ -326,7 +327,11 @@ export default function ExamHistoryMonitor() {
                       <div className="flex items-center justify-center gap-2">
                         {!showTrash && (
                           <button
-                            onClick={() => dispatch({ type: 'OPEN_REVIEW', payload: record.id })}
+                            /* 🌟 3. PERBAIKAN AKSI: Trigger state global sekaligus dorong Router URL */
+                            onClick={() => {
+                              dispatch({ type: 'OPEN_REVIEW', payload: record.id });
+                              navigate('/admin/results/review');
+                            }}
                             className="px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs rounded-xl transition-colors inline-flex items-center gap-1 shadow-sm"
                             title="Lihat Detail Pembahasan & Lembar Jawaban Peserta"
                           >
