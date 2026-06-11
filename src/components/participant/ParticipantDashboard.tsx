@@ -7,7 +7,7 @@ import { ExamResult } from '../../types';
 import ExamCards from './ExamCards';
 import Leaderboard from './Leaderboard';
 import ExamHistory from './ExamHistory';
-import DiagnosticReport from '../exam/DiagnosticReport'; // 🌟 1. IMPORT KOMPONEN GRAFIK RAPOR
+import DiagnosticReport from '../exam/DiagnosticReport';
 
 // ====================================================================
 // 🧠 TRANSFORMATOR UTAMA: AKUMULATOR DIAGNOSIS INTEGRAL (ALL-TIME DATA)
@@ -15,22 +15,18 @@ import DiagnosticReport from '../exam/DiagnosticReport'; // 🌟 1. IMPORT KOMPO
 function generateGlobalAnalytics(examHistory: any[]) {
   const globalBreakdown: Record<string, { correct: number; total: number; percentage: number }> = {};
 
-  // Iterasi melintasi seluruh tumpukan riwayat ujian dari yang pertama hingga terakhir
   examHistory.forEach((result) => {
-    // Lewati baris jika data cetakan diagnosis kosong (untuk kompatibilitas tryout lama)
     if (!result.diagnostic_breakdown) return;
 
     Object.entries(result.diagnostic_breakdown).forEach(([topic, data]: [string, any]) => {
       if (!globalBreakdown[topic]) {
         globalBreakdown[topic] = { correct: 0, total: 0, percentage: 0 };
       }
-      // Gabungkan akumulasi poin benar dan batas total skor maksimal per bab materi
       globalBreakdown[topic].correct += data.correct || 0;
       globalBreakdown[topic].total += data.total || 0;
     });
   });
 
-  // Kalkulasi ulang nilai persentase performa akhir secara akumulatif menyeluruh
   Object.keys(globalBreakdown).forEach((topic) => {
     const item = globalBreakdown[topic];
     item.percentage = item.total > 0 ? Math.round((item.correct / item.total) * 100) : 0;
@@ -62,7 +58,6 @@ export default function ParticipantDashboard() {
     : 0;
   const passedCount = examHistory.filter((r) => r.passed).length;
 
-  // 🌟 EKSEKUSI DATA: Rakit laporan akumulatif real-time peserta
   const globalAnalyticsData = generateGlobalAnalytics(examHistory);
 
   type HistoryRecord = {
@@ -179,7 +174,7 @@ export default function ParticipantDashboard() {
             ))}
           </motion.div>
 
-          {/* 🌟 SEBARKAN BLOK GRAFIK DIAGNOSIS AKUMULATIF GLOBAL DI SINI */}
+          {/* Grafik Diagnosis Akumulatif Global */}
           {!resultsLoading && totalExams > 0 && (
             <motion.div variants={itemVariants}>
               <DiagnosticReport breakdown={globalAnalyticsData} />
@@ -332,8 +327,6 @@ export default function ParticipantDashboard() {
                 </div>
               </div>
 
-              {/* 🌟 SUNTIKAN INTEGRASI BARU: Jika satu baris ujian diklik detailnya oleh peserta, 
-                  kita juga bisa menampilkan diagram penganalisis khusus milik paketan tersebut di dalam modal popup! */}
               {selectedExam.diagnostic_breakdown && (
                 <div className="mb-6 border-t pt-4 text-left max-h-48 overflow-y-auto pr-1">
                   <p className="text-xs font-bold text-gray-500 mb-2 uppercase tracking-wide">Diagnosis Paket Ini:</p>
@@ -350,7 +343,7 @@ export default function ParticipantDashboard() {
             </motion.div>
           </div>
         )}
-      </an-presence>
+      </AnimatePresence>
     </div>
   );
 }
