@@ -263,7 +263,6 @@ interface AppContextType {
   refreshProfile: () => Promise<void>;
   startExam: (examType: ExamType, pkg?: ExamPackage) => Promise<void>;
   deleteHistory: (resultId: string) => Promise<boolean>;
-  // 🌟 PERBAIKAN TIM KONTEKS: Daftarkan parameter kiriman diagnostic di cetak biru type global
   submitExamSession: (diagnosticBreakdown?: any) => Promise<void>;
   examHistory: any[];
   fetchUserExamHistory: () => Promise<void>;
@@ -286,6 +285,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         .select('*')
         .eq('participant_id', user.id)
         .eq('status', 'completed') 
+        .eq('is_deleted', false) // 🌟 MENCANTUMKAN FILTER: Sembunyikan riwayat yang di-soft delete
         .order('completed_at', { ascending: false });
 
       if (error) throw error;
@@ -442,7 +442,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  // 🌟 PERBAIKAN UTAMA: Tambah parameter input objek diagnosis analitik
   async function submitExamSession(diagnosticBreakdown?: any) {
     const session = state.examSession;
     if (!session || isSyncLocked) return;
@@ -463,8 +462,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         answers: session.answers
       };
 
-      // 🛡️ SABUK PENGAMAN (TIMER FALLBACK): Jika dikumpulkan paksa oleh timer dan parameter kosong, 
-      // lakukan kalkulasi diagnosis manual di latar belakang agar rapor peserta tidak pecah
       let finalDiagnostic = diagnosticBreakdown;
       if (!finalDiagnostic) {
         const breakdown: Record<string, { correct: number; total: number; percentage: number }> = {};
@@ -508,7 +505,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
           completed_at: new Date().toISOString(),
           duration_seconds: Math.max(0, (EXAM_CONFIGS[session.examType].timeMinutes * 60) - session.timeRemaining),
           review_snapshot: JSON.stringify(snapshotPayload),
-          // 🌟 KUNCI GERBANG: Masukkan data diagnosis akhir ke kolom JSONB database Supabase
           diagnostic_breakdown: finalDiagnostic
         })
         .eq('id', dbResultId);
@@ -537,11 +533,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  // 🌟 REKAYASA FUNGSI BARU: Mengubah hard-delete permanen menjadi soft-delete aman
   async function deleteHistory(resultId: string): Promise<boolean> {
     try {
-      const { deleteExamResult } = await import('../lib/examPersistence');
-      const res = await deleteExamResult(resultId);
-      if (res.success) { 
+      const { error } = await supabase
+        .from('exam_results')
+        .update({ is_deleted: true })
+        .eq('id', resultId);
+
+      if (!error) { 
         dispatch({ type: 'DELETE_EXAM_RESULT', payload: resultId }); 
         setExamHistory((prev) => prev.filter((item) => item.id !== resultId));
         return true; 
