@@ -1,132 +1,187 @@
 import { motion } from 'framer-motion';
-import { AlertCircle, CheckCircle2, HelpCircle, TrendingDown, Award } from 'lucide-react';
+import { CheckCircle2, XCircle, AlertCircle, Award, Target, HelpCircle } from 'lucide-react';
 
-interface DiagnosticItem {
-  correct: number;
-  total: number;
-  percentage: number;
+interface DiagnosticReportProps {
+  questions: any[];
+  answers: any;
 }
 
-interface Props {
-  breakdown?: Record<string, DiagnosticItem>;
-}
+export default function DiagnosticReport({ questions, answers }: DiagnosticReportProps) {
+  if (!questions || questions.length === 0) return null;
 
-export default function DiagnosticReport({ breakdown }: Props) {
-  // Jalur pengaman jika data kosong atau ujian lama belum punya data breakdown
-  if (!breakdown || Object.keys(breakdown).length === 0) {
-    return (
-      <div className="bg-white rounded-3xl p-6 border border-gray-100 text-center shadow-sm">
-        <HelpCircle className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-        <p className="font-semibold text-gray-500 text-sm">Analisis Diagnosis Belum Tersedia</p>
-        <p className="text-xs text-gray-400 mt-1">Sesi ujian ini belum merekam klasifikasi sub-materi secara spesifik.</p>
-      </div>
-    );
-  }
+  // 1. Ambil pilihan jawaban peserta (Helper)
+  const getSelectedAnswer = (qId: string) => {
+    if (!answers) return null;
+    const ans = Array.isArray(answers) 
+      ? answers.find((a) => a?.question_id === qId || a?.questionId === qId)
+      : answers[qId];
+    return typeof ans === 'string' ? ans : ans?.selectedAnswer || ans?.answer || null;
+  };
 
-  // 🧠 Kelompokkan materi berdasarkan tingkat penguasaan (Kriteria Kelulusan)
-  const topics = Object.entries(breakdown).map(([name, data]) => ({ name, ...data }));
-  const weakTopics = topics.filter(t => t.percentage < 60);
-  const averageTopics = topics.filter(t => t.percentage >= 60 && t.percentage < 80);
-  const strongTopics = topics.filter(t => t.percentage >= 80);
+  // 2. Rumpun kategori utama SKD
+  const mainCategories = [
+    { id: 'TWK', name: 'Tes Wawasan Kebangsaan', color: 'stroke-emerald-500 text-emerald-600 bg-emerald-50' },
+    { id: 'TIU', name: 'Tes Inteligensia Umum', color: 'stroke-blue-500 text-blue-600 bg-blue-50' },
+    { id: 'TKP', name: 'Tes Karakteristik Pribadi', color: 'stroke-rose-500 text-rose-600 bg-rose-50' },
+  ];
+
+  // Rumus sakti keliling SVG Circle (Radius = 16) -> 2 * pi * 16 = 100.53
+  const circumference = 100.53;
 
   return (
-    <div className="space-y-6">
-      
-      {/* 💡 BLOK REKOMENDASI KECERDASAN BUATAN */}
-      {weakTopics.length > 0 && (
-        <motion.div 
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-rose-50 border border-rose-100 rounded-2xl p-4 flex gap-3 items-start"
-        >
-          <TrendingDown className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
-          <div>
-            <h4 className="font-bold text-rose-900 text-sm">Rekomendasi Strategi Belajar</h4>
-            <p className="text-xs text-rose-700 leading-relaxed mt-1">
-              Berdasarkan hasil uji CAT BKN Anda, sistem mendeteksi kelemahan kritis pada materi{' '}
-              <span className="font-bold">{weakTopics.map(t => t.name).join(', ')}</span>. 
-              Fokuskan sisa waktu Anda untuk mendalami kembali teori dasar pada bab tersebut dan perbanyak latihan soal harian.
-            </p>
-          </div>
-        </motion.div>
-      )}
+    <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-6 space-y-8">
+      {/* HEADER SECTION */}
+      <div className="text-center md:text-left border-b border-gray-50 pb-4">
+        <h2 className="text-xl font-black text-gray-900 tracking-tight flex items-center justify-center md:justify-start gap-2 text-[#1e3a8a]">
+          <Target className="w-5 h-5 text-[#10b981]" />
+          PETA KEKUATAN DAN KELEMAHAN MALAIKAT
+        </h2>
+        <p className="text-xs text-gray-400 mt-1 font-medium">
+          Analisis peta sebaran kompetensi sub-materi berdasarkan hasil tryout Anda
+        </p>
+      </div>
 
-      {weakTopics.length === 0 && strongTopics.length > 0 && (
-        <motion.div 
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-emerald-50 border border-emerald-100 rounded-2xl p-4 flex gap-3 items-start"
-        >
-          <Award className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
-          <div>
-            <h4 className="font-bold text-emerald-900 text-sm">Luar Biasa! Pertahankan Ritme</h4>
-            <p className="text-xs text-emerald-700 leading-relaxed mt-1">
-              Secara keseluruhan, pemahaman konsep mikro Anda sudah sangat merata. Anda tidak memiliki sub-materi di zona merah. Tetap lakukan simulasi berkala untuk menjaga stabilitas memori taktis Anda!
-            </p>
-          </div>
-        </motion.div>
-      )}
+      {/* THREE DONUT CHARTS GRID */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {mainCategories.map((category) => {
+          // Saring soal milik kategori ini
+          const catQuestions = questions.filter((q) => q?.category === category.id);
+          if (catQuestions.length === 0) return null;
 
-      {/* 📊 GRAFIK UTAMA PENGUASAAN SUB-MATERI */}
-      <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-6 space-y-5">
-        <div>
-          <h3 className="font-bold text-gray-800 text-base">Rapor Diagnosis Kekuatan & Kelemahan</h3>
-          <p className="text-xs text-gray-400 mt-0.5">Grafik analisis akurasi jawaban per submateri kisi-kisi resmi</p>
-        </div>
+          let totalGainedPoints = 0;
+          let maxPossiblePoints = catQuestions.length * 5;
 
-        <div className="space-y-4">
-          {topics.map((topic, index) => {
-            // Tentukan warna bar secara dinamis sesuai zona skor
-            let colorClass = 'bg-rose-500'; // Zona Merah
-            let bgZoneClass = 'bg-rose-50/50';
-            let badgeClass = 'bg-rose-100 text-rose-700';
-            let icon = <AlertCircle className="w-3.5 h-3.5" />;
+          // Hitung nilai dan kumpulkan sub-kategori
+          const subMap: Record<string, { correctPoints: number; totalMax: number }> = {};
 
-            if (topic.percentage >= 80) {
-              colorClass = 'bg-emerald-500'; // Zona Hijau
-              bgZoneClass = 'bg-emerald-50/50';
-              badgeClass = 'bg-emerald-100 text-emerald-700';
-              icon = <CheckCircle2 className="w-3.5 h-3.5" />;
-            } else if (topic.percentage >= 60) {
-              colorClass = 'bg-amber-500'; // Zona Kuning
-              bgZoneClass = 'bg-amber-50/50';
-              badgeClass = 'bg-amber-100 text-amber-700';
-              icon = <HelpCircle className="w-3.5 h-3.5" />;
+          catQuestions.forEach((q) => {
+            const subName = q?.sub_category || q?.sub_kategori || 'Umum';
+            const selected = getSelectedAnswer(q.id);
+
+            if (!subMap[subName]) {
+              subMap[subName] = { correctPoints: 0, totalMax: 0 };
             }
+            subMap[subName].totalMax += 5;
 
-            return (
-              <div key={topic.name} className={`p-3 rounded-xl border border-gray-100/70 transition-all ${bgZoneClass}`}>
-                <div className="flex justify-between items-center mb-2 flex-wrap gap-2">
-                  <span className="text-xs font-bold text-gray-700 uppercase tracking-wide">
-                    {topic.name}
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-gray-400 font-medium">
-                      Poin: {topic.correct}/{topic.total}
-                    </span>
-                    <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${badgeClass}`}>
-                      {icon}
-                      {topic.percentage}%
-                    </span>
-                  </div>
-                </div>
-                
-                {/* TRACK PROGRESS BAR */}
-                <div className="w-full h-2.5 bg-gray-200/80 rounded-full overflow-hidden">
-                  {/* ANIMATED BAR FILL */}
-                  <motion.div 
-                    initial={{ width: 0 }}
-                    animate={{ width: `${topic.percentage}%` }}
-                    transition={{ duration: 0.8, ease: 'easeOut', delay: index * 0.05 }}
-                    className={`h-full rounded-full ${colorClass}`}
+            if (category.id === 'TKP') {
+              const points = selected ? Number(q[`points_${String(selected).toLowerCase()}`] || 0) : 0;
+              totalGainedPoints += points;
+              subMap[subName].correctPoints += points;
+            } else {
+              const isCorrect = selected && String(selected).toUpperCase() === String(q?.correct_answer).toUpperCase();
+              const score = isCorrect ? 5 : 0;
+              totalGainedPoints += score;
+              subMap[subName].correctPoints += score;
+            }
+          });
+
+          const overallPercentage = Math.round((totalGainedPoints / maxPossiblePoints) * 100) || 0;
+          const strokeDashoffset = circumference - (circumference * overallPercentage) / 100;
+
+          // Pecah sub-materi menjadi Kekuatan (>=70%) dan Kelemahan (<70%)
+          const subList = Object.keys(subMap).map((name) => {
+            const item = subMap[name];
+            const pct = Math.round((item.correctPoints / item.totalMax) * 100) || 0;
+            return { name, percentage: pct };
+          });
+
+          const strengths = subList.filter((s) => s.percentage >= 70);
+          const weaknesses = subList.filter((s) => s.percentage < 70);
+
+          return (
+            <div key={category.id} className="flex flex-col border border-gray-100 rounded-2xl p-5 bg-gray-50/30 shadow-sm/50">
+              {/* Tittle Sub-tes */}
+              <div className="text-center mb-4">
+                <span className={`text-[10px] font-black px-2.5 py-1 rounded-md tracking-wider uppercase bg-white border border-gray-100 ${category.color.split(' ')[1]}`}>
+                  {category.id}
+                </span>
+                <h3 className="text-sm font-bold text-gray-800 mt-2 truncate">{category.name}</h3>
+              </div>
+
+              {/* METODE DIAGRAM DONUT SVG PURE CSS */}
+              <div className="relative flex items-center justify-center h-36 mb-5">
+                <svg className="w-32 h-32 transform -rotate-90" viewBox="0 0 36 36">
+                  {/* Lingkaran Background Gray */}
+                  <circle
+                    className="text-gray-100"
+                    strokeWidth="3.2"
+                    stroke="currentColor"
+                    fill="none"
+                    cx="18"
+                    cy="18"
+                    r="16"
                   />
+                  {/* Lingkaran Utama Nilai */}
+                  <motion.circle
+                    className={category.color.split(' ')[0]}
+                    strokeWidth="3.2"
+                    strokeDasharray={circumference}
+                    initial={{ strokeDashoffset: circumference }}
+                    animate={{ strokeDashoffset }}
+                    transition={{ duration: 0.8, ease: 'easeOut' }}
+                    strokeLinecap="round"
+                    stroke="currentColor"
+                    fill="none"
+                    cx="18"
+                    cy="18"
+                    r="16"
+                  />
+                </svg>
+                {/* Teks di Tengah Lingkaran */}
+                <div className="absolute flex flex-col items-center justify-center text-center">
+                  <span className="text-2xl font-black text-gray-900 tracking-tight">{overallPercentage}%</span>
+                  <span className="text-[10px] text-gray-400 font-bold mt-0.5 tracking-wide">
+                    {totalGainedPoints} / {maxPossiblePoints} PTS
+                  </span>
                 </div>
               </div>
-            );
-          })}
-        </div>
+
+              {/* LIST KEKUATAN & KELEMAHAN SUB-MATERI */}
+              <div className="flex-1 space-y-4 border-t border-gray-100 pt-4 text-xs">
+                {/* Bagian Kekuatan */}
+                <div>
+                  <h4 className="font-extrabold text-emerald-700 flex items-center gap-1 mb-1.5 bg-emerald-50/60 px-2 py-0.5 rounded-md w-fit">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Materi Dikuasai
+                  </h4>
+                  {strengths.length > 0 ? (
+                    <div className="space-y-1.5 pl-1">
+                      {strengths.map((s, idx) => (
+                        <div key={idx} className="flex justify-between items-center text-gray-700 font-medium">
+                          <span className="truncate max-w-[170px]">&bull; {s.name}</span>
+                          <span className="text-emerald-600 font-bold">{s.percentage}%</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-gray-400 italic text-[11px] pl-1">Belum ada materi mencapai batas aman.</p>
+                  )}
+                </div>
+
+                {/* Bagian Kelemahan */}
+                <div>
+                  <h4 className="font-extrabold text-rose-700 flex items-center gap-1 mb-1.5 bg-rose-50/60 px-2 py-0.5 rounded-md w-fit">
+                    <AlertCircle className="w-3.5 h-3.5" /> Perlu Peningkatan
+                  </h4>
+                  {weaknesses.length > 0 ? (
+                    <div className="space-y-1.5 pl-1">
+                      {weaknesses.map((w, idx) => (
+                        <div key={idx} className="flex justify-between items-center text-gray-700 font-medium">
+                          <span className="truncate max-w-[170px]">&bull; {w.name}</span>
+                          <span className="text-rose-500 font-bold">{w.percentage}%</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-emerald-600 font-bold text-[11px] pl-1 flex items-center gap-0.5">
+                      <Award className="w-3.5 h-3.5 text-amber-500" /> Sempurna! Semua materi aman.
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </div>
-      
     </div>
   );
 }
