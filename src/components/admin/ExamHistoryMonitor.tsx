@@ -137,11 +137,11 @@ export default function ExamHistoryMonitor() {
 
   const getExamTypeColor = (type: string) => {
     switch (type) {
-      case 'TIU': return 'bg-blue-100 text-blue-700';
-      case 'TWK': return 'bg-emerald-100 text-emerald-700';
-      case 'TKP': return 'bg-rose-100 text-rose-700';
-      case 'FULL': return 'bg-[#1e3a8a]/10 text-[#1e3a8a]';
-      default: return 'bg-gray-100 text-gray-700';
+      case 'TIU': return 'bg-blue-50 text-blue-700 border border-blue-100';
+      case 'TWK': return 'bg-emerald-50 text-emerald-700 border border-emerald-100';
+      case 'TKP': return 'bg-rose-50 text-rose-700 border border-rose-100';
+      case 'FULL': return 'bg-gray-100 text-gray-700 border border-gray-200';
+      default: return 'bg-gray-50 text-gray-600 border border-gray-100';
     }
   };
 
@@ -249,21 +249,22 @@ export default function ExamHistoryMonitor() {
           ) : (
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="bg-gray-50/70 text-gray-500 text-xs font-bold uppercase tracking-wider border-b border-gray-100">
-                  <th className="px-4 py-3.5 pl-6">Peserta</th>
-                  <th className="px-3 py-3.5">Jenis</th>
-                  {/* 🌟 FORMULASI BARU: PEMISAHAN MATERI MENJADI SPESIFIK KOLOM */}
-                  <th className="px-3 py-3.5 text-center bg-blue-50/20 text-blue-700">TIU</th>
-                  <th className="px-3 py-3.5 text-center bg-emerald-50/20 text-emerald-700">TWK</th>
-                  <th className="px-3 py-3.5 text-center bg-rose-50/20 text-rose-700">TKP</th>
-                  <th className="px-3 py-3.5 text-center bg-gray-50 font-extrabold text-gray-800">TOTAL</th>
-                  <th className="px-3 py-3.5 text-center">Status</th>
-                  <th className="px-3 py-3.5">Durasi</th>
-                  <th className="px-3 py-3.5">Tanggal Pengerjaan</th>
-                  <th className="px-4 py-3.5 pr-6 text-center">Aksi</th>
+                {/* 🌟 RE-DESIGN HEADER: Menjadi abu-abu flat seragam profesional tanpa distorsi warna */}
+                <tr className="bg-gray-50/80 text-gray-500 text-[11px] font-bold uppercase tracking-wider border-b border-gray-100">
+                  <th className="px-5 py-4 pl-6">Peserta</th>
+                  <th className="px-3 py-4">Jenis</th>
+                  <th className="px-3 py-4 text-center">TIU</th>
+                  <th className="px-3 py-4 text-center">TWK</th>
+                  <th className="px-3 py-4 text-center">TKP</th>
+                  {/* Pembeda kolom total menggunakan border-l tipis */}
+                  <th className="px-4 py-4 text-center border-l border-gray-100 text-gray-700 font-extrabold">TOTAL</th>
+                  <th className="px-3 py-4 text-center">Status</th>
+                  <th className="px-3 py-4">Durasi</th>
+                  <th className="px-3 py-4">Tanggal Pengerjaan</th>
+                  <th className="px-5 py-4 pr-6 text-center">Aksi</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100/70 text-sm text-gray-700">
+              <tbody className="divide-y divide-gray-100 text-sm text-gray-700 bg-white">
                 {filtered.map((record, i) => {
                   const isFull = record.exam_type === 'FULL';
                   const isTIU = record.exam_type === 'TIU';
@@ -275,50 +276,50 @@ export default function ExamHistoryMonitor() {
                       key={record.id}
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
-                      transition={{ delay: i * 0.02 }}
-                      className="hover:bg-gray-50/40 transition-colors"
+                      transition={{ delay: i * 0.01 }}
+                      className="hover:bg-gray-50/30 transition-colors"
                     >
-                      {/* Kolom Peserta */}
-                      <td className="px-4 py-3.5 pl-6">
+                      {/* Nama Peserta */}
+                      <td className="px-5 py-3.5 pl-6">
                         <div className="flex items-center gap-2.5">
-                          <div className="w-7 h-7 bg-gradient-to-br from-[#1e3a8a] to-blue-600 rounded-full flex items-center justify-center text-white text-[11px] font-bold shrink-0 shadow-sm">
+                          <div className="w-7 h-7 bg-gradient-to-br from-[#1e3a8a] to-blue-600 rounded-full flex items-center justify-center text-white text-[11px] font-bold shrink-0">
                             {record.participant_name.charAt(0).toUpperCase()}
                           </div>
-                          <span className="font-semibold text-gray-800 max-w-[140px] truncate">{record.participant_name}</span>
+                          <span className="font-medium text-gray-800 max-w-[140px] truncate">{record.participant_name}</span>
                         </div>
                       </td>
                       
-                      {/* Kolom Jenis Ujian */}
+                      {/* Jenis Paket */}
                       <td className="px-3 py-3.5">
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md tracking-wide ${getExamTypeColor(record.exam_type)}`}>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${getExamTypeColor(record.exam_type)}`}>
                           {record.exam_type}
                         </span>
                       </td>
                       
-                      {/* 🌟 KOLOM TIU SCORE */}
-                      <td className="px-3 py-3.5 text-center font-bold text-blue-900 bg-blue-50/5">
-                        {isFull || isTIU ? record.score_tiu : <span className="text-gray-300 font-normal">-</span>}
+                      {/* 🌟 SKOR TIU (Sama besar, text-sm font-medium) */}
+                      <td className="px-3 py-3.5 text-center text-sm font-medium text-gray-600">
+                        {isFull || isTIU ? record.score_tiu : <span className="text-gray-300">-</span>}
                       </td>
 
-                      {/* 🌟 KOLOM TWK SCORE */}
-                      <td className="px-3 py-3.5 text-center font-bold text-emerald-900 bg-emerald-50/5">
-                        {isFull || isTWK ? record.score_twk : <span className="text-gray-300 font-normal">-</span>}
+                      {/* 🌟 SKOR TWK (Sama besar, text-sm font-medium) */}
+                      <td className="px-3 py-3.5 text-center text-sm font-medium text-gray-600">
+                        {isFull || isTWK ? record.score_twk : <span className="text-gray-300">-</span>}
                       </td>
 
-                      {/* 🌟 KOLOM TKP SCORE */}
-                      <td className="px-3 py-3.5 text-center font-bold text-rose-900 bg-rose-50/5">
-                        {isFull || isTKP ? record.score_tkp : <span className="text-gray-300 font-normal">-</span>}
+                      {/* 🌟 SKOR TKP (Sama besar, text-sm font-medium) */}
+                      <td className="px-3 py-3.5 text-center text-sm font-medium text-gray-600">
+                        {isFull || isTKP ? record.score_tkp : <span className="text-gray-300">-</span>}
                       </td>
 
-                      {/* 🌟 KOLOM TOTAL SCORE (Lebih Tebal dan Terang) */}
-                      <td className="px-3 py-3.5 text-center font-black text-gray-900 bg-gray-50/50 text-base">
+                      {/* 🌟 SKOR TOTAL (Sama besar text-sm, tapi bold & menggunakan warna identitas #1e3a8a) */}
+                      <td className="px-4 py-3.5 text-center text-sm font-bold text-[#1e3a8a] bg-blue-50/20 border-l border-gray-100">
                         {record.total_score}
                       </td>
 
-                      {/* Kolom Status Kelulusan */}
+                      {/* Status */}
                       <td className="px-3 py-3.5 text-center">
-                        <div className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full
-                          ${record.passed ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-red-100 text-red-700 border border-red-200'}`}>
+                        <div className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full
+                          ${record.passed ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/50' : 'bg-rose-50 text-rose-700 border border-rose-200/50'}`}>
                           {record.passed ? (
                             <><CheckCircle className="w-3 h-3" /> Lulus</>
                           ) : (
@@ -327,21 +328,21 @@ export default function ExamHistoryMonitor() {
                         </div>
                       </td>
                       
-                      {/* Kolom Durasi */}
-                      <td className="px-3 py-3.5 font-medium text-gray-600 text-xs">
+                      {/* Durasi */}
+                      <td className="px-3 py-3.5 text-xs text-gray-500 font-medium">
                         <div className="flex items-center gap-1">
                           <Clock className="w-3.5 h-3.5 text-gray-400" />
                           {formatDuration(record.duration_seconds)}
                         </div>
                       </td>
                       
-                      {/* Kolom Tanggal */}
-                      <td className="px-3 py-3.5 text-xs text-gray-500 font-medium">
+                      {/* Tanggal */}
+                      <td className="px-3 py-3.5 text-xs text-gray-400 font-medium">
                         {formatDate(record.completed_at)}
                       </td>
                       
-                      {/* Kolom Aksi */}
-                      <td className="px-4 py-3.5 pr-6 text-center">
+                      {/* Tombol Aksi */}
+                      <td className="px-5 py-3.5 pr-6 text-center">
                         <div className="flex items-center justify-center gap-1.5">
                           {!showTrash && (
                             <button
@@ -349,8 +350,8 @@ export default function ExamHistoryMonitor() {
                                 dispatch({ type: 'OPEN_REVIEW', payload: record.id });
                                 navigate('/admin/results/review');
                               }}
-                              className="px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs rounded-lg transition-colors inline-flex items-center gap-1 border border-blue-200/50"
-                              title="Lihat Detail Pembahasan & Lembar Jawaban Peserta"
+                              className="px-2 py-1 bg-[#1e3a8a] hover:bg-blue-800 text-white font-semibold text-xs rounded-lg transition-colors inline-flex items-center gap-1 shadow-sm"
+                              title="Tinjau Pembahasan Peserta"
                             >
                               <BookOpen className="w-3 h-3" />
                               <span>Tinjau</span>
@@ -374,7 +375,7 @@ export default function ExamHistoryMonitor() {
                             <button
                               disabled={actionId === record.id}
                               onClick={() => handleSoftDelete(record.id)}
-                              className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg transition-colors inline-flex items-center disabled:opacity-40 border border-rose-100"
+                              className="p-1.5 bg-gray-50 hover:bg-rose-50 text-gray-400 hover:text-rose-600 rounded-lg transition-colors inline-flex items-center border border-gray-200 hover:border-rose-200 disabled:opacity-40"
                               title="Pindahkan ke Kotak Sampah"
                             >
                               {actionId === record.id ? (
