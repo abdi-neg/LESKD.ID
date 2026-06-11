@@ -8,7 +8,7 @@ import { supabase } from '../../lib/supabase';
 
 interface ParsedQuestion {
   category: Category;
-  sub_category: string; // 🌟 TAMBAHKAN BARIS INI: Kolom sub-materi baru
+  sub_category: string; 
   question_text: string;
   option_a: string;
   option_b: string;
@@ -70,19 +70,16 @@ function parseDocxText(rawText: string, category: Category): { questions: Parsed
   blocks.forEach((block, idx) => {
     const lineNum = idx + 1;
     try {
-      // 🌟 PERBAIKAN REGEX LOOKAHEAD: Memasukkan SUB_KATEGORI agar teks tidak tumpang tindih
       const extract = (marker: string): string => {
         const regex = new RegExp(`\\[${marker}\\]([\\s\\S]*?)(?=\\[(?:A|B|C|D|E|KUNCI|PEMBAHASAN|SOAL|SUB_KATEGORI)\\]|$)`, 'i');
         const match = block.match(regex);
         return match ? match[1].trim() : '';
       };
 
-      // 🌟 MESIN PARSER BARU: Ambil nilai SUB_KATEGORI, jika kosong isi dengan 'Umum'
       const sub_category = extract('SUB_KATEGORI') || 'Umum';
 
       let question_text = block.split(/\[A\]/i)[0].trim();
       
-      // Bersihkan teks pertanyaan dari sisa penanda [SUB_KATEGORI] agar tidak ikut tampil di layar ujian
       question_text = question_text.replace(/\[SUB_KATEGORI\]([\s\S]*?)(?=\\[(?:A|B|C|D|E|KUNCI|PEMBAHASAN|SOAL|SUB_KATEGORI)\\]|$)/i, '').trim();
 
       let rawA = extract('A');
@@ -135,7 +132,7 @@ function parseDocxText(rawText: string, category: Category): { questions: Parsed
 
       questions.push({
         category,
-        sub_category, // 🌟 PETAKKAN KE DATABASE
+        sub_category, 
         question_text,
         option_a: rawA,
         option_b: rawB,
@@ -201,7 +198,7 @@ const EXAMPLES: Record<Category, { q: string; sub: string; opts: string[]; key: 
     { q: 'Sila ke-3 Pancasila berbunyi...', sub: 'Pilar Negara', opts: ['Ketuhanan Yang Maha Esa', 'Kemanusiaan yang Adil dan Beradab', 'Persatuan Indonesia', 'Kerakyatan yang Dipimpin oleh Hikmat', 'Keadilan Sosial'], key: 'C', exp: 'Sila ke-3 Pancasila adalah Persatuan Indonesia.' },
   ],
   TKP: [
-    { q: 'Atasan meminta Anda memalsukan laporan keuangan demi kelancaran proyek perusahaan. Bagaimana tindakan Anda?', sub: 'Integritas Diri', opts: ['Langsung menolak dengan keras dan mengancam akan melaporkan hal tersebut ke pihak berwajib | Poin: 2', 'Menolak dengan sopan serta menjelaskan risiko hukum dan dampak buruknya bagi perusahaan | Poin: 5', 'Melaksanakan instruksi tersebut demi menjaga loyalitas kerja dan posisi aman | Poin: 1', 'Pura-pura menyetujui hal tersebut tetapi sengaja menunda-nunda penyelesaian tugasnya | Poin: 3', 'Mengajak rekan kerja yang lain untuk bersama-sama melakukan protes kepada atasan | Poin: 4'], key: 'B', exp: 'Menolak secara sopan merefleksikan integritas kerja yang tinggi tanpa memicu gesekan destruktif.' },
+    { q: 'Atasan meminta Anda memalsukan laporan keuangan demi kelancaran proyek perusahaan. Bagaimana tindakan Anda?', sub: 'Integritas Diri', opts: ['Langsung menolak dengan keras and mengancam akan melaporkan hal tersebut ke pihak berwajib | Poin: 2', 'Menolak dengan sopan serta menjelaskan risiko hukum dan dampak buruknya bagi perusahaan | Poin: 5', 'Melaksanakan instruksi tersebut demi menjaga loyalitas kerja dan posisi aman | Poin: 1', 'Pura-pura menyetujui hal tersebut tetapi sengaja menunda-nunda penyelesaian tugasnya | Poin: 3', 'Mengajak rekan kerja yang lain untuk bersama-sama melakukan protes kepada atasan | Poin: 4'], key: 'B', exp: 'Menolak secara sopan merefleksikan integritas kerja yang tinggi tanpa memicu gesekan destruktif.' },
     { q: 'Seorang rekan dalam tim Anda tampak mengalami penurunan produktivitas yang mengganggu ritme kerja kelompok. Sikap Anda?', sub: 'Jejaring Kerja', opts: ['Melaporkan penurunan kinerja tersebut langsung kepada atasan tanpa diskusi internal | Poin: 2', 'Mengabaikan kondisi tersebut karena merasa itu adalah urusan pribadi masing-masing | Poin: 1', 'Mengajak berbicara dari hati ke hati secara santun dan menawarkan solusi atau bantuan | Poin: 5', 'Membicarakan keluhan tersebut di belakangnya bersama dengan rekan kerja yang lain | Poin: 3', 'Membantu mengambil alih seluruh beban tugasnya secara diam-diam agar tim tetap aman | Poin: 4'], key: 'C', exp: 'Komunikasi persuasif interpersonal melambangkan kompetensi jejaring kerja dan kepedulian yang sehat.' },
   ],
 };
@@ -211,7 +208,6 @@ async function downloadTemplate(category: Category) {
 
   const exampleParagraphs = examples.flatMap((ex) => [
     wParagraph(wRun('[SOAL]', { bold: true, color: '1e3a8a', size: 22 }), '<w:pPr><w:spacing w:before="320" w:after="80"/></w:pPr>'),
-    // 🌟 SEBARKAN BARIS PENANDA DI CONTOH TEMPLATE WORD
     wMarkerLine('SUB_KATEGORI', ex.sub, '4b5563'),
     wParagraph(wRun(ex.q, { size: 22 }), '<w:pPr><w:spacing w:after="100"/></w:pPr>'),
     ...(['A', 'B', 'C', 'D', 'E'] as const).map((opt, i) => wMarkerLine(opt, ex.opts[i])),
@@ -220,7 +216,6 @@ async function downloadTemplate(category: Category) {
     wParagraph('', '<w:pPr><w:spacing w:after="160"/></w:pPr>'),
   ]);
 
-  // 🌟 SEBARKAN INFORMASI DI TABEL PANDUAN WORD
   const guideRows = [
     { marker: '[SOAL]', desc: 'Awal setiap nomor soal baru' },
     { marker: '[SUB_KATEGORI]', desc: 'Nama materi bab spesifik untuk rapor analisis diagnosis (cth: Silogisme, Nasionalisme, Integritas)' },
@@ -239,17 +234,14 @@ async function downloadTemplate(category: Category) {
     </w:tr>`;
   }).join('');
 
+  // 🌟 PERBAIKAN HEADER XML: Menyederhanakan namespace transisional agar bersih dan valid di semua Microsoft Word
   const docXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:document xmlns:wpc="http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas"
-  xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-  xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
-  xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"
-  mc:Ignorable="w14 wp14">
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
   <w:body>
     ${wHeading(`Template Import Soal ${category}`, 1)}
     ${wParagraph(wRun(`Kategori: ${category}  |  Gunakan format marker di bawah ini`, { size: 20, color: '6b7280', italic: true }), '<w:pPr><w:spacing w:after="320"/></w:pPr>')}
 
-    ${wHeading('PANDUAN FORMAT MARKER', 2)}
+    ${wHeading('PANDUAN FORMAT FORMAT MARKER', 2)}
     ${wParagraph(wRun('Gunakan marker berikut di setiap soal. Setiap soal diawali dengan [SOAL].', { size: 22 }), '<w:pPr><w:spacing w:after="120"/></w:pPr>')}
 
     <w:tbl>
@@ -293,8 +285,9 @@ async function downloadTemplate(category: Category) {
   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
 </Relationships>`;
 
+  // 🌟 PERBAIKAN TYPO NAMESPACE STYLES: Mengubah /main menjadi /wordprocessingml/2006/main
   const stylesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:styles xmlns:w="http://schemas.openxmlformats.org/main">
+<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
   <w:style w:type="paragraph" w:styleId="Normal"><w:name w:val="Normal"/><w:rPr><w:sz w:val="22"/><w:szCs w:val="22"/></w:rPr></w:style>
   <w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:before="240" w:after="120"/></w:pPr><w:rPr><w:b/><w:sz w:val="36"/><w:szCs w:val="36"/></w:rPr></w:style>
   <w:style w:type="paragraph" w:styleId="Heading2"><w:name w:val="heading 2"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:before="200" w:after="100"/></w:pPr><w:rPr><w:b/><w:sz w:val="28"/><w:szCs w:val="28"/></w:rPr></w:style>
@@ -369,7 +362,6 @@ export default function DocxImporter({ packageId, packageType, onImported }: Pro
     if (parsedQuestions.length === 0) return;
     setSaving(true);
     const { error } = await supabase.from('questions').insert(parsedQuestions);
-    setSaving(true);
     if (!error) {
       setSavedCount(parsedQuestions.length);
       setParsedQuestions([]);
@@ -381,21 +373,6 @@ export default function DocxImporter({ packageId, packageType, onImported }: Pro
     }
     setSaving(false);
   }
-
-  type HistoryRecord = {
-    id: string;
-    package_type: 'MINI_TIU' | 'MINI_TWK' | 'MINI_TKP' | 'FULL';
-    package_name: string;
-    total_score: number;
-    score_tiu?: number;
-    score_twk?: number;
-    score_tkp?: number;
-    questions_correct: number;
-    questions_total: number;
-    passed: boolean;
-    duration_seconds: number;
-    completed_at: string;
-  };
 
   function reset() {
     setParsedQuestions([]);
@@ -520,7 +497,6 @@ export default function DocxImporter({ packageId, packageType, onImported }: Pro
                   </span>
                   <p className="text-sm text-gray-700 font-medium flex-1 line-clamp-1">{q.question_text}</p>
                   
-                  {/* 🌟 EMBED BARU: Tampilkan hasil bacaan tag sub-kategori di layar pratinjau */}
                   <span className="text-xs font-bold bg-gray-200 text-gray-600 px-2 py-0.5 rounded border border-gray-300 flex-shrink-0 uppercase tracking-wide">
                     {q.sub_category}
                   </span>
@@ -542,7 +518,7 @@ export default function DocxImporter({ packageId, packageType, onImported }: Pro
                       className="overflow-hidden"
                     >
                       <div className="px-3 pb-3 border-t border-gray-200 pt-2 space-y-1.5">
-                        {(['A', 'B', 'C', 'D', 'E'] as AnswerOption[]).map((opt) => {
+                        { SufferedOptions = (['A', 'B', 'C', 'D', 'E'] as AnswerOption[]).map((opt) => {
                           const val = q[`option_${opt.toLowerCase()}` as keyof ParsedQuestion] as string;
                           const poinVal = q[`points_${opt.toLowerCase()}` as keyof ParsedQuestion];
                           const isCorrect = category !== 'TKP' && opt === q.correct_answer;
