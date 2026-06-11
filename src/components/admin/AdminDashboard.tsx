@@ -9,7 +9,7 @@ import { useApp } from '../../context/AppContext';
 import { supabase } from '../../lib/supabase';
 import QuestionManager from './QuestionManager';
 import LiveScoreMonitor from './LiveScoreMonitor';
-import ExamHistoryMonitor from './ExamHistoryMonitor'; // 🌟 1. PERBAIKAN: Impor file komponen baru kita
+import ExamHistoryMonitor from './ExamHistoryMonitor'; 
 import PackageManager from './PackageManager';
 import ManageAdmins from './ManageAdmins';
 import ManageParticipants from './ManageParticipants';
@@ -35,9 +35,7 @@ export default function AdminDashboard() {
 
   const currentSubPath = location.pathname.split('/admin/')[1] || 'overview';
 
-  if (state.reviewResultId) {
-    return <ExamReview />;
-  }
+  // ❌ KODE PENCEGAT LAMA DI SINI SUDAH DIHAPUS AGAR ROUTER URL DIAMBIL ALIH PENUH 
 
   const allTabs: { id: TabPath; label: string; icon: React.ElementType; superAdminOnly?: boolean }[] = [
     { id: 'overview', label: 'Ringkasan', icon: LayoutDashboard },
@@ -89,20 +87,25 @@ export default function AdminDashboard() {
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 border-t border-white/10 overflow-x-auto">
           <div className="flex gap-1 -mb-px">
-            {tabs.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => handleTabChange(tab.id)}
-                className={`flex items-center gap-2 px-3 sm:px-4 py-3 text-sm font-medium transition-colors border-b-2 whitespace-nowrap
-                  ${currentSubPath === tab.id
-                    ? 'text-white border-[#10b981]'
-                    : 'text-blue-300 border-transparent hover:text-white'
-                  }`}
-              >
-                <tab.icon className="w-4 h-4" />
-                <span className="hidden sm:inline">{tab.label}</span>
-              </button>
-            ))}
+            {tabs.map((tab) => {
+              // 🌟 PINALTI HIGHLIGHT: Pastikan tab Hasil Ujian tetap menyala hijau saat membuka sub-review
+              const isActive = currentSubPath === tab.id || (tab.id === 'results' && currentSubPath.startsWith('results'));
+              
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => handleTabChange(tab.id)}
+                  className={`flex items-center gap-2 px-3 sm:px-4 py-3 text-sm font-medium transition-colors border-b-2 whitespace-nowrap
+                    ${isActive
+                      ? 'text-white border-[#10b981]'
+                      : 'text-blue-300 border-transparent hover:text-white'
+                    }`}
+                >
+                  <tab.icon className="w-4 h-4" />
+                  <span className="hidden sm:inline">{tab.label}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
       </header>
@@ -119,8 +122,11 @@ export default function AdminDashboard() {
             <Route path="packages" element={<PackageManager />} />
             <Route path="questions" element={<QuestionManager />} />
             <Route path="participants" element={<ManageParticipants />} />
-            {/* 🌟 2. PERBAIKAN: Arahkan rute results ke komponen ExamHistoryMonitor baru kita */}
             <Route path="results" element={<ExamHistoryMonitor />} />
+            
+            {/* 🌟 INTEGRASI ROUTE BARU: Daftarkan alamat review resmi di dalam router admin */}
+            <Route path="results/review" element={<ExamReview />} />
+            
             <Route path="live" element={<LiveScoreMonitor />} />
             <Route 
               path="admins" 
@@ -151,7 +157,6 @@ function AdminOverview({ onNavigate, isSuperAdmin }: { onNavigate: (tab: TabPath
         const [q, p, r, pa, pp] = await Promise.all([
           supabase.from('questions').select('id', { count: 'exact', head: true }),
           supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'participant').eq('is_approved', true),
-          // 🌟 3. PERBAIKAN STATS: Tambah saringan .eq('is_deleted', false) agar data sampah tidak dihitung di statistik depan
           supabase.from('exam_results').select('id', { count: 'exact', head: true }).eq('is_deleted', false),
           isSuperAdmin
             ? supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'admin').eq('is_approved', false)
@@ -186,7 +191,6 @@ function AdminOverview({ onNavigate, isSuperAdmin }: { onNavigate: (tab: TabPath
 
   return (
     <div className="space-y-6">
-      {/* Welcome Alerts */}
       {(stats.pendingParticipants > 0 || (isSuperAdmin && stats.pendingAdmins > 0)) && (
         <div className="space-y-2">
           {isSuperAdmin && stats.pendingAdmins > 0 && (
