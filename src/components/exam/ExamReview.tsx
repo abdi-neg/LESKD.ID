@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { supabase } from '../../lib/supabase';
-import DiagnosticReport from './DiagnosticReport'; // 🌟 1. IMPORT KOMPONEN GRAFIK RAPOR
+import DiagnosticReport from './DiagnosticReport';
 
 type AnswerOption = 'A' | 'B' | 'C' | 'D' | 'E';
 const OPTIONS: AnswerOption[] = ['A', 'B', 'C', 'D', 'E'];
@@ -203,9 +203,6 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
     return true;
   });
 
-  // ====================================================================
-  // 🧠 KALKULATOR PENYEIMBANG: Membaca snapshot untuk dirakit jadi Grafik Review Paket
-  // ====================================================================
   const currentDiagnostic = (() => {
     if (!finalQuestions || finalQuestions.length === 0) return {};
     const breakdown: Record<string, { correct: number; total: number; percentage: number }> = {};
@@ -246,15 +243,17 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
     return breakdown;
   })();
 
+  // 🌟 PERBAIKAN RUTING TOMBOL KEMBALI KAMPUS UTAMA ADMIN
   const handleGoBack = () => {
     if (state?.reviewResultId) {
       dispatch({ type: 'DELETE_EXAM_RESULT', payload: state.reviewResultId });
     }
-    if (isAdmin) {
-      dispatch({ type: 'SET_VIEW', payload: 'admin-dashboard' }); 
-    } else {
+    
+    // Jika peserta biasa, jalankan pemindahan view manual ke panel hasil
+    if (!isAdmin) {
       dispatch({ type: 'SET_VIEW', payload: state?.examSession ? 'exam-results' : 'participant-dashboard' });
     }
+    // Jika ADMIN, biarkan kosong! Cukup hapus ID di atas, Router otomatis mengembalikan Admin ke URL aslinya (/admin/results)
   };
 
   return (
@@ -285,7 +284,7 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
         )}
       </div>
 
-      {/* Bar Pencarian & Filter */}
+      {/* Bar Pencarian */}
       <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm space-y-3">
         <div className="relative">
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
@@ -311,7 +310,7 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
         </div>
       </div>
 
-      {/* 🌟 SUNTIKAN GRAFIK BARU: Tampilkan Grafik Diagnosis Paket Spesifik di halaman Pembahasan */}
+      {/* Grafik Diagnosis */}
       {!isFetchingDb && finalQuestions.length > 0 && (
         <motion.div
           initial={{ opacity: 0, y: 15 }}
@@ -322,7 +321,7 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
         </motion.div>
       )}
 
-      {/* Daftar Soal Pembahasan */}
+      {/* Daftar Soal */}
       <div className="space-y-4">
         {isFetchingDb ? (
           <div className="text-center py-12 bg-white rounded-2xl border flex flex-col items-center justify-center gap-3">
