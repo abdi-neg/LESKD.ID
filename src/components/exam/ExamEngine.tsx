@@ -19,11 +19,55 @@ export function ExamEngine() {
 
   const session = state.examSession;
 
+  // ==================================================
+  // 🧠 MESIN UTAMA: KALKULATOR DIAGNOSTIC ANALYTICS
+  // ==================================================
   const handleSubmit = useCallback(() => {
     console.log("⚡ [RADAR ENGINE] Fungsi handleSubmit di ExamEngine RESMI DIEKSEKUSI!"); 
-    submitExamSession();
+    
+    // Proses kalkulasi kelemahan sub-materi secara mikro sebelum dikirim ke database
+    const diagnosticBreakdown = (() => {
+      if (!session) return {};
+      
+      const breakdown: Record<string, { correct: number; total: number; percentage: number }> = {};
+      
+      session.questions.forEach((q) => {
+        // Gunakan nama sub_category dari database, jika kosong arahkan ke 'Umum'
+        const subCat = q.sub_category || 'Umum';
+        const userAnswer = session.answers[q.id];
+        const selected = userAnswer?.selectedAnswer;
+        
+        // Inisialisasi cetakan objek jika sub-materi baru pertama kali terbaca
+        if (!breakdown[subCat]) {
+          breakdown[subCat] = { correct: 0, total: 0, percentage: 0 };
+        }
+        
+        if (q.category === 'TKP') {
+          // Khusus TKP: correct = jumlah poin didapat, total = jumlah poin maksimal (5 poin per soal)
+          const points = selected ? (q as any)[`points_${selected.toLowerCase()}`] || 0 : 0;
+          breakdown[subCat].correct += points;
+          breakdown[subCat].total += 5;
+        } else {
+          // TIU & TWK: correct = 1 jika benar, total = 1 per soal
+          const isCorrect = selected === q.correct_answer;
+          breakdown[subCat].correct += isCorrect ? 1 : 0;
+          breakdown[subCat].total += 1;
+        }
+      });
+      
+      // Hitung nilai akhir persentase penguasaan bab (Math.round untuk pembulatan angka)
+      Object.keys(breakdown).forEach((key) => {
+        const item = breakdown[key];
+        item.percentage = item.total > 0 ? Math.round((item.correct / item.total) * 100) : 0;
+      });
+      
+      return breakdown;
+    })();
+
+    // Kirimkan hasil analisis mikro ini ke dalam fungsi submit global AppContext
+    submitExamSession(diagnosticBreakdown);
     setConfirmSubmit(false);
-  }, [submitExamSession]); 
+  }, [session, submitExamSession]); 
 
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -87,6 +131,7 @@ export function ExamEngine() {
     }
   }
 
+  // Tambahan pengaman auto-save manual saat berpindah soal via tombol prev/next
   function goPrev() {
     if (currentQuestionIndex > 0) {
       dispatch({ type: 'NAVIGATE_QUESTION', payload: currentQuestionIndex - 1 });
@@ -108,11 +153,9 @@ export function ExamEngine() {
   };
 
   return (
-    /* 1. Mengunci tinggi penuh layar monitor dan mematikan scroll global */
     <div className="h-screen bg-gray-50 flex flex-col select-none antialiased text-gray-800 overflow-hidden">
       
       {/* HEADER NAVIGASI UJIAN */}
-      {/* 2. Menambahkan shrink-0 agar tinggi header tidak terdistorsi */}
       <header className="bg-white border-b border-gray-200 shrink-0 px-4 h-16 flex items-center justify-between shadow-sm z-40">
         <div className="flex items-center gap-3">
           <button 
@@ -143,16 +186,21 @@ export function ExamEngine() {
       {/* AREA UTAMA */}
       <div className="flex-1 flex overflow-hidden relative">
         
-        {/* LAYER 1 (KIRI): Area Soal & Pilihan Jawaban */}
+        {/* AREA UTAMA: SOAL & JAWABAN */}
         <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8">
           <div className="max-w-3xl mx-auto space-y-6">
             
             {/* ATRIBUT SOAL DAN KATEGORI */}
-            <div className="flex items-center justify-between bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-              <div className="flex items-center gap-3">
+            <div className="flex items-center justify-between bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex-wrap gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-2xl font-bold text-gray-900">Soal {currentQuestionIndex + 1}</span>
                 <span className={`text-xs px-2.5 py-1 rounded-full uppercase tracking-wider ${categoryColors[currentQuestion.category] || 'bg-gray-100 text-gray-700'}`}>
                   {currentQuestion.category}
+                </span>
+                
+                {/* 🌟 PENYEMPURNAAN VISUAL: Tampilkan Tag Sub-Materi agar layar ujian terasa sangat interaktif */}
+                <span className="text-xs px-2.5 py-1 rounded-full bg-gray-100 text-gray-600 font-bold uppercase tracking-wide border border-gray-200/60">
+                  {currentQuestion.sub_category || 'Umum'}
                 </span>
               </div>
               <button
@@ -252,8 +300,7 @@ export function ExamEngine() {
           </div>
         </main>
 
-        {/* LAYER 2 (KANAN): Sidebar Kotak Nomor Soal */}
-        {/* 3. Mengubah fixed inset-y-16 menjadi fixed top-16 bottom-0 dan menggunakan lg:static lg:h-full pada layar besar */}
+        {/* SIDEBAR NOMOR SOAL */}
         <aside className={`fixed top-16 bottom-0 right-0 w-80 bg-white border-l border-gray-200 p-4 transform transition-transform duration-300 lg:static lg:h-full lg:translate-x-0 z-30 flex flex-col justify-between ${
           sidebarOpen ? 'translate-x-0' : 'translate-x-full'
         }`}>
