@@ -12,6 +12,7 @@ import {
   AlertTriangle,
   Loader2
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom'; // 🌟 1. IMPORT NAVIGATE FOR ROUTER
 import { useApp } from '../../context/AppContext';
 import { supabase } from '../../lib/supabase';
 import DiagnosticReport from './DiagnosticReport';
@@ -118,6 +119,7 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
   const contextData = useApp();
   const state = contextData?.state || {};
   const dispatch = contextData?.dispatch;
+  const navigate = useNavigate(); // 🌟 2. INISIALISASI NAVIGATE UTK BALIK KE URL HASIL
 
   const userRole = state?.profile?.role?.toLowerCase() || 'participant';
   const isAdmin = userRole !== 'participant'; 
@@ -243,17 +245,19 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
     return breakdown;
   })();
 
-  // 🌟 PERBAIKAN RUTING TOMBOL KEMBALI KAMPUS UTAMA ADMIN
+  // 🌟 PERBAIKAN TOTAL AKSI TOMBOL KEMBALI KAMPUS UTAMA ADMIN (ANTI NYANGKUT)
   const handleGoBack = () => {
     if (state?.reviewResultId) {
       dispatch({ type: 'DELETE_EXAM_RESULT', payload: state.reviewResultId });
     }
     
-    // Jika peserta biasa, jalankan pemindahan view manual ke panel hasil
-    if (!isAdmin) {
+    if (isAdmin) {
+      // 🚀 PAKSA BALIK KEDUA METODE: Setel ulang view dashboard DAN lemparkan URL ke hasil ujian!
+      dispatch({ type: 'SET_VIEW', payload: 'admin-dashboard' });
+      navigate('/admin/results');
+    } else {
       dispatch({ type: 'SET_VIEW', payload: state?.examSession ? 'exam-results' : 'participant-dashboard' });
     }
-    // Jika ADMIN, biarkan kosong! Cukup hapus ID di atas, Router otomatis mengembalikan Admin ke URL aslinya (/admin/results)
   };
 
   return (
