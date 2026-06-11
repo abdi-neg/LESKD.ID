@@ -5,6 +5,7 @@ import { useApp } from '../../context/AppContext';
 import { EXAM_CONFIGS } from '../../data/mockData';
 import { supabase } from '../../lib/supabase';
 import { buildReviewSnapshot, saveReviewSnapshot } from '../../lib/examPersistence';
+import DiagnosticReport from './DiagnosticReport'; // 🌟 1. IMPORT KOMPONEN GRAFIK RAPOR
 
 // 🔑 PERBAIKAN: Mengubah menjadi Named Export agar sinkron dengan App.tsx menggunakan kurung kurawal
 export function ExamResults() {
@@ -125,6 +126,40 @@ export function ExamResults() {
       else wrongCount++;
     }
   });
+
+  // ====================================================================
+  // 🧠 MESIN KALKULASI INTERN: Mengubah data sesi menjadi objek diagnosis paket
+  // ====================================================================
+  const currentDiagnostic = (() => {
+    const breakdown: Record<string, { correct: number; total: number; percentage: number }> = {};
+    
+    questions.forEach((q) => {
+      const subCat = q.sub_category || 'Umum';
+      const ans = answers[q.id];
+      const selected = ans?.selectedAnswer;
+      
+      if (!breakdown[subCat]) {
+        breakdown[subCat] = { correct: 0, total: 0, percentage: 0 };
+      }
+      
+      if (q.category === 'TKP') {
+        const points = selected ? (q as any)[`points_${selected.toLowerCase()}`] || 0 : 0;
+        breakdown[subCat].correct += points;
+        breakdown[subCat].total += 5;
+      } else {
+        const isCorrect = selected === q.correct_answer;
+        breakdown[subCat].correct += isCorrect ? 1 : 0;
+        breakdown[subCat].total += 1;
+      }
+    });
+    
+    Object.keys(breakdown).forEach((key) => {
+      const item = breakdown[key];
+      item.percentage = item.total > 0 ? Math.round((item.correct / item.total) * 100) : 0;
+    });
+    
+    return breakdown;
+  })();
 
   const allCategoryStats = [
     { key: 'TIU', score: scores.tiu, max: EXAM_CONFIGS.TIU.questionCount * 5, threshold: EXAM_CONFIGS.TIU.passingScore, color: 'bg-blue-500', lightColor: 'bg-blue-100', textColor: 'text-blue-700' },
@@ -252,7 +287,7 @@ export function ExamResults() {
           </div>
         </motion.div>
 
-        {/* Stats */}
+        {/* Stats Mini Cards */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -274,7 +309,16 @@ export function ExamResults() {
           ))}
         </motion.div>
 
-        {/* Actions */}
+        {/* 🌟 SEBARKAN GRAFIK DIAGNOSIS EVALUASI MATERI SEKETIKA DI SINI */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.25 }}
+        >
+          <DiagnosticReport breakdown={currentDiagnostic} />
+        </motion.div>
+
+        {/* Actions Menu */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
