@@ -12,7 +12,7 @@ import {
   AlertTriangle,
   Loader2
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom'; // 🌟 1. IMPORT NAVIGATE FOR ROUTER
+import { useNavigate } from 'react-router-dom'; 
 import { useApp } from '../../context/AppContext';
 import { supabase } from '../../lib/supabase';
 import DiagnosticReport from './DiagnosticReport';
@@ -119,7 +119,7 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
   const contextData = useApp();
   const state = contextData?.state || {};
   const dispatch = contextData?.dispatch;
-  const navigate = useNavigate(); // 🌟 2. INISIALISASI NAVIGATE UTK BALIK KE URL HASIL
+  const navigate = useNavigate(); 
 
   const userRole = state?.profile?.role?.toLowerCase() || 'participant';
   const isAdmin = userRole !== 'participant'; 
@@ -205,54 +205,12 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
     return true;
   });
 
-  const currentDiagnostic = (() => {
-    if (!finalQuestions || finalQuestions.length === 0) return {};
-    const breakdown: Record<string, { correct: number; total: number; percentage: number }> = {};
-
-    finalQuestions.forEach((q: any) => {
-      if (!q) return;
-      const subCat = q.sub_category || q.sub_kategori || 'Umum';
-      const ans = getAnswerForQuestion(q.id);
-      
-      const selected = typeof ans === 'string' 
-        ? ans 
-        : (ans?.selectedAnswer || ans?.answer || ans?.user_answer || ans?.selected_answer || null);
-
-      if (!breakdown[subCat]) {
-        breakdown[subCat] = { correct: 0, total: 0, percentage: 0 };
-      }
-
-      const category = q.category || q.kategori || 'TIU';
-      if (category === 'TKP') {
-        const key = selected ? `points_${String(selected).toLowerCase()}` : '';
-        const keyIndo = selected ? `poin_${String(selected).toLowerCase()}` : '';
-        const points = selected ? (q[key] ?? q[keyIndo] ?? 0) : 0;
-        breakdown[subCat].correct += Number(points);
-        breakdown[subCat].total += 5;
-      } else {
-        const correctAns = q.correct_answer || q.kunci_jawaban || q.kunci || '';
-        const isCorrect = selected !== null && String(selected).toUpperCase() === String(correctAns).toUpperCase();
-        breakdown[subCat].correct += isCorrect ? 1 : 0;
-        breakdown[subCat].total += 1;
-      }
-    });
-
-    Object.keys(breakdown).forEach((key) => {
-      const item = breakdown[key];
-      item.percentage = item.total > 0 ? Math.round((item.correct / item.total) * 100) : 0;
-    });
-
-    return breakdown;
-  })();
-
-  // 🌟 PERBAIKAN TOTAL AKSI TOMBOL KEMBALI KAMPUS UTAMA ADMIN (ANTI NYANGKUT)
   const handleGoBack = () => {
     if (state?.reviewResultId) {
       dispatch({ type: 'DELETE_EXAM_RESULT', payload: state.reviewResultId });
     }
     
     if (isAdmin) {
-      // 🚀 PAKSA BALIK KEDUA METODE: Setel ulang view dashboard DAN lemparkan URL ke hasil ujian!
       dispatch({ type: 'SET_VIEW', payload: 'admin-dashboard' });
       navigate('/admin/results');
     } else {
@@ -314,14 +272,14 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
         </div>
       </div>
 
-      {/* Grafik Diagnosis */}
+      {/* 🌟 PERBAIKAN: Melempar data mentah soal dan jawaban langsung ke Peta Kekuatan & Kelemahan */}
       {!isFetchingDb && finalQuestions.length > 0 && (
         <motion.div
           initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
           className="clear-both"
         >
-          <DiagnosticReport breakdown={currentDiagnostic} />
+          <DiagnosticReport questions={finalQuestions} answers={finalAnswers} />
         </motion.div>
       )}
 
