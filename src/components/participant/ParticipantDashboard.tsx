@@ -10,29 +10,42 @@ import ExamHistory from './ExamHistory';
 import DiagnosticReport from '../exam/DiagnosticReport';
 
 // ====================================================================
-// 🧠 TRANSFORMATOR UTAMA: AKUMULATOR DIAGNOSIS INTEGRAL (ALL-TIME DATA)
+// 🧠 TRANSFORMATOR UTAMA: AKUMULATOR SNAPSHOT INTEGRAL (ALL-TIME DATA)
 // ====================================================================
-function generateGlobalAnalytics(examHistory: any[]) {
-  const globalBreakdown: Record<string, { correct: number; total: number; percentage: number }> = {};
+// Berfungsi mengumpulkan semua soal & jawaban dari seluruh riwayat ujian 
+// agar diagram lingkaran global dapat menghitung persentase akurasi total secara akurat.
+function generateGlobalSnapshot(examHistory: any[]) {
+  const globalQuestions: any[] = [];
+  const globalAnswers: Record<string, any> = {};
 
   examHistory.forEach((result) => {
-    if (!result.diagnostic_breakdown) return;
+    if (!result.review_snapshot) return;
+    try {
+      const snapshot = typeof result.review_snapshot === 'string'
+        ? JSON.parse(result.review_snapshot)
+        : result.review_snapshot;
 
-    Object.entries(result.diagnostic_breakdown).forEach(([topic, data]: [string, any]) => {
-      if (!globalBreakdown[topic]) {
-        globalBreakdown[topic] = { correct: 0, total: 0, percentage: 0 };
+      if (snapshot && Array.isArray(snapshot.questions)) {
+        snapshot.questions.forEach((q: any) => {
+          // Buat ID unik kombinasi agar tidak tabrakan jika ada soal yang sama dikerjakan berulang kali
+          const uniqueInstanceId = `${result.id}_${q.id}`;
+          
+          globalQuestions.push({ ...q, id: uniqueInstanceId });
+
+          const originalAnswers = snapshot.answers || {};
+          const ans = originalAnswers[q.id] || Object.values(originalAnswers).find((a: any) => a?.questionId === q.id || a?.question_id === q.id);
+          
+          if (ans) {
+            globalAnswers[uniqueInstanceId] = ans;
+          }
+        });
       }
-      globalBreakdown[topic].correct += data.correct || 0;
-      globalBreakdown[topic].total += data.total || 0;
-    });
+    } catch (err) {
+      console.error("Gagal merakit akumulasi snapshot global:", err);
+    }
   });
 
-  Object.keys(globalBreakdown).forEach((topic) => {
-    const item = globalBreakdown[topic];
-    item.percentage = item.total > 0 ? Math.round((item.correct / item.total) * 100) : 0;
-  });
-
-  return globalBreakdown;
+  return { questions: globalQuestions, answers: globalAnswers };
 }
 
 export default function ParticipantDashboard() {
@@ -58,7 +71,22 @@ export default function ParticipantDashboard() {
     : 0;
   const passedCount = examHistory.filter((r) => r.passed).length;
 
-  const globalAnalyticsData = generateGlobalAnalytics(examHistory);
+  // Jalankan kalkulator akumulasi data rekam jejak untuk dashboard depan
+  const globalSnapshotData = generateGlobalSnapshot(examHistory);
+
+  // Parse snapshot milik satu ujian spesifik saat admin/peserta membuka pop-up detail modal
+  const selectedExamSnapshot = (() => {
+    if (!selectedExam || !selectedExam.review_snapshot) return null;
+    try {
+      const snapshot = typeof selectedExam.review_snapshot === 'string'
+        ? JSON.parse(selectedExam.review_snapshot)
+        : selectedExam.review_snapshot;
+      if (snapshot && Array.isArray(snapshot.questions)) return snapshot;
+    } catch (e) {
+      console.error("Gagal membaca snapshot individual:", e);
+    }
+    return null;
+  })();
 
   type HistoryRecord = {
     id: string;
@@ -163,7 +191,7 @@ export default function ParticipantDashboard() {
                 whileHover={{ y: -3 }}
                 className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100"
               >
-                <div className="make-flex-center mb-3">
+                <div className="mb-3">
                   <div className={`w-10 h-10 ${stat.bg} rounded-xl flex items-center justify-center`}>
                     <stat.icon className={`w-5 h-5 ${stat.color}`} />
                   </div>
@@ -174,10 +202,13 @@ export default function ParticipantDashboard() {
             ))}
           </motion.div>
 
-          {/* Grafik Diagnosis Akumulatif Global */}
+          {/* 🌟 1. PERBAIKAN GRAFIK GLOBAL: Peta Kekuatan Akumulatif Makro Sepanjang Masa */}
           {!resultsLoading && totalExams > 0 && (
             <motion.div variants={itemVariants}>
-              <DiagnosticReport breakdown={globalAnalyticsData} />
+              <DiagnosticReport 
+                questions={globalSnapshotData.questions} 
+                answers={globalSnapshotData.answers} 
+              />
             </motion.div>
           )}
 
@@ -231,7 +262,11 @@ export default function ParticipantDashboard() {
                       dispatch({ type: 'OPEN_REVIEW', payload: resultId });
                       navigate('/exam/review');
                     }}
-                    onViewDetails={(record) => setSelectedExam(record)}
+                    onViewDetails={(record) => {
+                      // Temukan record utuh dari array examHistory yang memuat review_snapshot lengkap
+                      const fullRecord = examHistory.find((h) => h.id === record.id);
+                      setSelectedExam(fullRecord || record);
+                    }}
                   />
                 )}
               </motion.div>
@@ -261,7 +296,7 @@ export default function ParticipantDashboard() {
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="bg-white rounded-3xl p-6 w-full max-w-md shadow-xl relative z-10 border border-gray-100"
+              className="bg-white rounded-3xl p-6 w-full max-w-2xl shadow-xl relative z-10 border border-gray-100 max-h-[90vh] overflow-y-auto"
             >
               <div className="mb-4">
                 <span className="text-xs font-bold px-2.5 py-1 bg-blue-50 text-blue-700 rounded-full">
@@ -327,16 +362,19 @@ export default function ParticipantDashboard() {
                 </div>
               </div>
 
-              {selectedExam.diagnostic_breakdown && (
-                <div className="mb-6 border-t pt-4 text-left max-h-48 overflow-y-auto pr-1">
-                  <p className="text-xs font-bold text-gray-500 mb-2 uppercase tracking-wide">Diagnosis Paket Ini:</p>
-                  <DiagnosticReport breakdown={selectedExam.diagnostic_breakdown} />
+              {/* 🌟 2. PERBAIKAN GRAFIK POP-UP INDIVIDUAL: Tampilkan Diagram Donut Khusus Paket Ini */}
+              {selectedExamSnapshot && (
+                <div className="mb-6 border-t pt-4 text-left">
+                  <DiagnosticReport 
+                    questions={selectedExamSnapshot.questions} 
+                    answers={selectedExamSnapshot.answers} 
+                  />
                 </div>
               )}
 
               <button
                 onClick={() => setSelectedExam(null)}
-                className="w-full bg-gray-800 hover:bg-gray-900 text-white font-semibold py-2.5 rounded-xl transition-colors text-sm"
+                className="w-full bg-gray-800 hover:bg-gray-900 text-white font-semibold py-2.5 rounded-xl transition-colors text-sm shadow-sm"
               >
                 Tutup Detail
               </button>
