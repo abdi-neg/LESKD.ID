@@ -263,7 +263,8 @@ interface AppContextType {
   refreshProfile: () => Promise<void>;
   startExam: (examType: ExamType, pkg?: ExamPackage) => Promise<void>;
   deleteHistory: (resultId: string) => Promise<boolean>;
-  submitExamSession: () => Promise<void>;
+  // 🌟 PERBAIKAN TIM KONTEKS: Daftarkan parameter kiriman diagnostic di cetak biru type global
+  submitExamSession: (diagnosticBreakdown?: any) => Promise<void>;
   examHistory: any[];
   fetchUserExamHistory: () => Promise<void>;
 }
@@ -364,7 +365,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       let attempts = 0;
       while (!profile && attempts < retries) {
         console.log(`[AUTH] Menunggu pembuatan profil dari database... (Percobaan ${attempts + 1})`);
-        await new Promise(resolve => setTimeout(resolve, 600)); // Jeda 0.6 detik
+        await new Promise(resolve => setTimeout(resolve, 600));
         profile = await getProfile(user.id);
         attempts++;
       }
@@ -441,7 +442,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  async function submitExamSession() {
+  // 🌟 PERBAIKAN UTAMA: Tambah parameter input objek diagnosis analitik
+  async function submitExamSession(diagnosticBreakdown?: any) {
     const session = state.examSession;
     if (!session || isSyncLocked) return;
 
@@ -456,11 +458,42 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const scores = calculateScores(session);
       const isPassed = checkPassedStatus(session.examType, scores);
       
-      // 🌟 PERBAIKAN: Bungkus snapshot jawaban dan soal untuk dikirim ke DB
       const snapshotPayload = {
         questions: session.questions,
         answers: session.answers
       };
+
+      // 🛡️ SABUK PENGAMAN (TIMER FALLBACK): Jika dikumpulkan paksa oleh timer dan parameter kosong, 
+      // lakukan kalkulasi diagnosis manual di latar belakang agar rapor peserta tidak pecah
+      let finalDiagnostic = diagnosticBreakdown;
+      if (!finalDiagnostic) {
+        const breakdown: Record<string, { correct: number; total: number; percentage: number }> = {};
+        session.questions.forEach((q) => {
+          const subCat = q.sub_category || 'Umum';
+          const userAnswer = session.answers[q.id];
+          const selected = userAnswer?.selectedAnswer;
+
+          if (!breakdown[subCat]) {
+            breakdown[subCat] = { correct: 0, total: 0, percentage: 0 };
+          }
+
+          if (q.category === 'TKP') {
+            const points = selected ? (q as any)[`points_${selected.toLowerCase()}`] || 0 : 0;
+            breakdown[subCat].correct += points;
+            breakdown[subCat].total += 5;
+          } else {
+            const isCorrect = selected === q.correct_answer;
+            breakdown[subCat].correct += isCorrect ? 1 : 0;
+            breakdown[subCat].total += 1;
+          }
+        });
+
+        Object.keys(breakdown).forEach((key) => {
+          const item = breakdown[key];
+          item.percentage = item.total > 0 ? Math.round((item.correct / item.total) * 100) : 0;
+        });
+        finalDiagnostic = breakdown;
+      }
       
       const { error } = await supabase
         .from('exam_results')
@@ -474,8 +507,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
           status: 'completed', 
           completed_at: new Date().toISOString(),
           duration_seconds: Math.max(0, (EXAM_CONFIGS[session.examType].timeMinutes * 60) - session.timeRemaining),
-          // 🌟 INILAH KUNCINYA: Simpan data jawaban dan soal secara permanen
-          review_snapshot: JSON.stringify(snapshotPayload) 
+          review_snapshot: JSON.stringify(snapshotPayload),
+          // 🌟 KUNCI GERBANG: Masukkan data diagnosis akhir ke kolom JSONB database Supabase
+          diagnostic_breakdown: finalDiagnostic
         })
         .eq('id', dbResultId);
 
