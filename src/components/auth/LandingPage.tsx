@@ -110,7 +110,7 @@ export default function LandingPage() {
           </motion.div>
         </div>
 
-        {/* ─── 3. FITUR GRID (MINIMALIST CARD DENGAN DETAIL ANALISIS KEMAMPUAN) ─── */}
+        {/* ─── 3. FITUR GRID (INTEGRASI GAYA 3: SLEEK & EDU-TECH) ─── */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -119,19 +119,18 @@ export default function LandingPage() {
         >
           {[
             { 
-              title: 'Tryout Mini Per Kategori', 
-              desc: 'Latihan fokus mendalam pada sub-kategori materi utama: TIU, TWK, dan TKP secara mandiri.',
+              title: 'Modul Latihan Spesifik & Adaptif', 
+              desc: 'Akses instan paket latihan tersegmen berdasarkan kisi-kisi ter-update untuk efisiensi waktu belajar harian Anda.',
               icon: <BookOpen className="w-5 h-5 text-[#1e3a8a]" />
             },
             { 
-              title: 'Simulasi CAT Real-Time', 
-              desc: 'Ujian komparatif 110 soal dalam waktu 110 menit dengan standarisasi aturan ambang batas resmi BKN.',
+              title: 'Real CAT Simulator Engine', 
+              desc: 'Pengalaman ujian berbasis web dengan algoritma penghitungan mundur waktu dan kalkulasi skor otomatis yang presisi tanpa delay.',
               icon: <Award className="w-5 h-5 text-[#1e3a8a]" />
             },
             { 
-              // 📊 DESKRIPSI FITUR ANALISIS YANG DIPERDALAM:
-              title: 'Analisis Kemampuan & Peta Kekuatan', 
-              desc: 'Rapor diagnosis pintar yang menganalisis detail skor per sub-materi, statistik akurasi jawaban, serta grafik performa real-time untuk memetakan kelemahan materi dan mengukur kesiapan ambang batas (passing grade) Anda.',
+              title: 'Smart Diagnostic Analytics', 
+              desc: 'Analisis statistik mutakhir yang menyajikan grafik perkembangan performa, persentase akurasi jawaban, dan pemetaan kekuatan materi berbasis data.',
               icon: <BarChart3 className="w-5 h-5 text-[#1e3a8a]" />
             },
           ].map((f, i) => (
