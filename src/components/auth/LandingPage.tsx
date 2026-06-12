@@ -87,7 +87,7 @@ export default function LandingPage() {
             Selamat datang di <b>LESKD.ID</b>, platform bimbingan belajar khusus seleksi aparatur negara. Kami menyediakan simulasi ujian CAT yang akurat, pembobotan nilai otomatis, serta ribuan latihan soal yang dirancang khusus berbasis kompetensi penalaran tinggi.
           </motion.p>
 
-          {/* 🎯 TOMBOL DAFTAR SEKARANG: SLEEK, PREMIUM, DAN OTORITATIF */}
+          {/* 🎯 TOMBOL DAFTAR SEKARANG */}
           <motion.div
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
@@ -110,7 +110,7 @@ export default function LandingPage() {
           </motion.div>
         </div>
 
-        {/* ─── 3. FITUR GRID (MINIMALIST CARD) ─── */}
+        {/* ─── 3. FITUR GRID (MINIMALIST CARD DENGAN DETAIL ANALISIS KEMAMPUAN) ─── */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -129,8 +129,9 @@ export default function LandingPage() {
               icon: <Award className="w-5 h-5 text-[#1e3a8a]" />
             },
             { 
-              title: 'Analisis Peta Kekuatan', 
-              desc: 'Rapor evaluasi otomatis untuk mendeteksi kelemahan materi dan melacak peringkat Anda di leaderboard.',
+              // 📊 DESKRIPSI FITUR ANALISIS YANG DIPERDALAM:
+              title: 'Analisis Kemampuan & Peta Kekuatan', 
+              desc: 'Rapor diagnosis pintar yang menganalisis detail skor per sub-materi, statistik akurasi jawaban, serta grafik performa real-time untuk memetakan kelemahan materi dan mengukur kesiapan ambang batas (passing grade) Anda.',
               icon: <BarChart3 className="w-5 h-5 text-[#1e3a8a]" />
             },
           ].map((f, i) => (
@@ -145,7 +146,7 @@ export default function LandingPage() {
           ))}
         </motion.div>
 
-        {/* ─── 4. KANAL KONSULTASI / SOSMED (MONOCHROME ACCENT) ─── */}
+        {/* ─── 4. KANAL KONSULTASI / SOSMED ─── */}
         <section className="bg-slate-50 rounded-2xl border border-slate-200 p-8 md:p-12 text-center max-w-4xl mx-auto">
           <h2 className="text-xl md:text-2xl font-bold text-slate-900 uppercase tracking-wide">Hubungi Layanan Informasi</h2>
           <p className="mt-2 text-slate-500 text-sm max-w-xl mx-auto">
