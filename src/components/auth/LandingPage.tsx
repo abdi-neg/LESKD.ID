@@ -58,7 +58,7 @@ export default function LandingPage() {
       </header>
 
       {/* ─── 2. HERO SECTION (PROFESIONAL & HIGH-CONTRAST) ─── */}
-      <main className="max-w-7xl mx-auto px-6 pt-24 pb-24">
+      <main className="max-w-7xl mx-auto px-6 pt-24 pb-16">
         <div className="text-center mb-24">
           <motion.div
             initial={{ opacity: 0, y: 10 }}
@@ -110,7 +110,20 @@ export default function LandingPage() {
           </motion.div>
         </div>
 
-        {/* ─── 3. FITUR GRID (INTEGRASI GAYA 3: SLEEK & EDU-TECH) ─── */}
+        {/* ─── 3. KETERANGAN JUDUL FITUR UNGGULAN (NEWLY ADDED) ─── */}
+        <div className="text-center mb-12 max-w-3xl mx-auto border-t border-slate-100 pt-16">
+          <span className="text-xs font-bold text-[#1e3a8a] uppercase tracking-widest block mb-2">
+            Sistem Integrasi
+          </span>
+          <h2 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight">
+            Fitur Unggulan Platform
+          </h2>
+          <p className="text-slate-500 text-sm mt-2 max-w-xl mx-auto">
+            Metode persiapan ujian modern yang dirancang secara sistematis untuk menghasilkan metrik belajar yang berbasis data, akurat, dan adaptif.
+          </p>
+        </div>
+
+        {/* ─── 4. FITUR GRID (SLEEK & EDU-TECH) ─── */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -145,7 +158,7 @@ export default function LandingPage() {
           ))}
         </motion.div>
 
-        {/* ─── 4. KANAL KONSULTASI / SOSMED ─── */}
+        {/* ─── 5. KANAL KONSULTASI / SOSMED ─── */}
         <section className="bg-slate-50 rounded-2xl border border-slate-200 p-8 md:p-12 text-center max-w-4xl mx-auto">
           <h2 className="text-xl md:text-2xl font-bold text-slate-900 uppercase tracking-wide">Hubungi Layanan Informasi</h2>
           <p className="mt-2 text-slate-500 text-sm max-w-xl mx-auto">
@@ -199,7 +212,7 @@ export default function LandingPage() {
 
       </main>
 
-      {/* ─── 5. FOOTER & PORTAL STAF SAMAR ─── */}
+      {/* ─── 6. FOOTER & PORTAL STAF SAMAR ─── */}
       <footer className="bg-white border-t border-slate-100 text-slate-400 text-xs py-8 px-6">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
           <p>© {new Date().getFullYear()} LESKD.ID. Hak Cipta Dilindungi Undang-Undang.</p>
