@@ -13,7 +13,6 @@ interface QuestionCounts {
   TKP: number;
 }
 
-// Per-package question counts keyed by package_id
 type PerPackageCounts = Record<string, QuestionCounts>;
 
 const PKG_TYPES: PackageType[] = ['MINI_TIU', 'MINI_TWK', 'MINI_TKP', 'FULL'];
@@ -182,6 +181,10 @@ export default function PackageManager() {
   const { state } = useApp();
   const [packages, setPackages] = useState<ExamPackage[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  // 🌟 1. STATE BARU: Jaring pengaman agar layout list tidak hilang saat reload sunyi
+  const [initialLoading, setInitialLoading] = useState(true);
+
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
@@ -192,7 +195,6 @@ export default function PackageManager() {
 
   async function loadQuestionCounts(pkgList: ExamPackage[]) {
     if (pkgList.length === 0) return;
-    // Fetch all questions with package_id in one query
     const { data } = await supabase
       .from('questions')
       .select('category, package_id')
@@ -210,13 +212,20 @@ export default function PackageManager() {
     setPerPkgCounts(counts);
   }
 
-  async function load() {
-    setLoading(true);
-    const { data } = await supabase.from('exam_packages').select('*').order('created_at');
-    const pkgList = (data ?? []) as ExamPackage[];
-    setPackages(pkgList);
-    await loadQuestionCounts(pkgList);
-    setLoading(false);
+  // 🌟 2. PERBAIKAN MEKANISME LOAD: Ditambahkan parameter isSilent
+  async function load(isSilent = false) {
+    if (!isSilent) setLoading(true);
+    try {
+      const { data } = await supabase.from('exam_packages').select('*').order('created_at');
+      const pkgList = (data ?? []) as ExamPackage[];
+      setPackages(pkgList);
+      await loadQuestionCounts(pkgList);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+      setInitialLoading(false); // Matikan skeleton permanen setelah load pertama sukses
+    }
   }
 
   useEffect(() => { load(); }, []);
@@ -235,7 +244,7 @@ export default function PackageManager() {
     setShowForm(false);
     setEditId(null);
     setForm(emptyForm);
-    load();
+    load(); // Refresh full aman karena form ditutup
   }
 
   function startEdit(pkg: ExamPackage) {
@@ -252,29 +261,40 @@ export default function PackageManager() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
+  // 🌟 3. OPTIMASI AKSES SAKELAR TOKEN: Update lokal instan + load sunyi
   async function updateToken(pkg: ExamPackage, newToken: string) {
+    setPackages(prev => prev.map(p => p.id === pkg.id ? { ...p, token: newToken } : p));
     await supabase
       .from('exam_packages')
       .update({ token: newToken, token_updated_at: new Date().toISOString() })
       .eq('id', pkg.id);
-    load();
+    load(true); 
   }
 
+  // 🌟 4. OPTIMASI AKSES SAKELAR STATUS (ANTI TUTUP TAB GULIR): Update lokal instan + load sunyi
   async function toggleActive(pkg: ExamPackage) {
-    await supabase.from('exam_packages').update({ is_active: !pkg.is_active }).eq('id', pkg.id);
-    load();
+    const targetStatus = !pkg.is_active;
+    // Optimistic Update: Langsung ubah warna tombol di layar tanpa tunggu server agar tab tidak hancur
+    setPackages(prev => prev.map(p => p.id === pkg.id ? { ...p, is_active: targetStatus } : p));
+    
+    await supabase
+      .from('exam_packages')
+      .update({ is_active: targetStatus })
+      .eq('id', pkg.id);
+      
+    load(true); // Panggil load versi SILENT (isSilent = true) agar component tidak ter-unmount!
   }
 
   async function confirmDelete() {
     if (!deleteId) return;
     await supabase.from('exam_packages').delete().eq('id', deleteId);
     setDeleteId(null);
-    load();
+    load(true); 
   }
 
   function copyToken(pkg: ExamPackage) {
     navigator.clipboard.writeText(pkg.token);
-    setCopiedId(pkg.id);
+    copiedId === pkg.id ? null : setCopiedId(pkg.id);
     setTimeout(() => setCopiedId(null), 2000);
   }
 
@@ -417,7 +437,8 @@ export default function PackageManager() {
       <QuestionCountBadges perPkgCounts={perPkgCounts} packages={packages} />
 
       {/* Packages List */}
-      {loading ? (
+      {/* 🌟 5. PERBAIKAN UTAMA: Mengunci penayangan list menggunakan kriteria initialLoading */}
+      {initialLoading ? (
         <div className="space-y-3">{[1, 2, 3].map((i) => <div key={i} className="bg-gray-100 rounded-2xl h-16 animate-pulse" />)}</div>
       ) : packages.length === 0 ? (
         <div className="text-center py-16 text-gray-400">
@@ -437,7 +458,6 @@ export default function PackageManager() {
       )}
 
       {/* Delete Confirm */}
-
       <AnimatePresence>
         {deleteId && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
