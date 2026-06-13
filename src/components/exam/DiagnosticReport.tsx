@@ -30,11 +30,11 @@ export default function DiagnosticReport({ questions, answers }: DiagnosticRepor
 
   return (
     <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-6 space-y-8">
-      {/* HEADER SECTION */}
+      {/* ─── HEADER SECTION (KATA MALAIKAT SUDAH DIHAPUS RESMI) ─── */}
       <div className="text-center md:text-left border-b border-gray-50 pb-4">
-        <h2 className="text-xl font-black text-gray-900 tracking-tight flex items-center justify-center md:justify-start gap-2 text-[#1e3a8a]">
+        <h2 className="text-xl font-black tracking-tight flex items-center justify-center md:justify-start gap-2 text-[#1e3a8a]">
           <Target className="w-5 h-5 text-[#10b981]" />
-          PETA KEKUATAN DAN KELEMAHAN MALAIKAT
+          PETA KEKUATAN DAN KELEMAHAN KOMPETENSI
         </h2>
         <p className="text-xs text-gray-400 mt-1 font-medium">
           Analisis peta sebaran kompetensi sub-materi berdasarkan hasil tryout Anda
