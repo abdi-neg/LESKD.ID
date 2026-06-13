@@ -60,10 +60,10 @@ export default function LandingPage() {
       {/* ─── MAIN WRAPPER ─── */}
       <main className="max-w-6xl mx-auto px-6 pt-12 pb-16">
         
-        {/* ─── 2. HERO SECTION: SPLIT WIDESCREEN GRID (MANFAATKAN LEBAR LAYAR) ─── */}
+        {/* ─── 2. HERO SECTION: SPLIT WIDESCREEN GRID ─── */}
         <section className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center mb-16">
           
-          {/* KOLOM KIRI: TEKS DESKRIPSI (7 PER 12 BAGIAN LAYAR) */}
+          {/* KOLOM KIRI: TEKS DESKRIPSI */}
           <div className="lg:col-span-7 text-left">
             <motion.div
               initial={{ opacity: 0, y: -10 }}
@@ -93,32 +93,32 @@ export default function LandingPage() {
             </motion.p>
           </div>
 
-          {/* KOLOM KANAN: KARTU AKSI PENDAFTARAN PREMIUM (5 PER 12 BAGIAN LAYAR) */}
-          <div className="lg:col-span-5">
+          {/* KOLOM KANAN: KARTU AKSI PENDAFTARAN PREMIUM */}
+          <div className="lg:col-span-5 w-full">
             <motion.div
               initial={{ opacity: 0, scale: 0.98 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ delay: 0.3 }}
-              className="bg-slate-50 border border-slate-200 rounded-xl p-6 text-left shadow-sm"
+              className="bg-slate-50 border border-slate-200 rounded-xl p-6 text-left shadow-sm relative"
             >
               <h3 className="text-slate-900 font-bold text-base mb-1.5">Mulai Langkah Kelulusan</h3>
               <p className="text-slate-500 text-xs mb-5 leading-relaxed">
                 Silakan isi formulir pendaftaran resmi di bawah ini untuk bergabung dengan kelas intensif bimbel kami.
               </p>
               
-              {/* TOMBOL UTAMA DAFTAR SEKARANG */}
+              {/* 🎯 TOMBOL UTAMA DAFTAR SEKARANG (FIXED FOR MOBILE TOUCH EVENTS) */}
               <a
                 href={LINKS.googleFormSignUp}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="w-full bg-[#1e3a8a] hover:bg-[#152961] text-white font-bold py-3.5 px-6 rounded-lg transition-all duration-150 flex items-center justify-center gap-2 text-xs uppercase tracking-widest border border-[#1e3a8a]"
+                className="relative z-10 block w-full bg-[#1e3a8a] hover:bg-[#152961] active:bg-[#152961] text-white font-bold py-3.5 px-6 rounded-lg transition-all duration-150 flex items-center justify-center gap-2 text-xs uppercase tracking-widest border border-[#1e3a8a] cursor-pointer touch-manipulation"
               >
                 Daftar Sekarang
                 <ArrowRight className="w-3.5 h-3.5" />
               </a>
               
-              {/* INDIKATOR LAYANAN DI BAWAH TOMBOL */}
-              <div className="mt-5 pt-4 border-t border-slate-200/60 grid grid-cols-2 gap-y-2 gap-x-4 text-[10px] text-slate-400 font-semibold uppercase tracking-wider">
+              {/* INDIKATOR LAYANAN */}
+              <div className="mt-5 pt-4 border-t border-slate-200/60 grid grid-cols-2 gap-y-2 gap-x-4 text-[10px] text-slate-400 font-semibold uppercase tracking-wider select-none">
                 <div className="flex items-center gap-1">✓ Bank Soal HOTS</div>
                 <div className="flex items-center gap-1">✓ Real CAT Engine</div>
                 <div className="flex items-center gap-1">✓ Smart Analytics</div>
@@ -129,7 +129,7 @@ export default function LandingPage() {
 
         </section>
 
-        {/* ─── 3. SUB-JUDUL SEKTOR FITUR (SEIMBANG & MINIMALIS) ─── */}
+        {/* ─── 3. SUB-JUDUL SEKTOR FITUR ─── */}
         <section className="border-t border-slate-100 pt-12 mb-8">
           <div className="text-left max-w-xl">
             <span className="text-[10px] font-bold text-[#1e3a8a] uppercase tracking-widest block mb-1">
@@ -144,7 +144,7 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* ─── 4. FITUR GRID (COMPACT LAYOUT) ─── */}
+        {/* ─── 4. FITUR GRID ─── */}
         <section className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-16">
           {[
             { 
@@ -174,7 +174,7 @@ export default function LandingPage() {
           ))}
         </section>
 
-        {/* ─── 5. KANAL KONSULTASI / SOSMED (COMPACT ROW SPLIT) ─── */}
+        {/* ─── 5. KANAL KONSULTASI / SOSMED ─── */}
         <section className="bg-slate-50 rounded-xl border border-slate-200 p-6 md:p-8 max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
           <div className="md:col-span-5 text-left">
             <h2 className="text-base md:text-lg font-bold text-slate-900 uppercase tracking-wide">Hubungi Layanan Informasi</h2>
