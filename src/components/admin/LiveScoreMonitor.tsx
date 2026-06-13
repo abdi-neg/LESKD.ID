@@ -161,17 +161,19 @@ export default function LiveScoreMonitor() {
     return b.score_twk - a.score_twk;
   });
 
+  // METRIK MONITORING REAL-TIME
   const totalCount = filteredResults.length;
-  const passedCount = filteredResults.filter((r) => r.passed).length;
-  const failedCount = filteredResults.filter((r) => !r.passed).length;
+  const submittedCount = filteredResults.filter((r) => r.completed_at).length;
+  const ongoingCount = filteredResults.filter((r) => !r.completed_at).length;
   
-  const avgScore = totalCount > 0
-    ? Math.round(filteredResults.reduce((s, r) => s + r.total_score, 0) / totalCount)
+  const avgScore = submittedCount > 0
+    ? Math.round(filteredResults.filter(r => r.completed_at).reduce((s, r) => s + r.total_score, 0) / submittedCount)
     : 0;
 
   return (
     <div className="space-y-6 p-6 bg-slate-950 text-slate-100 rounded-3xl border border-slate-900 shadow-2xl font-sans">
       
+      {/* HEADER MONITOR */}
       <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between border-b border-slate-900 pb-5 gap-4">
         <div>
           <h2 className="text-2xl font-black uppercase tracking-wider text-amber-400 flex items-center gap-2">
@@ -183,8 +185,6 @@ export default function LiveScoreMonitor() {
         </div>
         
         <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
-          
-          {/* Perbaikan z-index diturunkan ke z-20 di wrapper dropdown */}
           <div className="relative flex-grow lg:flex-grow-0 z-20">
             <button
               onClick={() => setIsFilterOpen(!isFilterOpen)}
@@ -200,13 +200,7 @@ export default function LiveScoreMonitor() {
             <AnimatePresence>
               {isFilterOpen && (
                 <>
-                  {/* Perbaikan z-index diturunkan ke z-10 di layar overlay transparan */}
-                  <div 
-                    className="fixed inset-0 z-10 cursor-default" 
-                    onClick={() => setIsFilterOpen(false)}
-                  />
-                  
-                  {/* Perbaikan z-index diturunkan ke z-20 di kotak menu options */}
+                  <div className="fixed inset-0 z-10 cursor-default" onClick={() => setIsFilterOpen(false)} />
                   <motion.div
                     initial={{ opacity: 0, y: 8, scale: 0.95 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -223,9 +217,7 @@ export default function LiveScoreMonitor() {
                             setIsFilterOpen(false);
                           }}
                           className={`text-left px-4 py-3 text-sm font-semibold transition-colors flex items-center justify-between ${
-                            filter === opt.value
-                              ? 'bg-indigo-500/10 text-indigo-400'
-                              : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                            filter === opt.value ? 'bg-indigo-500/10 text-indigo-400' : 'text-slate-300 hover:bg-slate-800 hover:text-white'
                           }`}
                         >
                           {opt.label}
@@ -266,12 +258,13 @@ export default function LiveScoreMonitor() {
         </div>
       </div>
 
+      {/* STATS CARDS (DIPERBARUI DENGAN INDIKATOR SUBMISI AKTIF) */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
           { icon: Users, label: 'Total Sesi', value: totalCount, color: 'text-blue-400', bg: 'bg-blue-500/5 border border-blue-500/10' },
-          { icon: CheckCircle, label: 'Lulus Batas PG', value: passedCount, color: 'text-emerald-400', bg: 'bg-emerald-500/5 border border-emerald-500/10' },
-          { icon: Activity, label: 'Tidak Lulus PG', value: failedCount, color: 'text-rose-400', bg: 'bg-rose-500/5 border border-rose-500/10' },
-          { icon: TrendingUp, label: 'Rata-rata Nilai', value: avgScore, color: 'text-amber-400', bg: 'bg-amber-500/5 border border-amber-500/10' },
+          { icon: CheckCircle, label: 'Sudah Submit', value: submittedCount, color: 'text-emerald-400', bg: 'bg-emerald-500/5 border border-emerald-500/10' },
+          { icon: Clock, label: 'Belum Submit', value: ongoingCount, color: 'text-amber-400', bg: 'bg-amber-500/5 border border-amber-500/10' },
+          { icon: TrendingUp, label: 'Rerata Skor (Submit)', value: avgScore, color: 'text-indigo-400', bg: 'bg-indigo-500/5 border border-indigo-500/10' },
         ].map((stat, i) => (
           <div key={i} className={`rounded-2xl p-4 ${stat.bg}`}>
             <div className={`w-9 h-9 rounded-xl flex items-center justify-center mb-2 bg-slate-900`}>
@@ -283,9 +276,10 @@ export default function LiveScoreMonitor() {
         ))}
       </div>
 
+      {/* TABEL MONITORING UTAMA */}
       <div className="bg-slate-900/40 rounded-2xl border border-slate-900 overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse min-w-[800px]">
+          <table className="w-full text-left border-collapse min-w-[850px]">
             <thead>
               <tr className="bg-slate-900/90 text-slate-400 text-xs uppercase tracking-wider font-bold border-b border-slate-800">
                 <th className="px-5 py-3.5 text-center w-20">Rank</th>
@@ -296,7 +290,7 @@ export default function LiveScoreMonitor() {
                 <th className="px-5 py-3.5 text-center bg-emerald-950/20 text-emerald-400 w-20">TWK</th>
                 <th className="px-5 py-3.5 text-center text-amber-400 font-black w-28">TOTAL</th>
                 <th className="px-5 py-3.5 text-center">Durasi</th>
-                <th className="px-5 py-3.5 text-right">Status Kelulusan</th>
+                <th className="px-5 py-3.5 text-right">Status Submisi & Hasil</th>
               </tr>
             </thead>
             
@@ -357,20 +351,31 @@ export default function LiveScoreMonitor() {
                         </span>
                       </td>
 
+                      {/* ─── 🌟 VALIDASI STATUS SUBMISI DAN KELULUSAN NYATA ─── */}
                       <td className="px-5 py-3.5 text-right">
                         {r.completed_at ? (
-                          <span className={`inline-flex items-center gap-1 text-xs font-bold px-2.5 py-0.5 rounded-md border
-                            ${r.passed 
-                              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' 
-                              : 'bg-rose-500/10 text-rose-400 border-rose-500/20'}`}>
-                            <Award className="w-3.5 h-3.5" />
-                            {r.passed ? 'MEMENUHI SYARAT' : 'TIDAK LULUS PG'}
-                          </span>
+                          <div className="flex flex-col items-end gap-1">
+                            <span className="text-[9px] font-black tracking-widest text-emerald-400 uppercase bg-emerald-500/5 px-2 py-0.5 rounded border border-emerald-500/10">
+                              ✓ Sudah Submit
+                            </span>
+                            <span className={`inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-md border
+                              ${r.passed 
+                                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' 
+                                : 'bg-rose-500/10 text-rose-400 border-rose-500/20'}`}>
+                              <Award className="w-3.5 h-3.5" />
+                              {r.passed ? 'MEMENUHI SYARAT' : 'TIDAK LULUS PG'}
+                            </span>
+                          </div>
                         ) : (
-                          <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-0.5 rounded-md border bg-amber-500/10 text-amber-400 border-amber-500/20 animate-pulse">
-                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
-                            ON PROGRESS
-                          </span>
+                          <div className="flex flex-col items-end gap-1">
+                            <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-md border bg-amber-500/10 text-amber-400 border-amber-500/20 animate-pulse">
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
+                              BELUM SUBMIT
+                            </span>
+                            <span className="text-[9px] font-bold tracking-wider text-slate-500 uppercase">
+                              Pengerjaan Aktif
+                            </span>
+                          </div>
                         )}
                       </td>
                     </motion.tr>
