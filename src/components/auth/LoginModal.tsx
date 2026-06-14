@@ -20,7 +20,7 @@ export default function LoginModal({ mode, onClose, onSwitchMode }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
-  const [isForgotPass, setIsForgotPass] = useState(false); // 🌟 State pendeteksi mode lupa password
+  const [isForgotPass, setIsForgotPass] = useState(false);
 
   const isAdmin = mode.startsWith('admin');
   const isRegister = mode.endsWith('register');
@@ -87,7 +87,6 @@ export default function LoginModal({ mode, onClose, onSwitchMode }: Props) {
     setLoading(false);
   }
 
-  // 🌟 FUNGSI EKSEKUSI PERMINTAAN RESET PASSWORD VIA SUPABASE
   async function handleForgotPassword(e: React.FormEvent) {
     e.preventDefault();
     setError('');
@@ -95,7 +94,7 @@ export default function LoginModal({ mode, onClose, onSwitchMode }: Props) {
     setLoading(true);
 
     const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/update-password`, // Diarahkan ke rute update password kita sebelumnya
+      redirectTo: `${window.location.origin}/update-password`,
     });
 
     if (resetError) {
@@ -184,11 +183,10 @@ export default function LoginModal({ mode, onClose, onSwitchMode }: Props) {
             ) : (
               <form onSubmit={isForgotPass ? handleForgotPassword : (isRegister ? handleRegister : handleLogin)} className="space-y-4">
                 
-                {/* 1. TAMPILAN JIKA SISWA DALAM MODE LUPA PASSWORD */}
                 {isForgotPass ? (
                   <div className="space-y-4">
                     <p className="text-xs text-gray-500 leading-relaxed mb-2">
-                      Masukkan alamat email terdaftar Anda. Kami akan mengirimkan email konfirmasi berisi tombol aman untuk mengatur ulang kata sadi akun Anda.
+                      Masukkan alamat email terdaftar Anda. Kami akan mengirimkan email konfirmasi berisi tombol aman untuk mengatur ulang kata sandi akun Anda.
                     </p>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1.5">Email Akun Anda</label>
@@ -203,7 +201,6 @@ export default function LoginModal({ mode, onClose, onSwitchMode }: Props) {
                     </div>
                   </div>
                 ) : (
-                  /* 2. TAMPILAN SEPERTI BIASA (FORM LOGIN / REGISTRASI) */
                   <>
                     {isRegister && (
                       <div>
@@ -231,20 +228,9 @@ export default function LoginModal({ mode, onClose, onSwitchMode }: Props) {
                       />
                     </div>
 
+                    {/* ─── KOLOM KATA SANDI (STRUKTUR TERBARU) ─── */}
                     <div>
-                      <div className="flex justify-between items-center mb-1.5">
-                        <label className="block text-sm font-medium text-gray-700">Kata Sandi</label>
-                        {/* Tombol pemicu mode Lupa Password (Hanya ada di tampilan login) */}
-                        {!isRegister && (
-                          <button
-                            type="button"
-                            onClick={() => { setError(''); setIsForgotPass(true); }}
-                            className="text-xs text-gray-400 hover:text-slate-600 transition-colors font-medium"
-                          >
-                            Lupa Kata Sandi?
-                          </button>
-                        )}
-                      </div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1.5">Kata Sandi</label>
                       <div className="relative">
                         <input
                           type={showPass ? 'text' : 'password'}
@@ -263,6 +249,19 @@ export default function LoginModal({ mode, onClose, onSwitchMode }: Props) {
                           {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                         </button>
                       </div>
+
+                      {/* 🌟 SEKARANG DI SINI: Tombol diletakkan rapi di bawah input password (hanya muncul saat login) */}
+                      {!isRegister && (
+                        <div className="text-right mt-2">
+                          <button
+                            type="button"
+                            onClick={() => { setError(''); setIsForgotPass(true); }}
+                            className="text-xs text-gray-400 hover:text-slate-600 transition-colors font-medium focus:outline-none"
+                          >
+                            Lupa Kata Sandi?
+                          </button>
+                        </div>
+                      )}
                     </div>
 
                     {isRegister && (
