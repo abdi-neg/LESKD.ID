@@ -5,6 +5,7 @@ import { AppProvider, useApp } from './context/AppContext';
 // Import Komponen Halaman
 import LandingPage from './components/auth/LandingPage';
 import WaitingRoom from './components/auth/WaitingRoom';
+import UpdatePassword from './components/auth/UpdatePassword'; // 🌟 TAMBAHKAN IMPORT INI
 import ParticipantDashboard from './components/participant/ParticipantDashboard';
 import { ExamEngine } from './components/exam/ExamEngine';
 import { ExamResults } from './components/exam/ExamResults';
@@ -54,7 +55,7 @@ function AppRouter() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // 🌟 PERBAIKAN UTAMA: Deteksi apakah aplikasi sedang dalam proses memulihkan data ujian dari database
+  // Deteksi apakah aplikasi sedang dalam proses memulihkan data ujian dari database
   const isResumingExam = location.pathname === '/exam' && 
                          localStorage.getItem('exam_active_session_id') && 
                          !state.examSession;
@@ -86,7 +87,7 @@ function AppRouter() {
         navigate('/dashboard', { replace: true });
       }
     }
-  }, [location.pathname, state.authLoading, state.profile]);
+  }, [location.pathname, state.authLoading, state.profile, dispatch, navigate, state.currentView]);
 
 
   // Efek B: State Membimbing URL (Navigasi Tombol Internal Aplikasi)
@@ -107,6 +108,11 @@ function AppRouter() {
       return;
     }
 
+    // 🌟 SABUK PENGAMAN UTAMA: Jika user mengakses link reset password dari Gmail, hentikan paksaan redirect otomatis!
+    if (location.pathname === '/update-password') {
+      return;
+    }
+
     if (targetPath && location.pathname !== targetPath) {
       if (location.pathname === '/exam' && localStorage.getItem('exam_active_session_id')) {
         return;
@@ -122,7 +128,7 @@ function AppRouter() {
     return '/admin';
   };
 
-  // 🌟 Sabuk Pengaman: Jika sedang loading auth ATAU sedang mengambil data soal resume, kunci di layar loading
+  // Sabuk Pengaman: Jika sedang loading auth ATAU sedang mengambil data soal resume, kunci di layar loading
   if (state.authLoading || isResumingExam) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
@@ -142,6 +148,13 @@ function AppRouter() {
         path="/" 
         element={!state.profile ? <LandingPage /> : <Navigate to={getHomeRoute()} replace />} 
       />
+      
+      {/* ─── 🌟 RUTE PUBLIK: FORM PENGISIAN KATA SANDI BARU ─── */}
+      <Route 
+        path="/update-password" 
+        element={<UpdatePassword />} 
+      />
+
       <Route 
         path="/waiting-room" 
         element={!state.profile?.is_approved ? <WaitingRoom /> : <Navigate to={getHomeRoute()} replace />} 
