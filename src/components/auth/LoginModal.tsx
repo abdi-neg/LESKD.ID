@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Eye, EyeOff, Shield, Users, Loader2, Mail, CheckCircle, AlertCircle } from 'lucide-react';
+import { X, Eye, EyeOff, Shield, Users, Loader2, Mail, CheckCircle, AlertCircle, ArrowLeft } from 'lucide-react';
 import { supabase, upsertProfile } from '../../lib/supabase';
 import { SUPER_ADMIN_EMAIL } from '../../types';
 
@@ -20,6 +20,7 @@ export default function LoginModal({ mode, onClose, onSwitchMode }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [isForgotPass, setIsForgotPass] = useState(false); // 🌟 State pendeteksi mode lupa password
 
   const isAdmin = mode.startsWith('admin');
   const isRegister = mode.endsWith('register');
@@ -34,7 +35,6 @@ export default function LoginModal({ mode, onClose, onSwitchMode }: Props) {
         ? 'Email atau kata sandi salah.'
         : authError.message);
     }
-    // AppContext onAuthStateChange will handle the rest
     setLoading(false);
   }
 
@@ -87,6 +87,25 @@ export default function LoginModal({ mode, onClose, onSwitchMode }: Props) {
     setLoading(false);
   }
 
+  // 🌟 FUNGSI EKSEKUSI PERMINTAAN RESET PASSWORD VIA SUPABASE
+  async function handleForgotPassword(e: React.FormEvent) {
+    e.preventDefault();
+    setError('');
+    if (!email.trim()) { setError('Email tidak boleh kosong.'); return; }
+    setLoading(true);
+
+    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/update-password`, // Diarahkan ke rute update password kita sebelumnya
+    });
+
+    if (resetError) {
+      setError(resetError.message);
+    } else {
+      setSuccessMsg('📩 Link pemulihan kata sandi telah dikirim! Silakan periksa kotak masuk atau folder spam email Anda.');
+    }
+    setLoading(false);
+  }
+
   function reset() {
     setEmail('');
     setPassword('');
@@ -94,6 +113,7 @@ export default function LoginModal({ mode, onClose, onSwitchMode }: Props) {
     setError('');
     setSuccessMsg('');
     setShowPass(false);
+    setIsForgotPass(false);
   }
 
   const headerBg = isAdmin ? 'bg-[#1e3a8a]' : 'bg-[#10b981]';
@@ -126,9 +146,11 @@ export default function LoginModal({ mode, onClose, onSwitchMode }: Props) {
                 </div>
                 <div>
                   <h2 className="text-white font-bold text-lg">
-                    {isRegister
-                      ? isAdmin ? 'Daftar Admin' : 'Daftar Peserta'
-                      : isAdmin ? 'Login Admin' : 'Login Peserta'}
+                    {isForgotPass 
+                      ? 'Pulihkan Kata Sandi' 
+                      : (isRegister
+                        ? (isAdmin ? 'Daftar Admin' : 'Daftar Peserta')
+                        : (isAdmin ? 'Login Admin' : 'Login Peserta'))}
                   </h2>
                   <p className="text-white/70 text-sm">LESKD.ID — Simulasi CAT CPNS</p>
                 </div>
@@ -149,7 +171,7 @@ export default function LoginModal({ mode, onClose, onSwitchMode }: Props) {
                   <CheckCircle className="w-7 h-7 text-[#10b981]" />
                 </div>
                 <div>
-                  <p className="font-semibold text-gray-800 mb-2">Pendaftaran Berhasil!</p>
+                  <p className="font-semibold text-gray-800 mb-2">Permintaan Diproses!</p>
                   <p className="text-sm text-gray-600 leading-relaxed">{successMsg}</p>
                 </div>
                 <button
@@ -160,64 +182,100 @@ export default function LoginModal({ mode, onClose, onSwitchMode }: Props) {
                 </button>
               </div>
             ) : (
-              <form onSubmit={isRegister ? handleRegister : handleLogin} className="space-y-4">
-                {isRegister && (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Nama Lengkap</label>
-                    <input
-                      type="text"
-                      value={fullName}
-                      onChange={(e) => setFullName(e.target.value)}
-                      placeholder="Masukkan nama lengkap"
-                      className={`w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 ${focusRing} transition-all placeholder:text-gray-400`}
-                      required
-                    />
+              <form onSubmit={isForgotPass ? handleForgotPassword : (isRegister ? handleRegister : handleLogin)} className="space-y-4">
+                
+                {/* 1. TAMPILAN JIKA SISWA DALAM MODE LUPA PASSWORD */}
+                {isForgotPass ? (
+                  <div className="space-y-4">
+                    <p className="text-xs text-gray-500 leading-relaxed mb-2">
+                      Masukkan alamat email terdaftar Anda. Kami akan mengirimkan email konfirmasi berisi tombol aman untuk mengatur ulang kata sadi akun Anda.
+                    </p>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1.5">Email Akun Anda</label>
+                      <input
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="nama@email.com"
+                        className={`w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 ${focusRing} transition-all placeholder:text-gray-400`}
+                        required
+                      />
+                    </div>
                   </div>
-                )}
+                ) : (
+                  /* 2. TAMPILAN SEPERTI BIASA (FORM LOGIN / REGISTRASI) */
+                  <>
+                    {isRegister && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1.5">Nama Lengkap</label>
+                        <input
+                          type="text"
+                          value={fullName}
+                          onChange={(e) => setFullName(e.target.value)}
+                          placeholder="Masukkan nama lengkap"
+                          className={`w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 ${focusRing} transition-all placeholder:text-gray-400`}
+                          required
+                        />
+                      </div>
+                    )}
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Email</label>
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="nama@email.com"
-                    className={`w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 ${focusRing} transition-all placeholder:text-gray-400`}
-                    required
-                  />
-                </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1.5">Email</label>
+                      <input
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="nama@email.com"
+                        className={`w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 ${focusRing} transition-all placeholder:text-gray-400`}
+                        required
+                      />
+                    </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Kata Sandi</label>
-                  <div className="relative">
-                    <input
-                      type={showPass ? 'text' : 'password'}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder={isRegister ? 'Minimal 6 karakter' : '••••••••'}
-                      className={`w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 ${focusRing} transition-all placeholder:text-gray-400 pr-11`}
-                      required
-                      minLength={isRegister ? 6 : undefined}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPass(!showPass)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                    >
-                      {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                </div>
+                    <div>
+                      <div className="flex justify-between items-center mb-1.5">
+                        <label className="block text-sm font-medium text-gray-700">Kata Sandi</label>
+                        {/* Tombol pemicu mode Lupa Password (Hanya ada di tampilan login) */}
+                        {!isRegister && (
+                          <button
+                            type="button"
+                            onClick={() => { setError(''); setIsForgotPass(true); }}
+                            className="text-xs text-gray-400 hover:text-slate-600 transition-colors font-medium"
+                          >
+                            Lupa Kata Sandi?
+                          </button>
+                        )}
+                      </div>
+                      <div className="relative">
+                        <input
+                          type={showPass ? 'text' : 'password'}
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          placeholder={isRegister ? 'Minimal 6 karakter' : '••••••••'}
+                          className={`w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 ${focusRing} transition-all placeholder:text-gray-400 pr-11`}
+                          required={!isForgotPass}
+                          minLength={isRegister ? 6 : undefined}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPass(!showPass)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                        >
+                          {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+                    </div>
 
-                {isRegister && (
-                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800 flex gap-2">
-                    <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                    <span>
-                      {isAdmin
-                        ? 'Akun Admin baru perlu disetujui oleh Super Admin sebelum dapat digunakan.'
-                        : 'Akun peserta baru perlu disetujui oleh Admin sebelum dapat mengikuti tryout.'}
-                    </span>
-                  </div>
+                    {isRegister && (
+                      <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800 flex gap-2">
+                        <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                        <span>
+                          {isAdmin
+                            ? 'Akun Admin baru perlu disetujui oleh Super Admin sebelum dapat digunakan.'
+                            : 'Akun peserta baru perlu disetujui oleh Admin sebelum dapat mengikuti tryout.'}
+                        </span>
+                      </div>
+                    )}
+                  </>
                 )}
 
                 {error && (
@@ -237,6 +295,8 @@ export default function LoginModal({ mode, onClose, onSwitchMode }: Props) {
                 >
                   {loading ? (
                     <Loader2 className="w-5 h-5 animate-spin" />
+                  ) : isForgotPass ? (
+                    'Kirim Link Pemulihan'
                   ) : isRegister ? (
                     <><Mail className="w-4 h-4" /> Daftar & Verifikasi Email</>
                   ) : (
@@ -245,8 +305,16 @@ export default function LoginModal({ mode, onClose, onSwitchMode }: Props) {
                 </button>
 
                 {/* Switch mode links */}
-                <div className="text-center text-sm text-gray-500">
-                  {isRegister ? (
+                <div className="text-center text-sm text-gray-500 pt-1">
+                  {isForgotPass ? (
+                    <button
+                      type="button"
+                      onClick={() => setIsForgotPass(false)}
+                      className="text-gray-400 hover:text-slate-700 font-semibold text-xs inline-flex items-center gap-1 transition-colors"
+                    >
+                      <ArrowLeft className="w-3.5 h-3.5" /> Kembali ke Halaman Login
+                    </button>
+                  ) : isRegister ? (
                     <>
                       Sudah punya akun?{' '}
                       <button
