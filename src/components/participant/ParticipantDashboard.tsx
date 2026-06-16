@@ -1,636 +1,264 @@
-import { createContext, useContext, useReducer, useEffect, ReactNode, useState, useCallback } from 'react';
-import { AppState, AppView, ExamSession, Profile, Question, ExamType, ExamPackage } from '../types'; 
-import { mockQuestions, EXAM_CONFIGS } from '../data/mockData';
-import { supabase, getProfile } from '../lib/supabase';
-import {
-  saveExamProgress,
-  loadExamProgress,
-  getActiveSessionId,
-  clearExamProgress,
-} from '../lib/examPersistence';
+import { motion, AnimatePresence } from 'framer-motion';
+import { LogOut, User, Trophy, Target, TrendingUp, History, ChevronDown, ChevronUp, ArrowRight, Award, Clock } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom'; 
+import { useApp } from '../../context/AppContext';
+import ExamCards from './ExamCards';
+import Leaderboard from './Leaderboard';
+import ExamHistory from './ExamHistory';
+import DiagnosticReport from '../exam/DiagnosticReport';
 
-type AppAction =
-  | { type: 'SET_AUTH_LOADING'; payload: boolean }
-  | { type: 'SET_PROFILE'; payload: Profile | null }
-  | { type: 'LOGOUT' }
-  | { type: 'SET_VIEW'; payload: AppView }
-  | { type: 'START_EXAM'; payload: { examType: ExamType; pkg?: ExamPackage } }
-  | { type: 'RESUME_EXAM'; payload: ExamSession }
-  | { type: 'ANSWER_QUESTION'; payload: { questionId: string; answers: ExamSession['answers'] } }
-  | { type: 'TOGGLE_MARK'; payload: string }
-  | { type: 'NAVIGATE_QUESTION'; payload: number }
-  | { type: 'TICK_TIMER' }
-  | { type: 'RESTORE_TIMER'; payload: number }
-  | { type: 'FINALIZE_EXAM_STORE'; payload: ExamSession }
-  | { type: 'CLEAR_EXAM' }
-  | { type: 'OPEN_REVIEW'; payload: string }
-  | { type: 'DELETE_EXAM_RESULT'; payload: string };
+// 🧠 AKUMULATOR DATA GLOBAL: Diperbarui agar kebal terhadap data kosong & perbedaan nama variabel
+function generateGlobalSnapshot(examHistory: any[]) {
+  const globalQuestions: any[] = [];
+  const globalAnswers: Record<string, any> = {};
 
-const initialState: AppState = {
-  profile: null,
-  authLoading: true,
-  currentView: 'landing',
-  examSession: null,
-  reviewResultId: null,
-};
-
-let isStartingExam = false;
-
-export function packageTypeToExamType(pt: string): ExamType {
-  if (pt === 'MINI_TIU') return 'TIU';
-  if (pt === 'MINI_TWK') return 'TWK';
-  if (pt === 'MINI_TKP') return 'TKP';
-  return 'FULL';
-}
-
-async function fetchQuestionsForExam(examType: ExamType, packageId?: string): Promise<Question[]> {
-  const config = EXAM_CONFIGS[examType];
-  
-  const categoryWeight: Record<string, number> = {
-    'TWK': 1,
-    'TIU': 2,
-    'TKP': 3 
-  };
-
-  const sortSKD = (a: Question, b: Question) => {
-    const weightA = categoryWeight[a.category?.toUpperCase()] || 99;
-    const weightB = categoryWeight[b.category?.toUpperCase()] || 99;
-    return weightA - weightB; 
-  };
-
-  if (packageId) {
-    const { data } = await supabase.from('questions').select('*').eq('package_id', packageId).order('created_at');
-    if (data && data.length > 0) {
-      const mappedData = data.map((q) => ({
-        ...q,
-        sub_category: q.sub_category || q.sub_kategori || 'Umum',
-        sub_kategori: q.sub_category || q.sub_kategori || 'Umum',
-        points_a: q.points_a ?? 0,
-        points_b: q.points_b ?? 0,
-        points_c: q.points_c ?? 0,
-        points_d: q.points_d ?? 0,
-        points_e: q.points_e ?? 0,
-      })) as Question[];
-      const filtered = examType === 'FULL' ? mappedData : mappedData.filter((q) => q.category === examType);
-      if (filtered.length > 0) {
-        return [...filtered.slice(0, config.questionCount)].sort(sortSKD);
-      }
-    }
-  }
-
-  const mock = examType === 'FULL' ? mockQuestions : mockQuestions.filter((q) => q.category === examType);
-  const mappedMock = mock.map((q) => ({
-    ...q,
-    sub_category: (q as any).sub_category || (q as any).sub_kategori || 'Umum',
-    sub_kategori: (q as any).sub_category || (q as any).sub_kategori || 'Umum',
-    points_a: (q as any).points_a ?? 0,
-    points_b: (q as any).points_b ?? 0,
-    points_c: (q as any).points_c ?? 0,
-    points_d: (q as any).points_d ?? 0,
-    points_e: (q as any).points_e ?? 0,
-  })) as Question[];
-  let padded = mappedMock;
-  while (padded.length < config.questionCount) { padded = [...padded, ...padded].slice(0, config.questionCount); }
-  
-  return [...padded.slice(0, config.questionCount)].sort(sortSKD);
-}
-
-function buildSession(examType: ExamType, questions: Question[], pkg?: ExamPackage): ExamSession {
-  const config = EXAM_CONFIGS[examType];
-  const answers: ExamSession['answers'] = {};
-  const securedQuestions = questions.map((q) => ({
-    ...q,
-    sub_category: q.sub_category || q.sub_kategori || 'Umum',
-    sub_kategori: q.sub_category || q.sub_kategori || 'Umum',
-    points_a: (q as any).points_a ?? 0,
-    points_b: (q as any).points_b ?? 0,
-    points_c: (q as any).points_c ?? 0,
-    points_d: (q as any).points_d ?? 0,
-    points_e: (q as any).points_e ?? 0,
-  })) as Question[];
-  securedQuestions.forEach((q) => {
-    answers[q.id] = { questionId: q.id, selectedAnswer: null, isMarked: false };
-  });
-  return {
-    id: crypto.randomUUID(),
-    packageId: pkg?.id,
-    packageName: pkg?.name,
-    examType,
-    questions: securedQuestions,
-    answers,
-    currentQuestionIndex: 0,
-    timeRemaining: config.timeMinutes * 60,
-    status: 'in_progress',
-    startedAt: new Date(),
-  };
-}
-
-function calculateScores(session: ExamSession) {
-  let tiu = 0, twk = 0, tkp = 0;
-  let correctCount = 0;
-  session.questions.forEach((q) => {
-    const answer = session.answers[q.id];
-    if (!answer?.selectedAnswer) return;
-    if (q.category === 'TKP') {
-      const selected = answer.selectedAnswer.toLowerCase();
-      let points = 0;
-      if (selected === 'a') points = Number(q.points_a ?? 0);
-      else if (selected === 'b') points = Number(q.points_b ?? 0);
-      else if (selected === 'c') points = Number(q.points_c ?? 0);
-      else if (selected === 'd') points = Number(q.points_d ?? 0);
-      else if (selected === 'e') points = Number(q.points_e ?? 0);
-      tkp += points;
-      if (points > 0) correctCount++;
-    } else {
-      const pts = answer.selectedAnswer === q.correct_answer ? 5 : 0;
-      if (pts > 0) correctCount++;
-      if (q.category === 'TIU') tiu += pts;
-      else twk += pts;
-    }
-  });
-  return { tiu, twk, tkp, total: tiu + twk + tkp, correctCount };
-}
-
-function checkPassedStatus(examType: ExamType, scores: { tiu: number; twk: number; tkp: number }) {
-  if (examType === 'FULL') {
-    return scores.twk >= 65 && scores.tiu >= 80 && scores.tkp >= 166;
-  }
-  if (examType === 'TWK') return scores.twk >= 65;
-  if (examType === 'TIU') return scores.tiu >= 80;
-  if (examType === 'TKP') return scores.tkp >= 166;
-  return false;
-}
-
-function getViewForProfile(p: Profile): AppView {
-  if (!p.is_approved) return 'waiting-room';
-  if (p.role === 'participant') return 'participant-dashboard';
-  return 'admin-dashboard';
-}
-
-function appReducer(state: AppState, action: AppAction): AppState {
-  switch (action.type) {
-    case 'SET_AUTH_LOADING':
-      return { ...state, authLoading: action.payload };
-    case 'SET_PROFILE': {
-      if (!action.payload) return { ...state, profile: null, currentView: 'landing', authLoading: false };
-      
-      const savedView = localStorage.getItem('leskd_saved_view') as AppView | null;
-      const savedReviewId = localStorage.getItem('leskd_saved_review_id');
-      
-      const examActive = state.currentView === 'exam-engine' || state.currentView === 'exam-results';
-      let targetView = examActive ? state.currentView : getViewForProfile(action.payload);
-      
-      if (!action.payload.is_approved) {
-        targetView = 'waiting-room';
-      } else if (!examActive && savedView && savedView !== 'landing') {
-        targetView = savedView;
-      }
-
-      return {
-        ...state,
-        profile: action.payload,
-        authLoading: false,
-        currentView: targetView,
-        reviewResultId: savedReviewId || state.reviewResultId,
-      };
-    }
-    case 'LOGOUT':
-      localStorage.removeItem('exam_active_session_id');
-      localStorage.removeItem('active_db_result_id'); 
-      localStorage.removeItem('leskd_saved_view');
-      localStorage.removeItem('leskd_saved_review_id');
-      return { ...initialState, authLoading: false };
-    case 'SET_VIEW':
-      return { ...state, currentView: action.payload };
-    case 'START_EXAM':
-      return { ...state, examSession: null, currentView: 'exam-engine' };
-    case 'RESUME_EXAM': {
-      if (!action.payload) return state;
-      return { 
-        ...state, 
-        examSession: action.payload, 
-        currentView: action.payload.status === 'completed' ? 'exam-results' : 'exam-engine' 
-      };
-    }
-    case 'ANSWER_QUESTION': {
-      if (!state.examSession) return state;
-      return {
-        ...state,
-        examSession: { ...state.examSession, answers: action.payload.answers }
-      };
-    }
-    case 'TOGGLE_MARK': {
-      if (!state.examSession) return state;
-      const qId = action.payload;
-      const cur = state.examSession.answers[qId];
-      return {
-        ...state,
-        examSession: {
-          ...state.examSession,
-          answers: { ...state.examSession.answers, [qId]: { ...cur, isMarked: !cur.isMarked } },
-        },
-      };
-    }
-    case 'NAVIGATE_QUESTION':
-      return state.examSession ? { ...state, examSession: { ...state.examSession, currentQuestionIndex: action.payload } } : state;
-    case 'RESTORE_TIMER':
-      return state.examSession ? { ...state, examSession: { ...state.examSession, timeRemaining: action.payload } } : state;
-    case 'TICK_TIMER': {
-      if (!state.examSession || state.examSession.timeRemaining <= 0) return state;
-      return { ...state, examSession: { ...state.examSession, timeRemaining: state.examSession.timeRemaining - 1 } };
-    }
-    case 'FINALIZE_EXAM_STORE': {
-      return {
-        ...state,
-        currentView: 'exam-results',
-        examSession: action.payload
-      };
-    }
-    case 'CLEAR_EXAM': {
-      if (state.examSession) clearExamProgress(state.examSession.id);
-      else localStorage.removeItem('exam_active_session_id');
-      localStorage.removeItem('active_db_result_id'); 
-      const isAdmin = state.profile?.role === 'admin' || state.profile?.role === 'super_admin';
-      return { ...state, examSession: null, reviewResultId: null, currentView: isAdmin ? 'admin-dashboard' : 'participant-dashboard' };
-    }
-    case 'OPEN_REVIEW':
-      return { ...state, reviewResultId: action.payload, currentView: 'exam-review' };
-    case 'DELETE_EXAM_RESULT':
-      return state.reviewResultId === action.payload ? { ...state, reviewResultId: null } : state;
-    default:
-      return state;
-  }
-}
-
-interface AppContextType {
-  state: AppState;
-  dispatch: React.Dispatch<AppAction>;
-  signOut: () => Promise<void>;
-  refreshProfile: () => Promise<void>;
-  startExam: (examType: ExamType, pkg?: ExamPackage) => Promise<void>;
-  deleteHistory: (resultId: string) => Promise<boolean>;
-  submitExamSession: (diagnosticBreakdown?: any) => Promise<void>;
-  examHistory: any[];
-  fetchUserExamHistory: () => Promise<void>;
-}
-
-const AppContext = createContext<AppContextType | null>(null);
-
-export function AppProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(appReducer, initialState);
-  const [isSyncLocked, setIsSyncLocked] = useState(false);
-  const [examHistory, setExamHistory] = useState<any[]>([]);
-
-  // ─── 🛠️ FIX INFINITE LOOP & FIX NULL VALUE DATABASE FILTER ───
-  const fetchUserExamHistory = useCallback(async () => {
+  examHistory.forEach((result) => {
+    if (!result.review_snapshot) return;
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      const snapshot = typeof result.review_snapshot === 'string'
+        ? JSON.parse(result.review_snapshot)
+        : result.review_snapshot;
 
-      // 🌟 ANTI-NULL FILTER: Menggunakan .not('is_deleted', 'eq', true)
-      // Ini menjamin baris data lama yang bernilai NULL di database tidak terbuang percobaannya!
-      const { data, error } = await supabase
-        .from('exam_results')
-        .select('*')
-        .eq('participant_id', user.id)
-        .eq('status', 'completed') 
-        .not('is_deleted', 'eq', true)
-        .order('completed_at', { ascending: false });
+      // 🌟 PERBAIKAN: Adaptasi struktur snapshot baik array langsung ataupun objek berkunci .questions
+      const questionsArray = Array.isArray(snapshot) 
+        ? snapshot 
+        : (snapshot?.questions || snapshot?.activeQuestions || []);
 
-      if (error) throw error;
+      const originalAnswers = Array.isArray(snapshot) ? {} : (snapshot?.answers || {});
 
-      let finalData = data || [];
+      if (Array.isArray(questionsArray)) {
+        questionsArray.forEach((q: any) => {
+          const uniqueInstanceId = `${result.id}_${q.id}`;
+          
+          // 🌟 FORCE NORMALIZE SUB CATEGORY: Menyelamatkan grafik dari data kosong di masa lalu
+          const normalizedSubCategory = q.sub_category || q.sub_kategori || 'Umum';
 
-      // Jalur Cadangan Mandiri (Jika akun teman Anda kehilangan ID-nya akibat proses reset)
-      if (finalData.length === 0 && user.email) {
-        const { data: fallbackData } = await supabase
-          .from('exam_results')
-          .select('*')
-          .eq('user_name', user.email)
-          .eq('status', 'completed') 
-          .not('is_deleted', 'eq', true)
-          .order('completed_at', { ascending: false });
-        
-        if (fallbackData && fallbackData.length > 0) {
-          finalData = fallbackData;
-        }
-      }
-
-      setExamHistory(finalData);
-    } catch (err) {
-      console.error("Gagal memuat riwayat ujian:", err);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (state.currentView && state.currentView !== 'landing') {
-      localStorage.setItem('leskd_saved_view', state.currentView);
-    }
-    if (state.reviewResultId) {
-      localStorage.setItem('leskd_saved_review_id', state.reviewResultId);
-    } else {
-      localStorage.removeItem('leskd_saved_review_id');
-    }
-  }, [state.currentView, state.reviewResultId]);
-
-  useEffect(() => {
-    const session = state.examSession;
-    if (!session || session.status === 'completed' || isSyncLocked) return;
-
-    if (session.status === 'in_progress') {
-      saveExamProgress(session);
-
-      const dbResultId = (session as any).resultId || localStorage.getItem('active_db_result_id');
-      if (dbResultId) {
-        const liveScores = calculateScores(session);
-        const isPassed = checkPassedStatus(session.examType, liveScores);
-
-        supabase
-          .from('exam_results')
-          .update({
-            score_tiu: liveScores.tiu,
-            score_twk: liveScores.twk,
-            score_tkp: liveScores.tkp,
-            total_score: liveScores.total,
-            questions_correct: liveScores.correctCount,
-            passed: isPassed,
-            duration_seconds: Math.max(0, (EXAM_CONFIGS[session.examType].timeMinutes * 60) - session.timeRemaining)
-          })
-          .eq('id', dbResultId)
-          .then(({ error }) => { 
-            if (error) console.error("Realtime Sync Error:", error); 
+          globalQuestions.push({ 
+            ...q, 
+            id: uniqueInstanceId,
+            sub_category: normalizedSubCategory,
+            sub_kategori: normalizedSubCategory
           });
-      }
-    }
-  }, [state.examSession?.answers, state.examSession?.status, isSyncLocked]);
-
-  useEffect(() => {
-    if (!state.examSession || state.examSession.status !== 'in_progress') return;
-    const timer = setInterval(() => {
-      dispatch({ type: 'TICK_TIMER' });
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [state.examSession?.status, state.examSession?.id]);
-
-  useEffect(() => {
-    if (
-      state.examSession && 
-      state.examSession.status === 'in_progress' && 
-      state.examSession.timeRemaining <= 0
-    ) {
-      console.log("⏰ [TIMER] Waktu habis! Memicu fungsi submit otomatis...");
-      submitExamSession();
-    }
-  }, [state.examSession?.timeRemaining, state.examSession?.status]);
-
-  async function refreshProfile(retries = 3) {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { dispatch({ type: 'SET_PROFILE', payload: null }); return; }
-    try {
-      let profile = await getProfile(user.id);
-      
-      let attempts = 0;
-      while (!profile && attempts < retries) {
-        console.log(`[AUTH] Menunggu pembuatan profil dari database... (Percobaan ${attempts + 1})`);
-        await new Promise(resolve => setTimeout(resolve, 600));
-        profile = await getProfile(user.id);
-        attempts++;
-      }
-
-      dispatch({ type: 'SET_PROFILE', payload: profile ? (profile as Profile) : null });
-    } catch { 
-      dispatch({ type: 'SET_PROFILE', payload: null }); 
-    }
-  }
-
-  async function startExam(examType: ExamType, pkg?: ExamPackage) {
-    if (isStartingExam) return;
-
-    try {
-      isStartingExam = true;
-      setIsSyncLocked(false); 
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        alert("Sesi login tidak valid.");
-        return;
-      }
-
-      const questions = await fetchQuestionsForExam(examType, pkg?.id);
-      if (!questions || questions.length === 0) {
-        alert("Gagal memuat kumpulan soal ujian.");
-        return;
-      }
-      
-      const session = buildSession(examType, questions, pkg);
-
-      await supabase
-        .from('exam_results')
-        .delete()
-        .eq('participant_id', user.id)
-        .eq('status', 'in_progress');
-
-      const { data: newRow, error: insertErr } = await supabase
-        .from('exam_results')
-        .insert({
-          participant_id: user.id,
-          user_name: state.profile?.full_name || user.email, 
-          package_type: pkg?.package_type || examType,
-          package_id: pkg?.id || null,
-          package_name: pkg?.name || 'Mini Tryout',
-          score_tiu: 0, score_twk: 0, score_tkp: 0, total_score: 0,
-          questions_total: questions.length, questions_correct: 0,
-          passed: false, 
-          status: 'in_progress',
-        })
-        .select()
-        .single();
-
-      if (insertErr) throw insertErr;
-      const finalDbRow = newRow;
-
-      const sessionWithResultId = { 
-        ...session, 
-        resultId: finalDbRow.id,
-        userName: state.profile?.full_name || user.email,
-        packageType: pkg?.package_type || examType
-      };
-
-      localStorage.setItem('active_db_result_id', finalDbRow.id);
-
-      saveExamProgress(sessionWithResultId);
-      dispatch({ type: 'RESUME_EXAM', payload: sessionWithResultId });
-
-    } catch (err) {
-      console.error("Gagal menginisialisasi sesi ujian:", err);
-      dispatch({ type: 'CLEAR_EXAM' });
-      alert("Terjadi kendala jaringan saat memuat sesi tryout baru.");
-    } finally {
-      isStartingExam = false;
-    }
-  }
-
-  async function submitExamSession(diagnosticBreakdown?: any) {
-    const session = state.examSession;
-    if (!session || isSyncLocked) return;
-
-    const dbResultId = (session as any).resultId || localStorage.getItem('active_db_result_id');
-    if (!dbResultId) {
-      alert("Sesi ID database hilang. Silakan kembali ke dashboard dan buat ujian baru.");
-      return;
-    }
-
-    try {
-      setIsSyncLocked(true);
-      const scores = calculateScores(session);
-      const isPassed = checkPassedStatus(session.examType, scores);
-      
-      const snapshotPayload = {
-        questions: session.questions,
-        answers: session.answers
-      };
-
-      let finalDiagnostic = diagnosticBreakdown;
-      if (!finalDiagnostic) {
-        const breakdown: Record<string, { correct: number; total: number; percentage: number }> = {};
-        session.questions.forEach((q) => {
-          const subCat = q.sub_category || q.sub_kategori || 'Umum';
-          const userAnswer = session.answers[q.id];
-          const selected = userAnswer?.selectedAnswer;
-
-          if (!breakdown[subCat]) {
-            breakdown[subCat] = { correct: 0, total: 0, percentage: 0 };
-          }
-
-          if (q.category === 'TKP') {
-            const points = selected ? (q as any)[`points_${selected.toLowerCase()}`] || 0 : 0;
-            breakdown[subCat].correct += points;
-            breakdown[subCat].total += 5;
-          } else {
-            const isCorrect = selected === q.correct_answer;
-            breakdown[subCat].correct += isCorrect ? 1 : 0;
-            breakdown[subCat].total += 1;
-          }
+          
+          const ans = originalAnswers[q.id] || Object.values(originalAnswers).find((a: any) => a?.questionId === q.id || a?.question_id === q.id);
+          if (ans) globalAnswers[uniqueInstanceId] = ans;
         });
-
-        Object.keys(breakdown).forEach((key) => {
-          const item = breakdown[key];
-          item.percentage = item.total > 0 ? Math.round((item.correct / item.total) * 100) : 0;
-        });
-        finalDiagnostic = breakdown;
       }
-      
-      const { error } = await supabase
-        .from('exam_results')
-        .update({
-          score_tiu: scores.tiu,
-          score_twk: scores.twk,
-          score_tkp: scores.tkp,
-          total_score: scores.total,
-          questions_correct: scores.correctCount,
-          passed: isPassed,
-          status: 'completed', 
-          completed_at: new Date().toISOString(),
-          duration_seconds: Math.max(0, (EXAM_CONFIGS[session.examType].timeMinutes * 60) - session.timeRemaining),
-          review_snapshot: JSON.stringify(snapshotPayload),
-          diagnostic_breakdown: finalDiagnostic
-        })
-        .eq('id', dbResultId);
-
-      if (error) throw error;
-
-      await fetchUserExamHistory();
-
-      clearExamProgress(session.id);
-      localStorage.removeItem('exam_active_session_id');
-      localStorage.removeItem('active_db_result_id'); 
-
-      const completedSession: ExamSession = {
-        ...session,
-        status: 'completed',
-        completedAt: new Date(),
-        scores
-      };
-
-      dispatch({ type: 'FINALIZE_EXAM_STORE', payload: completedSession });
-
     } catch (err) {
-      console.error("Terjadi kegagalan submit:", err);
-      setIsSyncLocked(false); 
-      alert("Gagal mengirimkan lembar jawaban ke server. Silakan coba klik submit kembali.");
+      console.error("Gagal merakit akumulasi snapshot global:", err);
     }
-  }
+  });
+  return { questions: globalQuestions, answers: globalAnswers };
+}
 
-  async function deleteHistory(resultId: string): Promise<boolean> {
-    try {
-      const { error } = await supabase
-        .from('exam_results')
-        .update({ is_deleted: true })
-        .eq('id', resultId);
-
-      if (!error) { 
-        dispatch({ type: 'DELETE_EXAM_RESULT', payload: resultId }); 
-        setExamHistory((prev) => prev.filter((item) => item.id !== resultId));
-        return true; 
-      }
-      return false;
-    } catch { return false; }
-  }
+export default function ParticipantDashboard() {
+  const { state, signOut, examHistory, fetchUserExamHistory, dispatch } = useApp();
+  const profile = state.profile;
+  const navigate = useNavigate(); 
+  
+  const [showHistory, setShowHistory] = useState(false);
+  const [resultsLoading, setResultsLoading] = useState(true);
+  const [selectedExam, setSelectedExam] = useState<any | null>(null);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        const savedId = getActiveSessionId();
-        if (savedId) {
-          const saved = loadExamProgress(savedId);
-          if (saved && (saved as any).status !== 'completed') {
-            const backupResultId = localStorage.getItem('active_db_result_id') || undefined;
+    if (!profile) return;
+    setResultsLoading(true);
+    fetchUserExamHistory().finally(() => setResultsLoading(false));
+  }, [profile, fetchUserExamHistory]);
 
-            fetchQuestionsForExam(saved.examType, saved.packageId).then((questions) => {
-              dispatch({
-                type: 'RESUME_EXAM',
-                payload: {
-                  id: saved.sessionId, packageId: saved.packageId, packageName: saved.packageName,
-                  examType: saved.examType, questions, answers: saved.answers,
-                  currentQuestionIndex: saved.currentQuestionIndex, timeRemaining: saved.timeRemaining,
-                  status: 'in_progress', startedAt: new Date(saved.startedAt), 
-                  resultId: (saved as any).resultId || backupResultId || undefined 
-                } as any
-              });
-            });
-          } else { 
-            localStorage.removeItem('exam_active_session_id'); 
-            localStorage.removeItem('active_db_result_id');
-          }
-        }
-        refreshProfile();
-        fetchUserExamHistory();
-      } else { dispatch({ type: 'SET_AUTH_LOADING', payload: false }); }
-    });
+  const totalExams = examHistory.length;
+  const avgScore = totalExams > 0
+    ? Math.round(examHistory.reduce((s, r) => s + (r.total_score || 0), 0) / totalExams)
+    : 0;
+  const passedCount = examHistory.filter((r) => r.passed).length;
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_OUT' || !session) { dispatch({ type: 'LOGOUT' }); setExamHistory([]); return; }
-      if (event === 'SIGNED_IN' && session.user) {
-        refreshProfile();
-        fetchUserExamHistory(); 
+  const globalSnapshotData = generateGlobalSnapshot(examHistory);
+
+  const selectedExamSnapshot = (() => {
+    if (!selectedExam || !selectedExam.review_snapshot) return null;
+    try {
+      const snapshot = typeof selectedExam.review_snapshot === 'string'
+        ? JSON.parse(selectedExam.review_snapshot)
+        : selectedExam.review_snapshot;
+        
+      const questionsArray = Array.isArray(snapshot) 
+        ? snapshot 
+        : (snapshot?.questions || snapshot?.activeQuestions || []);
+
+      if (Array.isArray(questionsArray)) {
+        // Normalisasi data sub_category di dalam modal pratinjau detail
+        const safeQuestions = questionsArray.map((q: any) => ({
+          ...q,
+          sub_category: q.sub_category || q.sub_kategori || 'Umum',
+          sub_kategori: q.sub_category || q.sub_kategori || 'Umum'
+        }));
+        return {
+          questions: safeQuestions,
+          answers: Array.isArray(snapshot) ? {} : (snapshot?.answers || {})
+        };
       }
-    });
-    return () => subscription.unsubscribe();
-  }, [fetchUserExamHistory]);
+    } catch (e) { console.error(e); }
+    return null;
+  })();
 
-  async function signOut() { await supabase.auth.signOut(); dispatch({ type: 'LOGOUT' }); }
+  const historyRecords = examHistory.map((r) => ({
+    id: r.id,
+    package_type: r.package_type,
+    package_name: r.package_name,
+    total_score: r.total_score,
+    score_tiu: r.score_tiu,
+    score_twk: r.score_twk,
+    score_tkp: r.score_tkp,
+    questions_correct: r.questions_correct,
+    questions_total: r.questions_total,
+    passed: r.passed,
+    duration_seconds: r.duration_seconds,
+    completed_at: r.completed_at,
+  }));
 
   return (
-    <AppContext.Provider value={{ 
-      state, dispatch, signOut, refreshProfile, startExam, deleteHistory, submitExamSession,
-      examHistory, fetchUserExamHistory 
-    }}>
-      {children}
-    </AppContext.Provider>
-  );
-}
+    <div className="min-h-screen bg-white font-sans text-slate-800 antialiased">
+      {/* ─── HEADER ─── */}
+      <header className="bg-[#1e3a8a] sticky top-0 z-40 px-6 py-3.5 shadow-md">
+        <div className="max-w-6xl mx-auto flex items-center justify-between">
+          <span className="text-white font-black text-xl tracking-tight">LESKD.ID</span>
+          <div className="flex items-center gap-3">
+            <div className="hidden sm:flex items-center gap-2 bg-white/10 rounded-lg px-3 py-1.5">
+              <User className="w-4 h-4 text-white/70" />
+              <span className="text-white text-xs font-bold uppercase tracking-wider">{profile?.full_name}</span>
+            </div>
+            <button onClick={signOut} className="bg-white/10 hover:bg-white/20 text-white p-2 rounded-lg transition-colors">
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      </header>
 
-export function useApp() {
-  const ctx = useContext(AppContext);
-  if (!ctx) throw new Error('useApp must be used within AppProvider');
-  return ctx;
+      <main className="max-w-6xl mx-auto px-6 pt-10 pb-16">
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-10">
+          
+          {/* ─── HERO SPLIT LAYOUT ─── */}
+          <section className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
+            <div className="lg:col-span-7">
+              <span className="inline-block rounded bg-slate-100 px-2.5 py-0.5 text-[10px] font-bold text-[#1e3a8a] uppercase tracking-widest mb-3">
+                Dashboard Peserta
+              </span>
+              <h1 className="text-3xl lg:text-4xl font-black text-slate-900 leading-tight mb-3 tracking-tight">
+                Selamat Datang, <span className="text-[#1e3a8a]">{profile?.full_name}</span>
+              </h1>
+              <p className="text-slate-500 text-sm sm:text-base max-w-xl leading-relaxed font-medium">
+                Pantau progres belajar Anda secara real-time. Pilih paket simulasi di bawah untuk mulai mengasah kemampuan menghadapi seleksi ASN.
+              </p>
+            </div>
+
+            {/* Quick Stats Grid */}
+            <div className="lg:col-span-5 grid grid-cols-3 gap-3">
+              {[
+                { icon: Target, label: 'Selesai', value: resultsLoading ? '..' : totalExams, color: 'text-blue-600', bg: 'bg-blue-50' },
+                { icon: TrendingUp, label: 'Rerata', value: resultsLoading ? '..' : avgScore, color: 'text-[#1e3a8a]', bg: 'bg-slate-100' },
+                { icon: Trophy, label: 'Lulus', value: resultsLoading ? '..' : passedCount, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+              ].map((stat, i) => (
+                <div key={i} className="bg-white border border-slate-200 rounded-xl p-4 text-center shadow-sm">
+                  <stat.icon className={`w-4 h-4 ${stat.color} mx-auto mb-2`} />
+                  <p className="text-xl font-black text-slate-900">{stat.value}</p>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">{stat.label}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          {/* ─── DIAGNOSTIC REPORT (SMART ANALYTICS) ─── */}
+          {!resultsLoading && totalExams > 0 && globalSnapshotData.questions.length > 0 && (
+            <section className="border-t border-slate-100 pt-10">
+              <div className="mb-6">
+                <span className="text-[10px] font-bold text-[#1e3a8a] uppercase tracking-widest block mb-1">Smart Diagnostic</span>
+                <h2 className="text-xl font-black text-slate-900 tracking-tight">Peta Kekuatan Akumulatif</h2>
+              </div>
+              <div className="bg-white border border-slate-200 rounded-2xl p-2 shadow-sm">
+                <DiagnosticReport questions={globalSnapshotData.questions} answers={globalSnapshotData.answers} />
+              </div>
+            </section>
+          )}
+
+          {/* ─── EXAM CARDS ─── */}
+          <section className="space-y-4">
+            <h2 className="text-xl font-black text-slate-900 tracking-tight">Paket Simulasi Tersedia</h2>
+            <ExamCards />
+          </section>
+
+          {/* ─── HISTORY SECTION ─── */}
+          <section className="space-y-4">
+            <button
+              onClick={() => setShowHistory(!showHistory)}
+              className="w-full bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl p-4 flex items-center justify-between transition-all"
+            >
+              <div className="flex items-center gap-3">
+                <History className="w-5 h-5 text-[#1e3a8a]" />
+                <span className="font-bold text-sm text-slate-700 uppercase tracking-wide">Riwayat Pengerjaan</span>
+              </div>
+              {showHistory ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+            </button>
+
+            <AnimatePresence>
+              {showHistory && (
+                <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
+                  <ExamHistory
+                    records={historyRecords}
+                    onViewReview={(id) => { dispatch({ type: 'OPEN_REVIEW', payload: id }); navigate('/exam/review'); }}
+                    onViewDetails={(rec) => setSelectedExam(examHistory.find((h) => h.id === rec.id) || rec)}
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </section>
+
+          {/* ─── LEADERBOARD ─── */}
+          <section className="border-t border-slate-100 pt-10">
+            <Leaderboard />
+          </section>
+
+        </motion.div>
+      </main>
+
+      {/* ─── MODAL DETAIL ─── */}
+      <AnimatePresence>
+        {selectedExam && selectedExamSnapshot && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setSelectedExam(null)} className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm" />
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-white rounded-2xl p-6 w-full max-w-xl shadow-2xl relative z-10 border border-slate-100 max-h-[85vh] overflow-y-auto">
+              <div className="mb-6 flex justify-between items-start">
+                <div>
+                  <h3 className="text-lg font-black text-slate-900 leading-tight">{selectedExam.package_name}</h3>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase mt-1 tracking-wider">
+                    Selesai pada: {new Date(selectedExam.completed_at).toLocaleDateString('id-ID')}
+                  </p>
+                </div>
+                <span className={`text-[10px] font-black px-2 py-1 rounded uppercase tracking-widest ${selectedExam.passed ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
+                  {selectedExam.passed ? 'Lulus' : 'Gagal'}
+                </span>
+              </div>
+
+              <div className="bg-slate-50 rounded-xl p-5 text-center mb-6 border border-slate-100">
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-1">Skor Akhir</p>
+                <p className="text-4xl font-black text-[#1e3a8a]">{selectedExam.total_score}</p>
+              </div>
+
+              <div className="mb-6 border-t border-slate-100 pt-4">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Diagnosis Sesi Ini</p>
+                <DiagnosticReport questions={selectedExamSnapshot.questions} answers={selectedExamSnapshot.answers} />
+              </div>
+
+              <button
+                onClick={() => setSelectedExam(null)}
+                className="w-full bg-[#1e3a8a] hover:bg-[#152961] text-white font-black py-3 rounded-lg transition-all text-[10px] uppercase tracking-[0.2em] shadow-lg shadow-blue-900/10"
+              >
+                Tutup Detail
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
 }
