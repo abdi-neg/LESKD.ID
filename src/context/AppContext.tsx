@@ -63,6 +63,7 @@ async function fetchQuestionsForExam(examType: ExamType, packageId?: string): Pr
     if (data && data.length > 0) {
       const mappedData = data.map((q) => ({
         ...q,
+        // 🌟 PENYELAMAT GRAFIK A: Mengawinkan sub_category dan sub_kategori agar ramah di semua komponen
         sub_category: q.sub_category || q.sub_kategori || 'Umum',
         sub_kategori: q.sub_category || q.sub_kategori || 'Umum',
         points_a: q.points_a ?? 0,
@@ -281,42 +282,42 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [isSyncLocked, setIsSyncLocked] = useState(false);
   const [examHistory, setExamHistory] = useState<any[]>([]);
 
-  // ─── 🛠️ FIX INFINITE LOOP & FIX NULL VALUE DATABASE FILTER ───
+  // ─── 🌟 PENYELAMAT RIWAYAT: MENGGUNAKAN KUERI BERURUTAN (100% AMAN ANTI CRASH SQL) ───
   const fetchUserExamHistory = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // 🌟 ANTI-NULL FILTER: Menggunakan .not('is_deleted', 'eq', true)
-      // Ini menjamin baris data lama yang bernilai NULL di database tidak terbuang percobaannya!
+      // Kueri Tahap A: Cari data murni berdasarkan ID (Jalur utama yang terbukti sukses di akun Anda)
       const { data, error } = await supabase
         .from('exam_results')
         .select('*')
         .eq('participant_id', user.id)
         .eq('status', 'completed') 
-        .not('is_deleted', 'eq', true)
+        .eq('is_deleted', false)
         .order('completed_at', { ascending: false });
 
       if (error) throw error;
 
-      let finalData = data || [];
+      let finalRecords = data || [];
 
-      // Jalur Cadangan Mandiri (Jika akun teman Anda kehilangan ID-nya akibat proses reset)
-      if (finalData.length === 0 && user.email) {
+      // Kueri Tahap B (Jalur Cadangan): Jika ID kosong (kasus teman Anda setelah reset password),
+      // cari cadangan berdasarkan teks nama/email di kolom user_name.
+      if (finalRecords.length === 0 && user.email) {
         const { data: fallbackData } = await supabase
           .from('exam_results')
           .select('*')
           .eq('user_name', user.email)
           .eq('status', 'completed') 
-          .not('is_deleted', 'eq', true)
+          .eq('is_deleted', false)
           .order('completed_at', { ascending: false });
         
         if (fallbackData && fallbackData.length > 0) {
-          finalData = fallbackData;
+          finalRecords = fallbackData;
         }
       }
 
-      setExamHistory(finalData);
+      setExamHistory(finalRecords);
     } catch (err) {
       console.error("Gagal memuat riwayat ujian:", err);
     }
@@ -493,6 +494,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (!finalDiagnostic) {
         const breakdown: Record<string, { correct: number; total: number; percentage: number }> = {};
         session.questions.forEach((q) => {
+          // 🌟 PENYELAMAT GRAFIK B: Amankan pembacaan sub_category / sub_kategori saat kalkulasi data akhir
           const subCat = q.sub_category || q.sub_kategori || 'Umum';
           const userAnswer = session.answers[q.id];
           const selected = userAnswer?.selectedAnswer;
