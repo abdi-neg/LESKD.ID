@@ -63,6 +63,9 @@ async function fetchQuestionsForExam(examType: ExamType, packageId?: string): Pr
     if (data && data.length > 0) {
       const mappedData = data.map((q) => ({
         ...q,
+        // 🌟 PENYELAMAT GRAFIK A: Satukan sub_category dan sub_kategori agar terbaca di semua komponen
+        sub_category: q.sub_category || q.sub_kategori || 'Umum',
+        sub_kategori: q.sub_category || q.sub_kategori || 'Umum',
         points_a: q.points_a ?? 0,
         points_b: q.points_b ?? 0,
         points_c: q.points_c ?? 0,
@@ -79,6 +82,8 @@ async function fetchQuestionsForExam(examType: ExamType, packageId?: string): Pr
   const mock = examType === 'FULL' ? mockQuestions : mockQuestions.filter((q) => q.category === examType);
   const mappedMock = mock.map((q) => ({
     ...q,
+    sub_category: (q as any).sub_category || (q as any).sub_kategori || 'Umum',
+    sub_kategori: (q as any).sub_category || (q as any).sub_kategori || 'Umum',
     points_a: (q as any).points_a ?? 0,
     points_b: (q as any).points_b ?? 0,
     points_c: (q as any).points_c ?? 0,
@@ -96,6 +101,8 @@ function buildSession(examType: ExamType, questions: Question[], pkg?: ExamPacka
   const answers: ExamSession['answers'] = {};
   const securedQuestions = questions.map((q) => ({
     ...q,
+    sub_category: q.sub_category || q.sub_kategori || 'Umum',
+    sub_kategori: q.sub_category || q.sub_kategori || 'Umum',
     points_a: (q as any).points_a ?? 0,
     points_b: (q as any).points_b ?? 0,
     points_c: (q as any).points_c ?? 0,
@@ -275,17 +282,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [isSyncLocked, setIsSyncLocked] = useState(false);
   const [examHistory, setExamHistory] = useState<any[]>([]);
 
+  // ─── 🛠️ REKAYASA PENYELAMAT RIWAYAT (AMBIL DATA ANTI-GAGAL) ───
   async function fetchUserExamHistory() {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
+      // 🌟 PERBAIKAN UTAMA: Menggunakan filter .or() gabungan ID dan email (ilike = kebal huruf kapital)
       const { data, error } = await supabase
         .from('exam_results')
         .select('*')
-        .eq('participant_id', user.id)
+        .or(`participant_id.eq.${user.id},email.ilike.${user.email || ''}`)
         .eq('status', 'completed') 
-        .eq('is_deleted', false) // 🌟 MENCANTUMKAN FILTER: Sembunyikan riwayat yang di-soft delete
+        .eq('is_deleted', false)
         .order('completed_at', { ascending: false });
 
       if (error) throw error;
@@ -406,6 +415,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         .from('exam_results')
         .insert({
           participant_id: user.id,
+          email: user.email, // 🌟 PASTIKAN EMAIL IKUT TERSIMPAN AMAN
           user_name: state.profile?.full_name || user.email, 
           package_type: pkg?.package_type || examType,
           package_id: pkg?.id || null,
@@ -466,7 +476,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (!finalDiagnostic) {
         const breakdown: Record<string, { correct: number; total: number; percentage: number }> = {};
         session.questions.forEach((q) => {
-          const subCat = q.sub_category || 'Umum';
+          // 🌟 PENYELAMAT GRAFIK B: Amankan pembacaan sub_category / sub_kategori saat submit
+          const subCat = q.sub_category || q.sub_kategori || 'Umum';
           const userAnswer = session.answers[q.id];
           const selected = userAnswer?.selectedAnswer;
 
@@ -533,7 +544,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  // 🌟 REKAYASA FUNGSI BARU: Mengubah hard-delete permanen menjadi soft-delete aman
   async function deleteHistory(resultId: string): Promise<boolean> {
     try {
       const { error } = await supabase
