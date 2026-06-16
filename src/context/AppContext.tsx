@@ -63,7 +63,7 @@ async function fetchQuestionsForExam(examType: ExamType, packageId?: string): Pr
     if (data && data.length > 0) {
       const mappedData = data.map((q) => ({
         ...q,
-        // 🌟 PENYELAMAT GRAFIK A: Satukan sub_category dan sub_kategori agar terbaca di semua komponen
+        // 🌟 PENYELAMAT GRAFIK A: Satukan sub_category dan sub_kategori sejak dari bank soal
         sub_category: q.sub_category || q.sub_kategori || 'Umum',
         sub_kategori: q.sub_category || q.sub_kategori || 'Umum',
         points_a: q.points_a ?? 0,
@@ -282,17 +282,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [isSyncLocked, setIsSyncLocked] = useState(false);
   const [examHistory, setExamHistory] = useState<any[]>([]);
 
-  // ─── 🛠️ REKAYASA PENYELAMAT RIWAYAT (AMBIL DATA ANTI-GAGAL) ───
+  // ─── 🛠️ REKAYASA PENYELAMAT RIWAYAT (MENGGUNAKAN KOLOM YANG DIJAMIN ADA) ───
   async function fetchUserExamHistory() {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // 🌟 PERBAIKAN UTAMA: Menggunakan filter .or() gabungan ID dan email (ilike = kebal huruf kapital)
+      // 🌟 Menggunakan filter gabungan participant_id ATAU user_name (untuk menangkap data lama & akun teman Anda)
+      // Kolom 'email' resmi dibuang karena tidak ada di skema tabel Anda, mencegah Crash SQL.
       const { data, error } = await supabase
         .from('exam_results')
         .select('*')
-        .or(`participant_id.eq.${user.id},email.ilike.${user.email || ''}`)
+        .or(`participant_id.eq.${user.id},user_name.eq.${user.email || ''}`)
         .eq('status', 'completed') 
         .eq('is_deleted', false)
         .order('completed_at', { ascending: false });
@@ -415,7 +416,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         .from('exam_results')
         .insert({
           participant_id: user.id,
-          email: user.email, // 🌟 PASTIKAN EMAIL IKUT TERSIMPAN AMAN
           user_name: state.profile?.full_name || user.email, 
           package_type: pkg?.package_type || examType,
           package_id: pkg?.id || null,
@@ -476,7 +476,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (!finalDiagnostic) {
         const breakdown: Record<string, { correct: number; total: number; percentage: number }> = {};
         session.questions.forEach((q) => {
-          // 🌟 PENYELAMAT GRAFIK B: Amankan pembacaan sub_category / sub_kategori saat submit
+          // 🌟 PENYELAMAT GRAFIK B: Amankan pembacaan sub_category / sub_kategori saat kalkulasi data akhir
           const subCat = q.sub_category || q.sub_kategori || 'Umum';
           const userAnswer = session.answers[q.id];
           const selected = userAnswer?.selectedAnswer;
