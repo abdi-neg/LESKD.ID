@@ -8,7 +8,7 @@ import Leaderboard from './Leaderboard';
 import ExamHistory from './ExamHistory';
 import DiagnosticReport from '../exam/DiagnosticReport';
 
-// 🧠 AKUMULATOR DATA GLOBAL: Menghitung akurasi dari seluruh riwayat ujian
+// 🧠 AKUMULATOR DATA GLOBAL: Diperbarui agar kebal terhadap data kosong & perbedaan nama variabel
 function generateGlobalSnapshot(examHistory: any[]) {
   const globalQuestions: any[] = [];
   const globalAnswers: Record<string, any> = {};
@@ -20,11 +20,27 @@ function generateGlobalSnapshot(examHistory: any[]) {
         ? JSON.parse(result.review_snapshot)
         : result.review_snapshot;
 
-      if (snapshot && Array.isArray(snapshot.questions)) {
-        snapshot.questions.forEach((q: any) => {
+      // 🌟 PERBAIKAN: Adaptasi struktur snapshot baik array langsung ataupun objek berkunci .questions
+      const questionsArray = Array.isArray(snapshot) 
+        ? snapshot 
+        : (snapshot?.questions || snapshot?.activeQuestions || []);
+
+      const originalAnswers = Array.isArray(snapshot) ? {} : (snapshot?.answers || {});
+
+      if (Array.isArray(questionsArray)) {
+        questionsArray.forEach((q: any) => {
           const uniqueInstanceId = `${result.id}_${q.id}`;
-          globalQuestions.push({ ...q, id: uniqueInstanceId });
-          const originalAnswers = snapshot.answers || {};
+          
+          // 🌟 FORCE NORMALIZE SUB CATEGORY: Menyelamatkan grafik dari data kosong di masa lalu
+          const normalizedSubCategory = q.sub_category || q.sub_kategori || 'Umum';
+
+          globalQuestions.push({ 
+            ...q, 
+            id: uniqueInstanceId,
+            sub_category: normalizedSubCategory,
+            sub_kategori: normalizedSubCategory
+          });
+          
           const ans = originalAnswers[q.id] || Object.values(originalAnswers).find((a: any) => a?.questionId === q.id || a?.question_id === q.id);
           if (ans) globalAnswers[uniqueInstanceId] = ans;
         });
@@ -65,7 +81,23 @@ export default function ParticipantDashboard() {
       const snapshot = typeof selectedExam.review_snapshot === 'string'
         ? JSON.parse(selectedExam.review_snapshot)
         : selectedExam.review_snapshot;
-      if (snapshot && Array.isArray(snapshot.questions)) return snapshot;
+        
+      const questionsArray = Array.isArray(snapshot) 
+        ? snapshot 
+        : (snapshot?.questions || snapshot?.activeQuestions || []);
+
+      if (Array.isArray(questionsArray)) {
+        // Normalisasi data sub_category di dalam modal pratinjau detail
+        const safeQuestions = questionsArray.map((q: any) => ({
+          ...q,
+          sub_category: q.sub_category || q.sub_kategori || 'Umum',
+          sub_kategori: q.sub_category || q.sub_kategori || 'Umum'
+        }));
+        return {
+          questions: safeQuestions,
+          answers: Array.isArray(snapshot) ? {} : (snapshot?.answers || {})
+        };
+      }
     } catch (e) { console.error(e); }
     return null;
   })();
@@ -137,7 +169,7 @@ export default function ParticipantDashboard() {
           </section>
 
           {/* ─── DIAGNOSTIC REPORT (SMART ANALYTICS) ─── */}
-          {!resultsLoading && totalExams > 0 && (
+          {!resultsLoading && totalExams > 0 && globalSnapshotData.questions.length > 0 && (
             <section className="border-t border-slate-100 pt-10">
               <div className="mb-6">
                 <span className="text-[10px] font-bold text-[#1e3a8a] uppercase tracking-widest block mb-1">Smart Diagnostic</span>
@@ -189,9 +221,9 @@ export default function ParticipantDashboard() {
         </motion.div>
       </main>
 
-      {/* ─── MODAL DETAIL (SYNCHRONIZED COLORS) ─── */}
+      {/* ─── MODAL DETAIL ─── */}
       <AnimatePresence>
-        {selectedExam && (
+        {selectedExam && selectedExamSnapshot && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setSelectedExam(null)} className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm" />
             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-white rounded-2xl p-6 w-full max-w-xl shadow-2xl relative z-10 border border-slate-100 max-h-[85vh] overflow-y-auto">
@@ -212,12 +244,10 @@ export default function ParticipantDashboard() {
                 <p className="text-4xl font-black text-[#1e3a8a]">{selectedExam.total_score}</p>
               </div>
 
-              {selectedExamSnapshot && (
-                <div className="mb-6 border-t border-slate-100 pt-4">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Diagnosis Sesi Ini</p>
-                  <DiagnosticReport questions={selectedExamSnapshot.questions} answers={selectedExamSnapshot.answers} />
-                </div>
-              )}
+              <div className="mb-6 border-t border-slate-100 pt-4">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Diagnosis Sesi Ini</p>
+                <DiagnosticReport questions={selectedExamSnapshot.questions} answers={selectedExamSnapshot.answers} />
+              </div>
 
               <button
                 onClick={() => setSelectedExam(null)}
