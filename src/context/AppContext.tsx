@@ -1,4 +1,4 @@
-import { createContext, useContext, useReducer, useEffect, ReactNode, useState } from 'react';
+import { createContext, useContext, useReducer, useEffect, ReactNode, useState, useCallback } from 'react';
 import { AppState, AppView, ExamSession, Profile, Question, ExamType, ExamPackage } from '../types'; 
 import { mockQuestions, EXAM_CONFIGS } from '../data/mockData';
 import { supabase, getProfile } from '../lib/supabase';
@@ -281,34 +281,34 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [isSyncLocked, setIsSyncLocked] = useState(false);
   const [examHistory, setExamHistory] = useState<any[]>([]);
 
-  // ─── 🛠️ METODE URUTAN AMAN: AMBIL DATA DENGAN SISTEM CADANGAN JALUR BERURUTAN ───
-  async function fetchUserExamHistory() {
+  // ─── 🛠️ FIX INFINITE LOOP & FIX NULL VALUE DATABASE FILTER ───
+  const fetchUserExamHistory = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Kueri Utama: Berdasarkan participant_id (Sangat Cepat & 100% Bebas Eror Sintaks SQL)
+      // 🌟 ANTI-NULL FILTER: Menggunakan .not('is_deleted', 'eq', true)
+      // Ini menjamin baris data lama yang bernilai NULL di database tidak terbuang percobaannya!
       const { data, error } = await supabase
         .from('exam_results')
         .select('*')
         .eq('participant_id', user.id)
         .eq('status', 'completed') 
-        .eq('is_deleted', false)
+        .not('is_deleted', 'eq', true)
         .order('completed_at', { ascending: false });
 
       if (error) throw error;
 
       let finalData = data || [];
 
-      // Kueri Cadangan: Jika data di atas kosong (kasus teman Anda setelah reset password),
-      // aplikasi akan mencari baris data lama berdasarkan string email di kolom user_name.
+      // Jalur Cadangan Mandiri (Jika akun teman Anda kehilangan ID-nya akibat proses reset)
       if (finalData.length === 0 && user.email) {
         const { data: fallbackData } = await supabase
           .from('exam_results')
           .select('*')
           .eq('user_name', user.email)
           .eq('status', 'completed') 
-          .eq('is_deleted', false)
+          .not('is_deleted', 'eq', true)
           .order('completed_at', { ascending: false });
         
         if (fallbackData && fallbackData.length > 0) {
@@ -320,7 +320,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } catch (err) {
       console.error("Gagal memuat riwayat ujian:", err);
     }
-  }
+  }, []);
 
   useEffect(() => {
     if (state.currentView && state.currentView !== 'landing') {
@@ -615,7 +615,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     });
     return () => subscription.unsubscribe();
-  }, []);
+  }, [fetchUserExamHistory]);
 
   async function signOut() { await supabase.auth.signOut(); dispatch({ type: 'LOGOUT' }); }
 
