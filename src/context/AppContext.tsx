@@ -63,7 +63,6 @@ async function fetchQuestionsForExam(examType: ExamType, packageId?: string): Pr
     if (data && data.length > 0) {
       const mappedData = data.map((q) => ({
         ...q,
-        // 🌟 PENYELAMAT GRAFIK A: Mengawinkan sub_category dan sub_kategori agar ramah di semua komponen
         sub_category: q.sub_category || q.sub_kategori || 'Umum',
         sub_kategori: q.sub_category || q.sub_kategori || 'Umum',
         points_a: q.points_a ?? 0,
@@ -282,34 +281,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [isSyncLocked, setIsSyncLocked] = useState(false);
   const [examHistory, setExamHistory] = useState<any[]>([]);
 
-  // ─── 🌟 PENYELAMAT RIWAYAT: MENGGUNAKAN KUERI BERURUTAN (100% AMAN ANTI CRASH SQL) ───
+  // ─── 🌟 PENYELAMAT UTAMA: MEMBERSIHKAN FILTER YANG BERWARNA MERAH ───
   const fetchUserExamHistory = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Kueri Tahap A: Cari data murni berdasarkan ID (Jalur utama yang terbukti sukses di akun Anda)
+      // Filter 'is_deleted' resmi dihapus agar tidak memicu Crash HTTP Merah pada database Anda
       const { data, error } = await supabase
         .from('exam_results')
         .select('*')
         .eq('participant_id', user.id)
         .eq('status', 'completed') 
-        .eq('is_deleted', false)
         .order('completed_at', { ascending: false });
 
       if (error) throw error;
 
       let finalRecords = data || [];
 
-      // Kueri Tahap B (Jalur Cadangan): Jika ID kosong (kasus teman Anda setelah reset password),
-      // cari cadangan berdasarkan teks nama/email di kolom user_name.
+      // Jalur Cadangan Mandiri untuk akun teman Anda
       if (finalRecords.length === 0 && user.email) {
         const { data: fallbackData } = await supabase
           .from('exam_results')
           .select('*')
           .eq('user_name', user.email)
           .eq('status', 'completed') 
-          .eq('is_deleted', false)
           .order('completed_at', { ascending: false });
         
         if (fallbackData && fallbackData.length > 0) {
@@ -494,7 +490,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (!finalDiagnostic) {
         const breakdown: Record<string, { correct: number; total: number; percentage: number }> = {};
         session.questions.forEach((q) => {
-          // 🌟 PENYELAMAT GRAFIK B: Amankan pembacaan sub_category / sub_kategori saat kalkulasi data akhir
           const subCat = q.sub_category || q.sub_kategori || 'Umum';
           const userAnswer = session.answers[q.id];
           const selected = userAnswer?.selectedAnswer;
@@ -562,11 +557,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  // Mengembalikan fungsi hapus murni menggunakan kueri standar bawaan Supabase Anda
   async function deleteHistory(resultId: string): Promise<boolean> {
     try {
       const { error } = await supabase
         .from('exam_results')
-        .update({ is_deleted: true })
+        .delete()
         .eq('id', resultId);
 
       if (!error) { 
