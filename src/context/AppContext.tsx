@@ -282,18 +282,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [isSyncLocked, setIsSyncLocked] = useState(false);
   const [examHistory, setExamHistory] = useState<any[]>([]);
 
-  // ─── 🛠️ REKAYASA PENYELAMAT RIWAYAT (MENGGUNAKAN KOLOM YANG DIJAMIN ADA) ───
+  // ─── 🛠️ REKAYASA PENYELAMAT RIWAYAT (DENGAN FIX TANDA PETIK GANDA SINTAKS) ───
   async function fetchUserExamHistory() {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // 🌟 Menggunakan filter gabungan participant_id ATAU user_name (untuk menangkap data lama & akun teman Anda)
-      // Kolom 'email' resmi dibuang karena tidak ada di skema tabel Anda, mencegah Crash SQL.
+      // 🌟 FIX UTAMA: Teks user.email wajib dibungkus dengan "" di dalam query .or() Supabase
+      // Ini mengunci agar string email tidak merusak parser SQL Postgrest
       const { data, error } = await supabase
         .from('exam_results')
         .select('*')
-        .or(`participant_id.eq.${user.id},user_name.eq.${user.email || ''}`)
+        .or(`participant_id.eq.${user.id},user_name.eq."${user.email || ''}"`)
         .eq('status', 'completed') 
         .eq('is_deleted', false)
         .order('completed_at', { ascending: false });
