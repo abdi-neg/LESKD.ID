@@ -282,23 +282,39 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [isSyncLocked, setIsSyncLocked] = useState(false);
   const [examHistory, setExamHistory] = useState<any[]>([]);
 
-  // ─── 🛠️ REKAYASA PENYELAMAT RIWAYAT (DENGAN FIX TANDA PETIK GANDA SINTAKS) ───
+  // ─── 🛠️ REKAYASA PENYELAMAT RIWAYAT (METODE FALLBACK ANTI-GAGAL) ───
   async function fetchUserExamHistory() {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // 🌟 FIX UTAMA: Teks user.email wajib dibungkus dengan "" di dalam query .or() Supabase
-      // Ini mengunci agar string email tidak merusak parser SQL Postgrest
-      const { data, error } = await supabase
+      // Langkah 1: Ambil data utama berdasarkan participant_id (Sangat Cepat & Standar)
+      let { data, error } = await supabase
         .from('exam_results')
         .select('*')
-        .or(`participant_id.eq.${user.id},user_name.eq."${user.email || ''}"`)
+        .eq('participant_id', user.id)
         .eq('status', 'completed') 
         .eq('is_deleted', false)
         .order('completed_at', { ascending: false });
 
       if (error) throw error;
+
+      // Langkah 2: Jalur Cadangan Mandiri. Jika data di atas kosong (kasus teman Anda),
+      // cari baris data lama berdasarkan string email di kolom user_name.
+      if (!data || data.length === 0) {
+        const { data: fallbackData, error: fallbackError } = await supabase
+          .from('exam_results')
+          .select('*')
+          .eq('user_name', user.email)
+          .eq('status', 'completed') 
+          .eq('is_deleted', false)
+          .order('completed_at', { ascending: false });
+        
+        if (!fallbackError && fallbackData) {
+          data = fallbackData;
+        }
+      }
+
       setExamHistory(data || []);
     } catch (err) {
       console.error("Gagal memuat riwayat ujian:", err);
