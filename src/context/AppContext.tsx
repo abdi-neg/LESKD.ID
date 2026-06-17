@@ -281,43 +281,68 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [isSyncLocked, setIsSyncLocked] = useState(false);
   const [examHistory, setExamHistory] = useState<any[]>([]);
 
-  // ─── 🌟 PENYELAMAT UTAMA: MEMBERSIHKAN FILTER YANG BERWARNA MERAH ───
+  // ─── 🌟 KUNCI KESEMBUHAN: KANAL CADANGAN BERURUTAN (ID ➔ EMAIL ➔ NAMA LENGKAP) ───
   const fetchUserExamHistory = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Filter 'is_deleted' resmi dihapus agar tidak memicu Crash HTTP Merah pada database Anda
+      // LAPIS 1: Ambil data murni berdasarkan participant_id
       const { data, error } = await supabase
         .from('exam_results')
         .select('*')
         .eq('participant_id', user.id)
-        .eq('status', 'completed') 
         .order('completed_at', { ascending: false });
 
       if (error) throw error;
-
       let finalRecords = data || [];
 
-      // Jalur Cadangan Mandiri untuk akun teman Anda
+      // LAPIS 2: Jika kosong, lacak apakah email tersimpan di kolom user_name
       if (finalRecords.length === 0 && user.email) {
-        const { data: fallbackData } = await supabase
+        const { data: fallbackEmail } = await supabase
           .from('exam_results')
           .select('*')
           .eq('user_name', user.email)
-          .eq('status', 'completed') 
           .order('completed_at', { ascending: false });
         
-        if (fallbackData && fallbackData.length > 0) {
-          finalRecords = fallbackData;
+        if (fallbackEmail && fallbackEmail.length > 0) {
+          finalRecords = fallbackEmail;
         }
       }
 
-      setExamHistory(finalRecords);
+      // LAPIS 3: Jika masih kosong gres, lacak berdasarkan teks Nama Lengkap di kolom user_name
+      if (finalRecords.length === 0) {
+        // Ambil nama dari profil state ataupun metadata bawaan pendaftaran Supabase Auth
+        const profileName = state.profile?.full_name || user.user_metadata?.full_name || user.user_metadata?.name;
+        if (profileName) {
+          const { data: fallbackName } = await supabase
+            .from('exam_results')
+            .select('*')
+            .eq('user_name', profileName)
+            .order('completed_at', { ascending: false });
+          
+          if (fallbackName && fallbackName.length > 0) {
+            finalRecords = fallbackName;
+          }
+        }
+      }
+
+      // Saring data di frontend secara aman agar terhindar dari kaku kolom database
+      const safeCompletedRecords = finalRecords.filter((r) => {
+        if (r.status === 'in_progress') return false;
+        return (
+          r.status === 'completed' || 
+          r.status === 'selesai' || 
+          r.status === null || 
+          (r.total_score !== undefined && r.total_score !== null)
+        );
+      });
+
+      setExamHistory(safeCompletedRecords);
     } catch (err) {
       console.error("Gagal memuat riwayat ujian:", err);
     }
-  }, []);
+  }, [state.profile?.full_name]);
 
   useEffect(() => {
     if (state.currentView && state.currentView !== 'landing') {
@@ -557,7 +582,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  // Mengembalikan fungsi hapus murni menggunakan kueri standar bawaan Supabase Anda
   async function deleteHistory(resultId: string): Promise<boolean> {
     try {
       const { error } = await supabase
