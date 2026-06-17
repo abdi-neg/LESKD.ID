@@ -20,7 +20,6 @@ function generateGlobalSnapshot(examHistory: any[]) {
         ? JSON.parse(result.review_snapshot)
         : result.review_snapshot;
 
-      // 🌟 PERBAIKAN: Adaptasi struktur snapshot baik array langsung ataupun objek berkunci .questions
       const questionsArray = Array.isArray(snapshot) 
         ? snapshot 
         : (snapshot?.questions || snapshot?.activeQuestions || []);
@@ -30,8 +29,6 @@ function generateGlobalSnapshot(examHistory: any[]) {
       if (Array.isArray(questionsArray)) {
         questionsArray.forEach((q: any) => {
           const uniqueInstanceId = `${result.id}_${q.id}`;
-          
-          // 🌟 FORCE NORMALIZE SUB CATEGORY: Menyelamatkan grafik dari data kosong di masa lalu
           const normalizedSubCategory = q.sub_category || q.sub_kategori || 'Umum';
 
           globalQuestions.push({ 
@@ -61,11 +58,13 @@ export default function ParticipantDashboard() {
   const [resultsLoading, setResultsLoading] = useState(true);
   const [selectedExam, setSelectedExam] = useState<any | null>(null);
 
+  // 🌟 KUNCI EMAS ANTI-LOOP: Mengunci trigger kueri Supabase hanya berdasarkan ID user saja.
+  // Ini menjamin pemanggilan ke Supabase hanya terjadi 1x saat user masuk dashboard.
   useEffect(() => {
-    if (!profile) return;
+    if (!profile?.id) return;
     setResultsLoading(true);
     fetchUserExamHistory().finally(() => setResultsLoading(false));
-  }, [profile, fetchUserExamHistory]);
+  }, [profile?.id]); 
 
   const totalExams = examHistory.length;
   const avgScore = totalExams > 0
@@ -87,7 +86,6 @@ export default function ParticipantDashboard() {
         : (snapshot?.questions || snapshot?.activeQuestions || []);
 
       if (Array.isArray(questionsArray)) {
-        // Normalisasi data sub_category di dalam modal pratinjau detail
         const safeQuestions = questionsArray.map((q: any) => ({
           ...q,
           sub_category: q.sub_category || q.sub_kategori || 'Umum',
@@ -169,7 +167,7 @@ export default function ParticipantDashboard() {
           </section>
 
           {/* ─── DIAGNOSTIC REPORT (SMART ANALYTICS) ─── */}
-          {!resultsLoading && totalExams > 0 && globalSnapshotData.questions.length > 0 && (
+          {!resultsLoading && totalExams > 0 && (
             <section className="border-t border-slate-100 pt-10">
               <div className="mb-6">
                 <span className="text-[10px] font-bold text-[#1e3a8a] uppercase tracking-widest block mb-1">Smart Diagnostic</span>
