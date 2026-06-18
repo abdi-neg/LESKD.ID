@@ -10,7 +10,7 @@ import {
 } from '../lib/examPersistence';
 
 type AppAction =
-  | { type: 'SET_AUTH_LOADING': payload: boolean }
+  | { type: 'SET_AUTH_LOADING'; payload: boolean }
   | { type: 'SET_PROFILE'; payload: Profile | null }
   | { type: 'LOGOUT' }
   | { type: 'SET_VIEW'; payload: AppView }
@@ -62,7 +62,6 @@ async function fetchQuestionsForExam(examType: ExamType, packageId?: string): Pr
     const { data } = await supabase.from('questions').select('*').eq('package_id', packageId).order('created_at');
     if (data && data.length > 0) {
       const mappedData = data.map((q) => {
-        // ─── 🌟 NORMALISASI KAPITALISASI TEMPLATE WORD ───
         const verifiedSub = q.sub_category || q.sub_kategori || q.SUB_KATEGORI || (q as any).sub_Kategori || 'Umum';
         return {
           ...q,
@@ -83,7 +82,6 @@ async function fetchQuestionsForExam(examType: ExamType, packageId?: string): Pr
     }
   }
 
-  // Jalur Fallback Kompatibel data lokal jika packageId tidak dikirim frontend
   const mock = examType === 'FULL' ? mockQuestions : mockQuestions.filter((q) => q.category === examType);
   const mappedMock = mock.map((q) => {
     const verifiedSub = (q as any).sub_category || (q as any).sub_kategori || (q as any).SUB_KATEGORI || 'Umum';
@@ -515,7 +513,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (!finalDiagnostic) {
         const breakdown: Record<string, { correct: number; total: number; percentage: number }> = {};
         session.questions.forEach((q) => {
-          // ─── 🌟 PERLINDUNGAN KAPITALISASI SAAT SUBMIT ───
           const subCat = q.sub_category || q.sub_kategori || (q as any).SUB_KATEGORI || 'Umum';
           const userAnswer = session.answers[q.id];
           const selected = userAnswer?.selectedAnswer;
