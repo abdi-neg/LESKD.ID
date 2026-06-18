@@ -10,7 +10,7 @@ import {
 } from '../lib/examPersistence';
 
 type AppAction =
-  | { type: 'SET_AUTH_LOADING'; payload: boolean }
+  | { type: 'SET_AUTH_LOADING': payload: boolean }
   | { type: 'SET_PROFILE'; payload: Profile | null }
   | { type: 'LOGOUT' }
   | { type: 'SET_VIEW'; payload: AppView }
@@ -61,16 +61,21 @@ async function fetchQuestionsForExam(examType: ExamType, packageId?: string): Pr
   if (packageId) {
     const { data } = await supabase.from('questions').select('*').eq('package_id', packageId).order('created_at');
     if (data && data.length > 0) {
-      const mappedData = data.map((q) => ({
-        ...q,
-        sub_category: q.sub_category || q.sub_kategori || 'Umum',
-        sub_kategori: q.sub_category || q.sub_kategori || 'Umum',
-        points_a: q.points_a ?? 0,
-        points_b: q.points_b ?? 0,
-        points_c: q.points_c ?? 0,
-        points_d: q.points_d ?? 0,
-        points_e: q.points_e ?? 0,
-      })) as Question[];
+      const mappedData = data.map((q) => {
+        // ─── 🌟 NORMALISASI KAPITALISASI TEMPLATE WORD ───
+        const verifiedSub = q.sub_category || q.sub_kategori || q.SUB_KATEGORI || (q as any).sub_Kategori || 'Umum';
+        return {
+          ...q,
+          sub_category: verifiedSub,
+          sub_kategori: verifiedSub,
+          points_a: q.points_a ?? 0,
+          points_b: q.points_b ?? 0,
+          points_c: q.points_c ?? 0,
+          points_d: q.points_d ?? 0,
+          points_e: q.points_e ?? 0,
+        };
+      }) as Question[];
+      
       const filtered = examType === 'FULL' ? mappedData : mappedData.filter((q) => q.category === examType);
       if (filtered.length > 0) {
         return [...filtered.slice(0, config.questionCount)].sort(sortSKD);
@@ -78,17 +83,22 @@ async function fetchQuestionsForExam(examType: ExamType, packageId?: string): Pr
     }
   }
 
+  // Jalur Fallback Kompatibel data lokal jika packageId tidak dikirim frontend
   const mock = examType === 'FULL' ? mockQuestions : mockQuestions.filter((q) => q.category === examType);
-  const mappedMock = mock.map((q) => ({
-    ...q,
-    sub_category: (q as any).sub_category || (q as any).sub_kategori || 'Umum',
-    sub_kategori: (q as any).sub_category || (q as any).sub_kategori || 'Umum',
-    points_a: (q as any).points_a ?? 0,
-    points_b: (q as any).points_b ?? 0,
-    points_c: (q as any).points_c ?? 0,
-    points_d: (q as any).points_d ?? 0,
-    points_e: (q as any).points_e ?? 0,
-  })) as Question[];
+  const mappedMock = mock.map((q) => {
+    const verifiedSub = (q as any).sub_category || (q as any).sub_kategori || (q as any).SUB_KATEGORI || 'Umum';
+    return {
+      ...q,
+      sub_category: verifiedSub,
+      sub_kategori: verifiedSub,
+      points_a: (q as any).points_a ?? 0,
+      points_b: (q as any).points_b ?? 0,
+      points_c: (q as any).points_c ?? 0,
+      points_d: (q as any).points_d ?? 0,
+      points_e: (q as any).points_e ?? 0,
+    };
+  }) as Question[];
+  
   let padded = mappedMock;
   while (padded.length < config.questionCount) { padded = [...padded, ...padded].slice(0, config.questionCount); }
   
@@ -98,16 +108,20 @@ async function fetchQuestionsForExam(examType: ExamType, packageId?: string): Pr
 function buildSession(examType: ExamType, questions: Question[], pkg?: ExamPackage): ExamSession {
   const config = EXAM_CONFIGS[examType];
   const answers: ExamSession['answers'] = {};
-  const securedQuestions = questions.map((q) => ({
-    ...q,
-    sub_category: q.sub_category || q.sub_kategori || 'Umum',
-    sub_kategori: q.sub_category || q.sub_kategori || 'Umum',
-    points_a: (q as any).points_a ?? 0,
-    points_b: (q as any).points_b ?? 0,
-    points_c: (q as any).points_c ?? 0,
-    points_d: (q as any).points_d ?? 0,
-    points_e: (q as any).points_e ?? 0,
-  })) as Question[];
+  const securedQuestions = questions.map((q) => {
+    const verifiedSub = q.sub_category || q.sub_kategori || q.SUB_KATEGORI || 'Umum';
+    return {
+      ...q,
+      sub_category: verifiedSub,
+      sub_kategori: verifiedSub,
+      points_a: (q as any).points_a ?? 0,
+      points_b: (q as any).points_b ?? 0,
+      points_c: (q as any).points_c ?? 0,
+      points_d: (q as any).points_d ?? 0,
+      points_e: (q as any).points_e ?? 0,
+    };
+  }) as Question[];
+
   securedQuestions.forEach((q) => {
     answers[q.id] = { questionId: q.id, selectedAnswer: null, isMarked: false };
   });
@@ -281,13 +295,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [isSyncLocked, setIsSyncLocked] = useState(false);
   const [examHistory, setExamHistory] = useState<any[]>([]);
 
-  // ─── 🌟 KUNCI KESEMBUHAN: KANAL CADANGAN BERURUTAN (ID ➔ EMAIL ➔ NAMA LENGKAP) ───
   const fetchUserExamHistory = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // LAPIS 1: Ambil data murni berdasarkan participant_id
       const { data, error } = await supabase
         .from('exam_results')
         .select('*')
@@ -297,7 +309,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (error) throw error;
       let finalRecords = data || [];
 
-      // LAPIS 2: Jika kosong, lacak apakah email tersimpan di kolom user_name
       if (finalRecords.length === 0 && user.email) {
         const { data: fallbackEmail } = await supabase
           .from('exam_results')
@@ -310,9 +321,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      // LAPIS 3: Jika masih kosong gres, lacak berdasarkan teks Nama Lengkap di kolom user_name
       if (finalRecords.length === 0) {
-        // Ambil nama dari profil state ataupun metadata bawaan pendaftaran Supabase Auth
         const profileName = state.profile?.full_name || user.user_metadata?.full_name || user.user_metadata?.name;
         if (profileName) {
           const { data: fallbackName } = await supabase
@@ -327,7 +336,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      // Saring data di frontend secara aman agar terhindar dari kaku kolom database
       const safeCompletedRecords = finalRecords.filter((r) => {
         if (r.status === 'in_progress') return false;
         return (
@@ -400,7 +408,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       state.examSession.status === 'in_progress' && 
       state.examSession.timeRemaining <= 0
     ) {
-      console.log("⏰ [TIMER] Waktu habis! Memicu fungsi submit otomatis...");
       submitExamSession();
     }
   }, [state.examSession?.timeRemaining, state.examSession?.status]);
@@ -410,15 +417,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!user) { dispatch({ type: 'SET_PROFILE', payload: null }); return; }
     try {
       let profile = await getProfile(user.id);
-      
       let attempts = 0;
       while (!profile && attempts < retries) {
-        console.log(`[AUTH] Menunggu pembuatan profil dari database... (Percobaan ${attempts + 1})`);
         await new Promise(resolve => setTimeout(resolve, 600));
         profile = await getProfile(user.id);
         attempts++;
       }
-
       dispatch({ type: 'SET_PROFILE', payload: profile ? (profile as Profile) : null });
     } catch { 
       dispatch({ type: 'SET_PROFILE', payload: null }); 
@@ -432,10 +436,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       isStartingExam = true;
       setIsSyncLocked(false); 
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        alert("Sesi login tidak valid.");
-        return;
-      }
+      if (!user) { alert("Sesi login tidak valid."); return; }
 
       const questions = await fetchQuestionsForExam(examType, pkg?.id);
       if (!questions || questions.length === 0) {
@@ -458,7 +459,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           user_name: state.profile?.full_name || user.email, 
           package_type: pkg?.package_type || examType,
           package_id: pkg?.id || null,
-          package_name: pkg?.name || 'Mini Tryout',
+          package_name: pkg?.name || 'Tryout Full SKD',
           score_tiu: 0, score_twk: 0, score_tkp: 0, total_score: 0,
           questions_total: questions.length, questions_correct: 0,
           passed: false, 
@@ -478,7 +479,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       };
 
       localStorage.setItem('active_db_result_id', finalDbRow.id);
-
       saveExamProgress(sessionWithResultId);
       dispatch({ type: 'RESUME_EXAM', payload: sessionWithResultId });
 
@@ -497,7 +497,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     const dbResultId = (session as any).resultId || localStorage.getItem('active_db_result_id');
     if (!dbResultId) {
-      alert("Sesi ID database hilang. Silakan kembali ke dashboard dan buat ujian baru.");
+      alert("Sesi ID database hilang. Silakan kembali ke dashboard.");
       return;
     }
 
@@ -515,7 +515,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (!finalDiagnostic) {
         const breakdown: Record<string, { correct: number; total: number; percentage: number }> = {};
         session.questions.forEach((q) => {
-          const subCat = q.sub_category || q.sub_kategori || 'Umum';
+          // ─── 🌟 PERLINDUNGAN KAPITALISASI SAAT SUBMIT ───
+          const subCat = q.sub_category || q.sub_kategori || (q as any).SUB_KATEGORI || 'Umum';
           const userAnswer = session.answers[q.id];
           const selected = userAnswer?.selectedAnswer;
 
@@ -561,8 +562,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (error) throw error;
 
       await fetchUserExamHistory();
-
       clearExamProgress(session.id);
+      
       localStorage.removeItem('exam_active_session_id');
       localStorage.removeItem('active_db_result_id'); 
 
@@ -638,8 +639,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
     return () => subscription.unsubscribe();
   }, [fetchUserExamHistory]);
-
-  async function signOut() { await supabase.auth.signOut(); dispatch({ type: 'LOGOUT' }); }
 
   return (
     <AppContext.Provider value={{ 
