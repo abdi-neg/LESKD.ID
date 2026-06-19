@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Key, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
 import { ExamPackage } from '../../types';
+import { supabase } from '../../lib/supabase'; // 🌟 Pastikan import supabase sudah benar
 
 interface Props {
   pkg: ExamPackage;
@@ -28,19 +29,42 @@ export default function TokenGate({ pkg, onSuccess, onClose }: Props) {
     e.preventDefault();
     setError('');
     setLoading(true);
-    await new Promise((r) => setTimeout(r, 600));
 
-    // ─── 🌟 FIX TYPE MISMATCH: Konversi token database menjadi String secara eksplisit ───
-    const inputTokenClean = token.trim();
-    const dbTokenClean = String(pkg.token || pkg.token_ujian || '').trim();
+    try {
+      // ─── 🌟 LANGKAH EMAS: Ambil token paling segar dari Supabase detik ini juga ───
+      const { data, error: dbError } = await supabase
+        .from('exam_packages')
+        .select('token')
+        .eq('id', pkg.id)
+        .single();
 
-    if (inputTokenClean === dbTokenClean) {
-      setVerified(true);
-      setTimeout(onSuccess, 900);
-    } else {
-      setError('Token tidak valid. Pastikan token yang Anda masukkan benar.');
+      if (dbError || !data) {
+        setError('Gagal terhubung ke server untuk verifikasi token.');
+        setLoading(false);
+        return;
+      }
+
+      const inputTokenClean = token.trim();
+      let dbTokenClean = String(data.token || '').trim();
+
+      // ─── 🌟 ANTI-DROP ZERO: Jika token di DB berupa angka yang kehilangan '0' di depan ───
+      if (dbTokenClean.length < 6 && /^\d+$/.test(dbTokenClean)) {
+        dbTokenClean = dbTokenClean.padStart(6, '0'); // Otomatis kembalikan 0 di depan (ex: "54321" menjadi "054321")
+      }
+
+      // Jalankan pencocokan steril tingkat akhir
+      if (inputTokenClean === dbTokenClean) {
+        setVerified(true);
+        setTimeout(onSuccess, 900);
+      } else {
+        setError('Token tidak valid. Pastikan token yang Anda masukkan benar.');
+      }
+    } catch (err) {
+      console.error(err);
+      setError('Terjadi kendala sistem saat memproses token.');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }
 
   return (
