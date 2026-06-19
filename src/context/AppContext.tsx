@@ -293,7 +293,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [isSyncLocked, setIsSyncLocked] = useState(false);
   const [examHistory, setExamHistory] = useState<any[]>([]);
 
-  // ─── 🌟 TARGET RECOVERY: Menulis ulang fungsi keluar resmi Supabase ───
   async function signOut() {
     try {
       await supabase.auth.signOut();
@@ -460,6 +459,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         .eq('participant_id', user.id)
         .eq('status', 'in_progress');
 
+      // ─── 🌟 PERBAIKAN EMAS: Menyuntikkan stempel tanggal mulai ujian secara absolut ───
       const { data: newRow, error: insertErr } = await supabase
         .from('exam_results')
         .insert({
@@ -472,6 +472,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           questions_total: questions.length, questions_correct: 0,
           passed: false, 
           status: 'in_progress',
+          started_at: new Date().toISOString() // ➔ Suntikan murni pengisi radar Live Monitor
         })
         .select()
         .single();
