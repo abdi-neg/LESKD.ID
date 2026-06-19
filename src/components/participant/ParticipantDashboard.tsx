@@ -8,7 +8,7 @@ import Leaderboard from './Leaderboard';
 import ExamHistory from './ExamHistory';
 import DiagnosticReport from '../exam/DiagnosticReport';
 
-// 🧠 AKUMULATOR DATA GLOBAL: Diperbarui agar kebal terhadap data kosong & perbedaan nama variabel
+// 🧠 AKUMULATOR DATA GLOBAL: Kebal dari data kosong & wajib melacak variasi huruf kapital Word
 function generateGlobalSnapshot(examHistory: any[]) {
   const globalQuestions: any[] = [];
   const globalAnswers: Record<string, any> = {};
@@ -29,7 +29,9 @@ function generateGlobalSnapshot(examHistory: any[]) {
       if (Array.isArray(questionsArray)) {
         questionsArray.forEach((q: any) => {
           const uniqueInstanceId = `${result.id}_${q.id}`;
-          const normalizedSubCategory = q.sub_category || q.sub_kategori || 'Umum';
+          
+          // ─── 🌟 TARGET FIX: Melacak segala bentuk penulisan subkategori termasuk kapital ───
+          const normalizedSubCategory = q.sub_category || q.sub_kategori || q.SUB_KATEGORI || (q as any).SUB_CATEGORY || 'Umum';
 
           globalQuestions.push({ 
             ...q, 
@@ -59,7 +61,6 @@ export default function ParticipantDashboard() {
   const [selectedExam, setSelectedExam] = useState<any | null>(null);
 
   // 🌟 KUNCI EMAS ANTI-LOOP: Mengunci trigger kueri Supabase hanya berdasarkan ID user saja.
-  // Ini menjamin pemanggilan ke Supabase hanya terjadi 1x saat user masuk dashboard.
   useEffect(() => {
     if (!profile?.id) return;
     setResultsLoading(true);
@@ -86,11 +87,15 @@ export default function ParticipantDashboard() {
         : (snapshot?.questions || snapshot?.activeQuestions || []);
 
       if (Array.isArray(questionsArray)) {
-        const safeQuestions = questionsArray.map((q: any) => ({
-          ...q,
-          sub_category: q.sub_category || q.sub_kategori || 'Umum',
-          sub_kategori: q.sub_category || q.sub_kategori || 'Umum'
-        }));
+        const safeQuestions = questionsArray.map((q: any) => {
+          // ─── 🌟 TARGET FIX LAYAR MODAL DETAIL: Normalisasi variasi nama kolom ───
+          const safeSubCategory = q.sub_category || q.sub_kategori || q.SUB_KATEGORI || (q as any).SUB_CATEGORY || 'Umum';
+          return {
+            ...q,
+            sub_category: safeSubCategory,
+            sub_kategori: safeSubCategory
+          };
+        });
         return {
           questions: safeQuestions,
           answers: Array.isArray(snapshot) ? {} : (snapshot?.answers || {})
