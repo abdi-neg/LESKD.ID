@@ -30,7 +30,11 @@ export default function TokenGate({ pkg, onSuccess, onClose }: Props) {
     setLoading(true);
     await new Promise((r) => setTimeout(r, 600));
 
-    if (token.trim() === pkg.token) {
+    // ─── 🌟 FIX TYPE MISMATCH: Konversi token database menjadi String secara eksplisit ───
+    const inputTokenClean = token.trim();
+    const dbTokenClean = String(pkg.token || pkg.token_ujian || '').trim();
+
+    if (inputTokenClean === dbTokenClean) {
       setVerified(true);
       setTimeout(onSuccess, 900);
     } else {
@@ -99,7 +103,7 @@ export default function TokenGate({ pkg, onSuccess, onClose }: Props) {
                     value={token}
                     onChange={(e) => setToken(e.target.value.replace(/\D/g, '').slice(0, 6))}
                     placeholder="000000"
-                    className={`w-full border border-gray-200 rounded-xl px-4 py-3 text-2xl font-mono font-bold text-center tracking-[0.5em] focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/30 focus:border-[#1e3a8a] transition-all`}
+                    className="w-full border border-gray-200 rounded-xl px-4 py-3 text-2xl font-mono font-bold text-center tracking-[0.5em] focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/30 focus:border-[#1e3a8a] transition-all"
                     maxLength={6}
                     required
                     autoFocus
