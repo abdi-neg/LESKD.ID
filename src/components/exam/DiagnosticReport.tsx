@@ -30,7 +30,7 @@ export default function DiagnosticReport({ questions, answers }: DiagnosticRepor
 
   return (
     <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-6 space-y-8">
-      {/* ─── HEADER SECTION (KATA MALAIKAT SUDAH DIHAPUS RESMI) ─── */}
+      {/* ─── HEADER SECTION ─── */}
       <div className="text-center md:text-left border-b border-gray-50 pb-4">
         <h2 className="text-xl font-black tracking-tight flex items-center justify-center md:justify-start gap-2 text-[#1e3a8a]">
           <Target className="w-5 h-5 text-[#10b981]" />
@@ -55,7 +55,8 @@ export default function DiagnosticReport({ questions, answers }: DiagnosticRepor
           const subMap: Record<string, { correctPoints: number; totalMax: number }> = {};
 
           catQuestions.forEach((q) => {
-            const subName = q?.sub_category || q?.sub_kategori || 'Umum';
+            // ─── 🌟 TARGET FIX MUTLAK: Melacak variasi huruf besar-kecil properti sub-materi ───
+            const subName = q?.sub_category || q?.sub_kategori || q?.SUB_KATEGORI || q?.SUB_CATEGORY || 'Umum';
             const selected = getSelectedAnswer(q.id);
 
             if (!subMap[subName]) {
@@ -110,7 +111,7 @@ export default function DiagnosticReport({ questions, answers }: DiagnosticRepor
                     cx="18"
                     cy="18"
                     r="16"
-                  />
+                    />
                   {/* Lingkaran Utama Nilai */}
                   <motion.circle
                     className={category.color.split(' ')[0]}
@@ -125,7 +126,7 @@ export default function DiagnosticReport({ questions, answers }: DiagnosticRepor
                     cx="18"
                     cy="18"
                     r="16"
-                  />
+                    />
                 </svg>
                 {/* Teks di Tengah Lingkaran */}
                 <div className="absolute flex flex-col items-center justify-center text-center">
