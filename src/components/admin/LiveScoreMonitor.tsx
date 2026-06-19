@@ -14,7 +14,7 @@ const PKG_COLORS: Record<PackageType, string> = {
 const PKG_LABELS: Record<PackageType, string> = {
   MINI_TIU: 'Mini TIU',
   MINI_TWK: 'Mini TWK',
-  MINI_TKP: 'Mini PKP',
+  MINI_TKP: 'Mini TKP',
   FULL: 'Full CAT',
 };
 
@@ -42,7 +42,7 @@ export default function LiveScoreMonitor() {
   const [countdown, setCountdown] = useState<number>(5); 
   const [searchQuery, setSearchQuery] = useState('');
   
-  // ─── 🌟 FIX TIMEZONE: Inisialisasi tanggal hari ini menggunakan penanda zona waktu lokal (WITA) ───
+  // Inisialisasi tanggal lokal hari ini (Format: YYYY-MM-DD)
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toLocaleDateString('en-CA'));
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'ONGOING' | 'SUBMITTED'>('ALL');
   
@@ -117,29 +117,35 @@ export default function LiveScoreMonitor() {
     };
   }, [isRealtime]);
 
-  // ─── 🌟 LOGIKA FILTER ENGINE YANG SUDAH KEBAL SELISIH JAM JAM PAGI HARI ───
+  // ─── 🌟 LOGIKA FILTER PROTEKSI SESI AKTIF (ONGOING) ───
   const filteredResults = results.filter((r) => {
-    // 1. Saring Berdasarkan Paket Ujian
+    // 1. Filter Berdasarkan Paket Ujian
     const matchesPackage = filter === 'ALL' || r.package_type === filter;
 
-    // 2. Saring Berdasarkan Tanggal Lokal (Mengubah stempel UTC Supabase menjadi WITA asli)
-    const rawDate = r.started_at || (r as any).created_at || r.completed_at;
-    let examDate = '';
-    if (rawDate) {
-      const parsedDate = new Date(rawDate);
-      if (!isNaN(parsedDate.getTime())) {
-        examDate = parsedDate.toLocaleDateString('en-CA'); // Menghasilkan "YYYY-MM-DD" waktu lokal laptop
-      }
-    }
-    const matchesDate = selectedDate ? examDate === selectedDate : true;
-
-    // 3. Saring Berdasarkan Status Jalur Submisi
+    // 2. Filter Berdasarkan Status Jalur Submisi
     const isSubmitted = !!r.completed_at;
     const matchesStatus = 
       statusFilter === 'ALL' ? true :
       statusFilter === 'ONGOING' ? !isSubmitted : isSubmitted;
 
-    // 4. Saring Berdasarkan Kotak Pencarian Nama
+    // 3. Filter Berdasarkan Tanggal (Dengan Toleransi Sesi Aktif)
+    const todayStr = new Date().toLocaleDateString('en-CA');
+    const rawDate = r.started_at || (r as any).created_at || r.completed_at;
+    let examDate = '';
+    
+    if (rawDate) {
+      const parsedDate = new Date(rawDate);
+      if (!isNaN(parsedDate.getTime())) {
+        examDate = parsedDate.toLocaleDateString('en-CA');
+      }
+    }
+
+    // Aturan Emas: Jika selectedDate diisi, data lolos apabila tanggalnya cocok ATAU data tersebut statusnya sedang aktif dikerjakan hari ini
+    const matchesDate = selectedDate 
+      ? (examDate === selectedDate || (!isSubmitted && selectedDate === todayStr))
+      : true;
+
+    // 4. Filter Berdasarkan Kotak Pencarian Nama
     const matchesSearch = searchQuery 
       ? r.participant_name?.toLowerCase().includes(searchQuery.toLowerCase())
       : true;
@@ -156,7 +162,7 @@ export default function LiveScoreMonitor() {
     }
 
     const confirmMsg = filter === 'ALL' 
-      ? `PERINGATAN BAHAYA: Anda akan menghapus ${idsToDelete.length} data riwayat yang tampil di layar sesuai filter tanggal/status aktif saat ini! Lanjutkan?`
+      ? `PERINGATAN BAHAYA: Anda akan menghapus ${idsToDelete.length} data riwayat yang tampil di layar sesuai filter aktif saat ini! Lanjutkan?`
       : `Anda akan menghapus ${idsToDelete.length} data riwayat khusus untuk paket ${PKG_LABELS[filter]} pada filter aktif. Lanjutkan?`;
       
     if (!window.confirm(confirmMsg)) return;
@@ -194,7 +200,7 @@ export default function LiveScoreMonitor() {
     return b.score_twk - a.score_twk;
   });
 
-  // METRIK KARTU RINGKASAN DATA (Sinkron Sesuai Filter Hari yang Terpilih)
+  // METRIK KARTU RINGKASAN DATA
   const totalCount = filteredResults.length;
   const submittedCount = filteredResults.filter((r) => r.completed_at).length;
   const ongoingCount = filteredResults.filter((r) => !r.completed_at).length;
@@ -203,13 +209,15 @@ export default function LiveScoreMonitor() {
     ? Math.round(filteredResults.filter(r => r.completed_at).reduce((s, r) => s + r.total_score, 0) / submittedCount)
     : 0;
 
-  // Hitung jumlah sub-status dinamis khusus untuk tanggal yang dipilih agar tombol tab informatif
-  const totalSesiHariIni = results.filter(r => {
+  // Hitung jumlah sub-status dinamis untuk counter badge di tombol tab
+  const baseListForCounters = results.filter(r => filter === 'ALL' || r.package_type === filter);
+  const todayStr = new Date().toLocaleDateString('en-CA');
+  
+  const totalSesiHariIni = baseListForCounters.filter(r => {
     const rawDate = r.started_at || (r as any).created_at || r.completed_at;
-    return rawDate && new Date(rawDate).toLocaleDateString('en-CA') === selectedDate;
+    const examDate = rawDate ? new Date(rawDate).toLocaleDateString('en-CA') : '';
+    return selectedDate ? (examDate === selectedDate || (!r.completed_at && selectedDate === todayStr)) : true;
   });
-  const ongoingHariIniCount = totalSesiHariIni.filter(r => !r.completed_at).length;
-  const submittedHariIniCount = totalSesiHariIni.filter(r => r.completed_at).length;
 
   return (
     <div className="space-y-6 p-6 bg-slate-950 text-slate-100 rounded-3xl border border-slate-900 shadow-2xl font-sans">
@@ -226,6 +234,7 @@ export default function LiveScoreMonitor() {
         </div>
         
         <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
+          {/* Dropdown Filter Paket */}
           <div className="relative flex-grow lg:flex-grow-0 z-20">
             <button
               onClick={() => setIsFilterOpen(!isFilterOpen)}
@@ -299,11 +308,11 @@ export default function LiveScoreMonitor() {
         </div>
       </div>
 
-      {/* ─── 🌟 CONTROL BOARD BARU: TANGGAL, STATUS SWITCHER, DAN PENCARIAN ─── */}
+      {/* 🛠️ CONTROL BOARD FILTER ADVANCED */}
       <div className="bg-slate-900/50 p-4 rounded-2xl border border-slate-900/80 space-y-4">
         <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
           
-          {/* Kalender Pemilih Hari */}
+          {/* Kalender Pemilih Tanggal */}
           <div className="flex items-center gap-2 border border-slate-800 rounded-xl px-3 py-2 bg-slate-950 text-xs font-bold">
             <Calendar className="w-4 h-4 text-slate-400 flex-shrink-0" />
             <span className="text-slate-400">Tanggal:</span>
@@ -339,9 +348,9 @@ export default function LiveScoreMonitor() {
         {/* Tab Switcher Filter Status Sesi */}
         <div className="flex flex-wrap gap-2 text-xs font-bold border-t border-slate-900 pt-3">
           {[
-            { id: 'ALL', label: 'Semua Kontestan', count: selectedDate ? totalSesiHariIni.length : results.length },
-            { id: 'ONGOING', label: 'Sedang Berjuang', count: selectedDate ? ongoingHariIniCount : results.filter(r => !r.completed_at).length },
-            { id: 'SUBMITTED', label: 'Selesai Sesi', count: selectedDate ? submittedHariIniCount : results.filter(r => r.completed_at).length }
+            { id: 'ALL', label: 'Semua Kontestan', count: totalSesiHariIni.length },
+            { id: 'ONGOING', label: 'Sedang Berjuang', count: totalSesiHariIni.filter(r => !r.completed_at).length },
+            { id: 'SUBMITTED', label: 'Selesai Sesi', count: totalSesiHariIni.filter(r => r.completed_at).length }
           ].map((tab) => (
             <button
               key={tab.id}
