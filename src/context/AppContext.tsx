@@ -293,6 +293,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [isSyncLocked, setIsSyncLocked] = useState(false);
   const [examHistory, setExamHistory] = useState<any[]>([]);
 
+  // ─── 🌟 TARGET RECOVERY: Menulis ulang fungsi keluar resmi Supabase ───
+  async function signOut() {
+    try {
+      await supabase.auth.signOut();
+      dispatch({ type: 'LOGOUT' });
+    } catch (err) {
+      console.error("Gagal melakukan proses log out:", err);
+    }
+  }
+
   const fetchUserExamHistory = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
