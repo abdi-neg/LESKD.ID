@@ -7,7 +7,7 @@ import ExamCards from './ExamCards';
 import Leaderboard from './Leaderboard';
 import ExamHistory from './ExamHistory';
 import DiagnosticReport from '../exam/DiagnosticReport';
-
+ 
 // 🧠 AKUMULATOR DATA GLOBAL: Kebal dari data kosong & wajib melacak variasi huruf kapital Word
 function generateGlobalSnapshot(examHistory: any[]) {
   const globalQuestions: any[] = [];
