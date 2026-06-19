@@ -42,7 +42,7 @@ export default function LiveScoreMonitor() {
   const [countdown, setCountdown] = useState<number>(5); 
   const [searchQuery, setSearchQuery] = useState('');
   
-  // Inisialisasi tanggal lokal hari ini (Format: YYYY-MM-DD)
+  // Inisialisasi filter tanggal hari ini (Format lokal: YYYY-MM-DD)
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toLocaleDateString('en-CA'));
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'ONGOING' | 'SUBMITTED'>('ALL');
   
@@ -117,20 +117,24 @@ export default function LiveScoreMonitor() {
     };
   }, [isRealtime]);
 
-  // ─── 🌟 LOGIKA FILTER PROTEKSI SESI AKTIF (ONGOING) ───
+  // ─── 🌟 FILTER ENGINE BARU BERBASIS KOLOM STATUS RESMI ───
   const filteredResults = results.filter((r) => {
-    // 1. Filter Berdasarkan Paket Ujian
+    // 1. Filter Paket Ujian
     const matchesPackage = filter === 'ALL' || r.package_type === filter;
 
-    // 2. Filter Berdasarkan Status Jalur Submisi
-    const isSubmitted = !!r.completed_at;
+    // 2. Tentukan Status Berdasarkan Teks Kolom Status Sumber Database
+    const currentStatus = String(r.status || '').toLowerCase().trim();
+    const isOngoingSession = currentStatus === 'in_progress';
+    const isSubmittedSession = currentStatus === 'completed' || currentStatus === 'selesai';
+
+    // Filter Berdasarkan Tab Pilihan Status Atas Dashboard
     const matchesStatus = 
       statusFilter === 'ALL' ? true :
-      statusFilter === 'ONGOING' ? !isSubmitted : isSubmitted;
+      statusFilter === 'ONGOING' ? isOngoingSession : isSubmittedSession;
 
-    // 3. Filter Berdasarkan Tanggal (Dengan Toleransi Sesi Aktif)
+    // 3. Filter Mengunci Tanggal Hari Ini (Abaikan validasi tanggal jika statusnya terbukti sedang aktif dikerjakan)
     const todayStr = new Date().toLocaleDateString('en-CA');
-    const rawDate = r.started_at || (r as any).created_at || r.completed_at;
+    const rawDate = r.started_at || (r as any).created_at;
     let examDate = '';
     
     if (rawDate) {
@@ -140,12 +144,11 @@ export default function LiveScoreMonitor() {
       }
     }
 
-    // Aturan Emas: Jika selectedDate diisi, data lolos apabila tanggalnya cocok ATAU data tersebut statusnya sedang aktif dikerjakan hari ini
     const matchesDate = selectedDate 
-      ? (examDate === selectedDate || (!isSubmitted && selectedDate === todayStr))
+      ? (examDate === selectedDate || (isOngoingSession && selectedDate === todayStr))
       : true;
 
-    // 4. Filter Berdasarkan Kotak Pencarian Nama
+    // 4. Filter Kotak Pencarian Nama
     const matchesSearch = searchQuery 
       ? r.participant_name?.toLowerCase().includes(searchQuery.toLowerCase())
       : true;
@@ -200,24 +203,28 @@ export default function LiveScoreMonitor() {
     return b.score_twk - a.score_twk;
   });
 
-  // METRIK KARTU RINGKASAN DATA
+  // METRIK KARTU RINGKASAN DATA (Berbasis Kolom Status Akurat)
   const totalCount = filteredResults.length;
-  const submittedCount = filteredResults.filter((r) => r.completed_at).length;
-  const ongoingCount = filteredResults.filter((r) => !r.completed_at).length;
+  const submittedCount = filteredResults.filter((r) => String(r.status).toLowerCase().trim() === 'completed' || String(r.status).toLowerCase().trim() === 'selesai').length;
+  const ongoingCount = filteredResults.filter((r) => String(r.status).toLowerCase().trim() === 'in_progress').length;
   
   const avgScore = submittedCount > 0
-    ? Math.round(filteredResults.filter(r => r.completed_at).reduce((s, r) => s + r.total_score, 0) / submittedCount)
+    ? Math.round(filteredResults.filter(r => String(r.status).toLowerCase().trim() === 'completed' || String(r.status).toLowerCase().trim() === 'selesai').reduce((s, r) => s + r.total_score, 0) / submittedCount)
     : 0;
 
-  // Hitung jumlah sub-status dinamis untuk counter badge di tombol tab
+  // Hitung jumlah sub-status untuk counter badge di tombol tab secara real
   const baseListForCounters = results.filter(r => filter === 'ALL' || r.package_type === filter);
   const todayStr = new Date().toLocaleDateString('en-CA');
   
   const totalSesiHariIni = baseListForCounters.filter(r => {
-    const rawDate = r.started_at || (r as any).created_at || r.completed_at;
+    const rawDate = r.started_at || (r as any).created_at;
     const examDate = rawDate ? new Date(rawDate).toLocaleDateString('en-CA') : '';
-    return selectedDate ? (examDate === selectedDate || (!r.completed_at && selectedDate === todayStr)) : true;
+    const isOngoing = String(r.status).toLowerCase().trim() === 'in_progress';
+    return selectedDate ? (examDate === selectedDate || (isOngoing && selectedDate === todayStr)) : true;
   });
+
+  const ongoingHariIniCount = totalSesiHariIni.filter(r => String(r.status).toLowerCase().trim() === 'in_progress').length;
+  const submittedHariIniCount = totalSesiHariIni.filter(r => String(r.status).toLowerCase().trim() === 'completed' || String(r.status).toLowerCase().trim() === 'selesai').length;
 
   return (
     <div className="space-y-6 p-6 bg-slate-950 text-slate-100 rounded-3xl border border-slate-900 shadow-2xl font-sans">
@@ -349,8 +356,8 @@ export default function LiveScoreMonitor() {
         <div className="flex flex-wrap gap-2 text-xs font-bold border-t border-slate-900 pt-3">
           {[
             { id: 'ALL', label: 'Semua Kontestan', count: totalSesiHariIni.length },
-            { id: 'ONGOING', label: 'Sedang Berjuang', count: totalSesiHariIni.filter(r => !r.completed_at).length },
-            { id: 'SUBMITTED', label: 'Selesai Sesi', count: totalSesiHariIni.filter(r => r.completed_at).length }
+            { id: 'ONGOING', label: 'Sedang Berjuang', count: ongoingHariIniCount },
+            { id: 'SUBMITTED', label: 'Selesai Sesi', count: submittedHariIniCount }
           ].map((tab) => (
             <button
               key={tab.id}
@@ -416,6 +423,9 @@ export default function LiveScoreMonitor() {
                     'bg-amber-700 text-white ring-4 ring-amber-800/20'
                   ];
 
+                  const sessionStatus = String(r.status || '').toLowerCase().trim();
+                  const isCompleted = sessionStatus === 'completed' || sessionStatus === 'selesai';
+
                   return (
                     <motion.tr
                       key={r.id}
@@ -464,7 +474,7 @@ export default function LiveScoreMonitor() {
                       </td>
 
                       <td className="px-5 py-3.5 text-right">
-                        {r.completed_at ? (
+                        {isCompleted ? (
                           <div className="flex flex-col items-end gap-1">
                             <span className="text-[9px] font-black tracking-widest text-emerald-400 uppercase bg-emerald-500/5 px-2 py-0.5 rounded border border-emerald-500/10">
                               ✓ Sudah Submit
