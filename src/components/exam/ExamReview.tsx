@@ -169,7 +169,16 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
             : data.review_snapshot;
             
           if (snapshot && Array.isArray(snapshot.questions)) {
-            setSupabaseQuestions(snapshot.questions);
+            // ─── 🌟 TARGET RECOVERY: Amankan pemecahan diagram data riwayat dari bug kapitalisasi Word ───
+            const safeQuestions = snapshot.questions.map((q: any) => {
+              const verifiedSub = q.sub_category || q.sub_kategori || q.SUB_KATEGORI || (q as any).SUB_CATEGORY || 'Umum';
+              return {
+                ...q,
+                sub_category: verifiedSub,
+                sub_kategori: verifiedSub
+              };
+            });
+            setSupabaseQuestions(safeQuestions);
             setSupabaseAnswers(snapshot.answers || {});
           }
         }
@@ -210,11 +219,13 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
       dispatch({ type: 'DELETE_EXAM_RESULT', payload: state.reviewResultId });
     }
     
+    // ─── 🌟 FIX NAVIGASI DUPLIKAT STACK HISTORY: Paksa router berpindah secara absolut ───
     if (isAdmin) {
       dispatch({ type: 'SET_VIEW', payload: 'admin-dashboard' });
-      navigate('/admin/results');
+      navigate('/admin/results', { replace: true });
     } else {
       dispatch({ type: 'SET_VIEW', payload: state?.examSession ? 'exam-results' : 'participant-dashboard' });
+      navigate('/', { replace: true });
     }
   };
 
@@ -272,7 +283,7 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
         </div>
       </div>
 
-      {/* 🌟 PERBAIKAN: Melempar data mentah soal dan jawaban langsung ke Peta Kekuatan & Kelemahan */}
+      {/* Peta Kekuatan & Kelemahan */}
       {!isFetchingDb && finalQuestions.length > 0 && (
         <motion.div
           initial={{ opacity: 0, y: 15 }}
