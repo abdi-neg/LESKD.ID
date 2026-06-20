@@ -131,7 +131,6 @@ export function ExamEngine() {
     }
   }
 
-  // Tambahan pengaman auto-save manual saat berpindah soal via tombol prev/next
   function goPrev() {
     if (currentQuestionIndex > 0) {
       dispatch({ type: 'NAVIGATE_QUESTION', payload: currentQuestionIndex - 1 });
@@ -197,11 +196,7 @@ export function ExamEngine() {
                 <span className={`text-xs px-2.5 py-1 rounded-full uppercase tracking-wider ${categoryColors[currentQuestion.category] || 'bg-gray-100 text-gray-700'}`}>
                   {currentQuestion.category}
                 </span>
-                
-                {/* 🌟 PENYEMPURNAAN VISUAL: Tampilkan Tag Sub-Materi agar layar ujian terasa sangat interaktif */}
-                <span className="text-xs px-2.5 py-1 rounded-full bg-gray-100 text-gray-600 font-bold uppercase tracking-wide border border-gray-200/60">
-                  {currentQuestion.sub_category || 'Umum'}
-                </span>
+                {/* ─── 🌟 VISUAL STERILIZATION RESMI BERHASIL DIMASAK: Tag sub-category di sini resmi kita tiadakan dari layar demi menjaga keaslian visual CAT BKN ─── */}
               </div>
               <button
                 onClick={handleToggleMark}
