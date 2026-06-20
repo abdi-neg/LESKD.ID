@@ -60,11 +60,7 @@ function parseDocxText(rawText: string, category: Category): { questions: Parsed
     .replace(/\u00a0/g, ' ')
     .trim();
 
-  // Memotong dokumen berdasarkan penanda [SOAL]
   const rawBlocks = normalizedText.split(/\[SOAL\]/i);
-
-  // ─── 🌟 FILTER EMAS: Hanya proses blok yang memiliki struktur pilihan ganda real ([A], [B], [C]) ───
-  // Langkah ini otomatis mengeliminasi teks judul, tabel petunjuk, dan petunjuk penggunaan template dari sistem eror
   const questionBlocks = rawBlocks.filter((b) => b.includes('[A]') && b.includes('[B]') && b.includes('[C]'));
 
   if (questionBlocks.length === 0) {
@@ -81,11 +77,11 @@ function parseDocxText(rawText: string, category: Category): { questions: Parsed
         return match ? match[1].trim() : '';
       };
 
-      const sub_category = extract('SUB_KATEGORI') || 'Umum';
+      // ─── 🌟 PERBAIKAN LOGIKA: Ambil hasil extract, lalu split berdasarkan enter dan kunci baris pertama saja ───
+      const rawSub = extract('SUB_KATEGORI') || 'Umum';
+      const sub_category = rawSub.split('\n')[0].trim();
 
       let question_text = block.split(/\[A\]/i)[0].trim();
-      
-      // ─── 🌟 FIX GREEDY BUG: Hapus tag [SUB_KATEGORI] hanya sampai batas baris barunya saja (anti-greedy) ───
       question_text = question_text.replace(/\[SUB_KATEGORI\][^\n]*/i, '').trim();
 
       let rawA = extract('A');
@@ -307,7 +303,7 @@ async function downloadTemplate(category: Category) {
 
   const rootRelsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/package/2006/relationships/officeDocument" Target="word/document.xml"/>
 </Relationships>`;
 
   const zip = new JSZip();
