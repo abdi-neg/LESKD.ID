@@ -60,7 +60,8 @@ function parseDocxText(rawText: string, category: Category): { questions: Parsed
     .replace(/\u00a0/g, ' ')
     .trim();
 
-  const blocks = normalizedText.split(/\[SOAL\]/i).filter((b) => b.trim().length > 0);
+  // ─── 🌟 FIX BUG 2: Buang indeks ke-0 (teks panduan/header template) menggunakan .slice(1) ───
+  const blocks = normalizedText.split(/\[SOAL\]/i).slice(1).filter((b) => b.trim().length > 0);
 
   if (blocks.length === 0) {
     errors.push('Tidak ada soal ditemukan. Pastikan format menggunakan marker [SOAL].');
@@ -80,7 +81,8 @@ function parseDocxText(rawText: string, category: Category): { questions: Parsed
 
       let question_text = block.split(/\[A\]/i)[0].trim();
       
-      question_text = question_text.replace(/\[SUB_KATEGORI\]([\s\S]*?)(?=\\[(?:A|B|C|D|E|KUNCI|PEMBAHASAN|SOAL|SUB_KATEGORI)\\]|$)/i, '').trim();
+      // ─── 🌟 FIX BUG 1: Perbaikan karakter escape dari \\[ menjadi \\[ di regex literal ───
+      question_text = question_text.replace(/\[SUB_KATEGORI\]([\s\S]*?)(?=\[(?:A|B|C|D|E|KUNCI|PEMBAHASAN|SOAL|SUB_KATEGORI)\]|$)/i, '').trim();
 
       let rawA = extract('A');
       let rawB = extract('B');
@@ -99,7 +101,7 @@ function parseDocxText(rawText: string, category: Category): { questions: Parsed
         return;
       }
 
-      if (category !== 'TXT' && category !== 'TKP' && !['A', 'B', 'C', 'D', 'E'].includes(rawKunci)) {
+      if (category !== 'TKP' && !['A', 'B', 'C', 'D', 'E'].includes(rawKunci)) {
         errors.push(`Soal #${lineNum}: kunci jawaban "${rawKunci}" tidak valid untuk TIU/TWK. Gunakan A, B, C, D, atau E.`);
         return;
       }
@@ -164,6 +166,15 @@ function wParagraph(runs: string, spacing = '') {
   return `<w:p>${spacing}<w:pPr></w:pPr>${runs}</w:p>`;
 }
 
+// ─── 🌟 FIX DATA TEMPLATE DOWNLOAD: Tambahkan spasi ganda ("  ") otomatis setelah marker agar sinkron ───
+function wMarkerLine(marker: string, content: string, markerColor = '1e3a8a') {
+  return wParagraph(
+    wRun(`[${marker}]`, { bold: true, color: markerColor, size: 22 }) +
+    wRun(`  ${content}`, { size: 22 }),
+    '<w:pPr><w:spacing w:before="80" w:after="60"/></w:pPr>',
+  );
+}
+
 function wRun(text: string, opts: { bold?: boolean; color?: string; size?: number; italic?: boolean } = {}) {
   const rPr = [
     opts.bold ? '<w:b/>' : '',
@@ -180,14 +191,6 @@ function wHeading(text: string, level: 1 | 2) {
   return `<w:p><w:pPr><w:pStyle w:val="Heading${level}"/><w:spacing w:after="120"/></w:pPr>${wRun(text, { bold: true, size, color })}</w:p>`;
 }
 
-function wMarkerLine(marker: string, content: string, markerColor = '1e3a8a') {
-  return wParagraph(
-    wRun(`[${marker}]`, { bold: true, color: markerColor, size: 22 }) +
-    wRun(`  ${content}`, { size: 22 }),
-    '<w:pPr><w:spacing w:before="80" w:after="60"/></w:pPr>',
-  );
-}
-
 const EXAMPLES: Record<Category, { q: string; sub: string; opts: string[]; key: string; exp: string }[]> = {
   TIU: [
     { q: 'Jika 2x + 4 = 12, maka nilai x adalah...', sub: 'Berhitung Cepat', opts: ['2', '3', '4', '5', '6'], key: 'C', exp: 'Dari 2x + 4 = 12, maka 2x = 8, sehingga x = 4.' },
@@ -198,8 +201,8 @@ const EXAMPLES: Record<Category, { q: string; sub: string; opts: string[]; key: 
     { q: 'Sila ke-3 Pancasila berbunyi...', sub: 'Pilar Negara', opts: ['Ketuhanan Yang Maha Esa', 'Kemanusiaan yang Adil dan Beradab', 'Persatuan Indonesia', 'Kerakyatan yang Dipimpin oleh Hikmat', 'Keadilan Sosial'], key: 'C', exp: 'Sila ke-3 Pancasila adalah Persatuan Indonesia.' },
   ],
   TKP: [
-    { q: 'Atasan meminta Anda memalsukan laporan keuangan demi kelancaran proyek perusahaan. Bagaimana tindakan Anda?', sub: 'Integritas Diri', opts: ['Langsung menolak dengan keras and mengancam akan melaporkan hal tersebut ke pihak berwajib | Poin: 2', 'Menolak dengan sopan serta menjelaskan risiko hukum dan dampak buruknya bagi perusahaan | Poin: 5', 'Melaksanakan instruksi tersebut demi menjaga loyalitas kerja and posisi aman | Poin: 1', 'Pura-pura menyetujui hal tersebut tetapi sengaja menunda-nunda penyelesaian tugasnya | Poin: 3', 'Mengajak rekan kerja yang lain untuk bersama-sama melakukan protes kepada atasan | Poin: 4'], key: 'B', exp: 'Menolak secara sopan merefleksikan integritas kerja yang tinggi tanpa memicu gesekan destruktif.' },
-    { q: 'Seorang rekan dalam tim Anda tampak mengalami penurunan produktivitas yang mengganggu ritme kerja kelompok. Sikap Anda?', sub: 'Jejaring Kerja', opts: ['Melaporkan penurunan kinerja tersebut langsung kepada atasan tanpa diskusi internal | Poin: 2', 'Mengabaikan kondisi tersebut karena merasa itu adalah urusan pribadi masing-masing | Poin: 1', 'Mengajak berbicara dari hati ke hati secara santun and menawarkan solusi atau bantuan | Poin: 5', 'Membicarakan keluhan tersebut di belakangnya bersama dengan rekan kerja yang lain | Poin: 3', 'Membantu mengambil alih seluruh beban tugasnya secara diam-diam agar tim tetap aman | Poin: 4'], key: 'C', exp: 'Komunikasi persuasif interpersonal melambangkan kompetensi jejaring kerja dan kepedulian yang sehat.' },
+    { q: 'Atasan meminta Anda memalsukan laporan keuangan demi kelancaran proyek perusahaan. Bagaimana tindakan Anda?', sub: 'Berorientasi Pelayanan', opts: ['Langsung menolak dengan keras and mengancam akan melaporkan hal tersebut ke pihak berwajib | Poin: 2', 'Menolak dengan sopan serta menjelaskan risiko hukum dan dampak buruknya bagi perusahaan | Poin: 5', 'Melaksanakan instruksi tersebut demi menjaga loyalitas kerja and posisi aman | Poin: 1', 'Pura-pura menyetujui hal tersebut tetapi sengaja menunda-nunda penyelesaian tugasnya | Poin: 3', 'Mengajak rekan kerja yang lain untuk bersama-sama melakukan protes kepada atasan | Poin: 4'], key: 'B', exp: 'Menolak secara sopan merefleksikan integritas kerja yang tinggi tanpa memicu gesekan destruktif.' },
+    { q: 'Seorang rekan dalam tim Anda tampak mengalami penurunan produktivitas yang mengganggu ritme kerja kelompok. Sikap Anda?', sub: 'Kolaboratif', opts: ['Melaporkan penurunan kinerja tersebut langsung kepada atasan tanpa diskusi internal | Poin: 2', 'Mengabaikan kondisi tersebut karena merasa itu adalah urusan pribadi masing-masing | Poin: 1', 'Mengajak berbicara dari hati ke hati secara santun and menawarkan solusi atau bantuan | Poin: 5', 'Membicarakan keluhan tersebut di belakangnya bersama dengan rekan kerja yang lain | Poin: 3', 'Membantu mengambil alih seluruh beban tugasnya secara diam-diam agar tim tetap aman | Poin: 4'], key: 'C', exp: 'Komunikasi persuasif interpersonal melambangkan kompetensi jejaring kerja dan kepedulian yang sehat.' },
   ],
 };
 
@@ -358,6 +361,11 @@ export default function DocxImporter({ packageId, packageType, onImported }: Pro
 
   async function handleSave() {
     if (parsedQuestions.length === 0) return;
+    if (parseErrors.length > 0) {
+      if (!window.confirm('Ada beberapa kesalahan format. Tetap simpan soal yang berhasil dibaca?')) {
+        return;
+      }
+    }
     setSaving(true);
     const { error } = await supabase.from('questions').insert(parsedQuestions);
     if (!error) {
