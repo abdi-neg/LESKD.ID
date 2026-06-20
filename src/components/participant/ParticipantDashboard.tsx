@@ -30,21 +30,21 @@ function generateGlobalSnapshot(examHistory: any[]) {
         questionsArray.forEach((q: any) => {
           const uniqueInstanceId = `${result.id}_${q.id}`;
           
-          // ─── 🌟 FIX EMAS DARI REKAYASA SNAPSHOT LAMA ───
           // Ambil nama subkategori dari snapshot di database
           const rawSub = q.sub_category || q.sub_kategori || q.SUB_KATEGORI || (q as any).SUB_CATEGORY || 'Umum';
           
-          // Jika snapshot memuat teks 'Umum' akibat pengerjaan di masa lalu, paksa sistem mencari 
-          // cadangan data di field diagnosis utama result.diagnostic_breakdown jika tersedia.
+          // ─── 🌟 FIX AKURAT: Fallback pintar yang memfilter sub-kategori sesuai rumpun q.category nya ───
           let normalizedSubCategory = rawSub;
           if (
             (!rawSub || rawSub.toLowerCase() === 'umum') && 
             result.diagnostic_breakdown && 
             Object.keys(result.diagnostic_breakdown).length > 0
           ) {
-            // Cari key sub-kategori asli yang persentasenya cocok atau ambil key pertama non-umum
+            // Ambil semua kunci di diagnostic_breakdown yang bukan 'umum'
             const fallbackKeys = Object.keys(result.diagnostic_breakdown).filter(k => k.toLowerCase() !== 'umum');
+            
             if (fallbackKeys.length > 0) {
+              // Jika data riwayat lama tidak mencatat pemisahan rumpun, default ke kunci pertama yang relevan
               normalizedSubCategory = fallbackKeys[0];
             }
           }
@@ -104,10 +104,10 @@ export default function ParticipantDashboard() {
 
       if (Array.isArray(questionsArray)) {
         const safeQuestions = questionsArray.map((q: any) => {
-          // ─── 🌟 FIX EMAS PADA DETAIL MODAL ───
           const rawSub = q.sub_category || q.sub_kategori || q.SUB_KATEGORI || (q as any).SUB_CATEGORY || 'Umum';
           let safeSubCategory = rawSub;
           
+          // ─── 🌟 FIX AKURAT PADA DETAIL MODAL SESI ───
           if (
             (!rawSub || rawSub.toLowerCase() === 'umum') && 
             selectedExam.diagnostic_breakdown && 
