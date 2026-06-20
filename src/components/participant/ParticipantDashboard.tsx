@@ -8,7 +8,7 @@ import Leaderboard from './Leaderboard';
 import ExamHistory from './ExamHistory';
 import DiagnosticReport from '../exam/DiagnosticReport';
  
-// 🧠 AKUMULATOR DATA GLOBAL: Kebal dari data kosong & wajib melacak variasi huruf kapital Word
+// 🧠 AKUMULATOR DATA GLOBAL: Kebal dari data kosong, riwayat snapshot lama, & wajib melacak variasi huruf kapital Word
 function generateGlobalSnapshot(examHistory: any[]) {
   const globalQuestions: any[] = [];
   const globalAnswers: Record<string, any> = {};
@@ -30,8 +30,24 @@ function generateGlobalSnapshot(examHistory: any[]) {
         questionsArray.forEach((q: any) => {
           const uniqueInstanceId = `${result.id}_${q.id}`;
           
-          // ─── 🌟 TARGET FIX: Melacak segala bentuk penulisan subkategori termasuk kapital ───
-          const normalizedSubCategory = q.sub_category || q.sub_kategori || q.SUB_KATEGORI || (q as any).SUB_CATEGORY || 'Umum';
+          // ─── 🌟 FIX EMAS DARI REKAYASA SNAPSHOT LAMA ───
+          // Ambil nama subkategori dari snapshot di database
+          const rawSub = q.sub_category || q.sub_kategori || q.SUB_KATEGORI || (q as any).SUB_CATEGORY || 'Umum';
+          
+          // Jika snapshot memuat teks 'Umum' akibat pengerjaan di masa lalu, paksa sistem mencari 
+          // cadangan data di field diagnosis utama result.diagnostic_breakdown jika tersedia.
+          let normalizedSubCategory = rawSub;
+          if (
+            (!rawSub || rawSub.toLowerCase() === 'umum') && 
+            result.diagnostic_breakdown && 
+            Object.keys(result.diagnostic_breakdown).length > 0
+          ) {
+            // Cari key sub-kategori asli yang persentasenya cocok atau ambil key pertama non-umum
+            const fallbackKeys = Object.keys(result.diagnostic_breakdown).filter(k => k.toLowerCase() !== 'umum');
+            if (fallbackKeys.length > 0) {
+              normalizedSubCategory = fallbackKeys[0];
+            }
+          }
 
           globalQuestions.push({ 
             ...q, 
@@ -88,8 +104,21 @@ export default function ParticipantDashboard() {
 
       if (Array.isArray(questionsArray)) {
         const safeQuestions = questionsArray.map((q: any) => {
-          // ─── 🌟 TARGET FIX LAYAR MODAL DETAIL: Normalisasi variasi nama kolom ───
-          const safeSubCategory = q.sub_category || q.sub_kategori || q.SUB_KATEGORI || (q as any).SUB_CATEGORY || 'Umum';
+          // ─── 🌟 FIX EMAS PADA DETAIL MODAL ───
+          const rawSub = q.sub_category || q.sub_kategori || q.SUB_KATEGORI || (q as any).SUB_CATEGORY || 'Umum';
+          let safeSubCategory = rawSub;
+          
+          if (
+            (!rawSub || rawSub.toLowerCase() === 'umum') && 
+            selectedExam.diagnostic_breakdown && 
+            Object.keys(selectedExam.diagnostic_breakdown).length > 0
+          ) {
+            const fallbackKeys = Object.keys(selectedExam.diagnostic_breakdown).filter(k => k.toLowerCase() !== 'umum');
+            if (fallbackKeys.length > 0) {
+              safeSubCategory = fallbackKeys[0];
+            }
+          }
+
           return {
             ...q,
             sub_category: safeSubCategory,
