@@ -370,6 +370,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [state.currentView, state.reviewResultId]);
 
+  // ─── 🌟 AUTO-SAVE JAWABAN & SKOR KE DATABASE ───
   useEffect(() => {
     const session = state.examSession;
     if (!session || session.status === 'completed' || isSyncLocked) return;
@@ -400,6 +401,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     }
   }, [state.examSession?.answers, state.examSession?.status, isSyncLocked]);
+
+  // ─── 🌟 DISUNTIKKAN FITUR EMAS PERBAIKAN: Kunci sisa waktu ke localStorage setiap detik timer berdetak ───
+  useEffect(() => {
+    const session = state.examSession;
+    if (session && session.status === 'in_progress') {
+      saveExamProgress(session);
+    }
+  }, [state.examSession?.timeRemaining]);
 
   useEffect(() => {
     if (!state.examSession || state.examSession.status !== 'in_progress') return;
@@ -459,7 +468,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         .eq('participant_id', user.id)
         .eq('status', 'in_progress');
 
-      // ─── 🌟 PERBAIKAN EMAS: Menyuntikkan stempel tanggal mulai ujian secara absolut ───
       const { data: newRow, error: insertErr } = await supabase
         .from('exam_results')
         .insert({
@@ -472,7 +480,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           questions_total: questions.length, questions_correct: 0,
           passed: false, 
           status: 'in_progress',
-          started_at: new Date().toISOString() // ➔ Suntikan murni pengisi radar Live Monitor
+          started_at: new Date().toISOString()
         })
         .select()
         .single();
