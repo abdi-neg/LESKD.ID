@@ -311,6 +311,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         .from('exam_results')
         .select('*')
         .eq('participant_id', user.id)
+        .neq('is_deleted', true) // 🌟 Filter agar tidak muncul jika sudah di-soft delete Admin
         .order('completed_at', { ascending: false });
 
       if (error) throw error;
@@ -321,6 +322,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           .from('exam_results')
           .select('*')
           .eq('user_name', user.email)
+          .neq('is_deleted', true) // 🌟 Filter fallback email
           .order('completed_at', { ascending: false });
         
         if (fallbackEmail && fallbackEmail.length > 0) {
@@ -335,6 +337,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             .from('exam_results')
             .select('*')
             .eq('user_name', profileName)
+            .neq('is_deleted', true) // 🌟 Filter fallback nama
             .order('completed_at', { ascending: false });
           
           if (fallbackName && fallbackName.length > 0) {
@@ -402,7 +405,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [state.examSession?.answers, state.examSession?.status, isSyncLocked]);
 
-  // ─── 🌟 DISUNTIKKAN FITUR EMAS PERBAIKAN: Kunci sisa waktu ke localStorage setiap detik timer berdetak ───
+  // ─── 🌟 Kunci sisa waktu ke localStorage setiap detik timer berdetak ───
   useEffect(() => {
     const session = state.examSession;
     if (session && session.status === 'in_progress') {
