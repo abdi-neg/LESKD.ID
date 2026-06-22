@@ -526,40 +526,59 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const scores = calculateScores(session);
       const isPassed = checkPassedStatus(session.examType, scores);
       
+      // ─── 🌟 SUNTIKAN LIVE INJECTION (PENCEGAH KEBOCORAN PERMANEN) ───
+      // Mengabaikan data usang dari Local Storage, kita tarik paksa sub_category
+      // paling segar langsung dari database Supabase sebelum merakit snapshot!
+      const questionIds = session.questions.map(q => q.id);
+      const { data: latestQs } = await supabase
+        .from('questions')
+        .select('id, sub_category, sub_kategori')
+        .in('id', questionIds);
+
+      // Gabungkan soal di sesi dengan sub-kategori asli dari database
+      const injectedQuestions = session.questions.map(q => {
+        const liveData = latestQs?.find(l => l.id === q.id);
+        const freshSub = liveData?.sub_category || liveData?.sub_kategori || q.sub_category || q.sub_kategori || 'Umum';
+        return {
+          ...q,
+          sub_category: freshSub,
+          sub_kategori: freshSub
+        };
+      });
+
       const snapshotPayload = {
-        questions: session.questions,
+        questions: injectedQuestions, // ➔ Soal masuk ke JSON dalam keadaan 100% steril dan komplit!
         answers: session.answers
       };
 
-      let finalDiagnostic = diagnosticBreakdown;
-      if (!finalDiagnostic) {
-        const breakdown: Record<string, { correct: number; total: number; percentage: number }> = {};
-        session.questions.forEach((q) => {
-          const subCat = q.sub_category || q.sub_kategori || (q as any).SUB_KATEGORI || 'Umum';
-          const userAnswer = session.answers[q.id];
-          const selected = userAnswer?.selectedAnswer;
+      // ─── MENGHINDARI BUG DARI EXAM ENGINE ───
+      // Kita tolak diagnosticBreakdown dari luar, dan paksa AppContext merakit ulang petanya 
+      // menggunakan soal yang sudah disuntik (injectedQuestions).
+      const breakdown: Record<string, { correct: number; total: number; percentage: number }> = {};
+      injectedQuestions.forEach((q) => {
+        const subCat = q.sub_category || 'Umum';
+        const userAnswer = session.answers[q.id];
+        const selected = userAnswer?.selectedAnswer;
 
-          if (!breakdown[subCat]) {
-            breakdown[subCat] = { correct: 0, total: 0, percentage: 0 };
-          }
+        if (!breakdown[subCat]) {
+          breakdown[subCat] = { correct: 0, total: 0, percentage: 0 };
+        }
 
-          if (q.category === 'TKP') {
-            const points = selected ? (q as any)[`points_${selected.toLowerCase()}`] || 0 : 0;
-            breakdown[subCat].correct += points;
-            breakdown[subCat].total += 5;
-          } else {
-            const isCorrect = selected === q.correct_answer;
-            breakdown[subCat].correct += isCorrect ? 1 : 0;
-            breakdown[subCat].total += 1;
-          }
-        });
+        if (q.category === 'TKP') {
+          const points = selected ? (q as any)[`points_${selected.toLowerCase()}`] || 0 : 0;
+          breakdown[subCat].correct += points;
+          breakdown[subCat].total += 5;
+        } else {
+          const isCorrect = selected === q.correct_answer;
+          breakdown[subCat].correct += isCorrect ? 1 : 0;
+          breakdown[subCat].total += 1;
+        }
+      });
 
-        Object.keys(breakdown).forEach((key) => {
-          const item = breakdown[key];
-          item.percentage = item.total > 0 ? Math.round((item.correct / item.total) * 100) : 0;
-        });
-        finalDiagnostic = breakdown;
-      }
+      Object.keys(breakdown).forEach((key) => {
+        const item = breakdown[key];
+        item.percentage = item.total > 0 ? Math.round((item.correct / item.total) * 100) : 0;
+      });
       
       const { error } = await supabase
         .from('exam_results')
@@ -574,7 +593,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           completed_at: new Date().toISOString(),
           duration_seconds: Math.max(0, (EXAM_CONFIGS[session.examType].timeMinutes * 60) - session.timeRemaining),
           review_snapshot: JSON.stringify(snapshotPayload),
-          diagnostic_breakdown: finalDiagnostic
+          diagnostic_breakdown: breakdown // ➔ Diagnosis yang di-save sudah pasti akurat
         })
         .eq('id', dbResultId);
 
