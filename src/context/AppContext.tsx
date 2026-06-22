@@ -527,18 +527,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const isPassed = checkPassedStatus(session.examType, scores);
       
       // ─── 🌟 SUNTIKAN LIVE INJECTION (PENCEGAH KEBOCORAN PERMANEN) ───
-      // Mengabaikan data usang dari Local Storage, kita tarik paksa sub_category
-      // paling segar langsung dari database Supabase sebelum merakit snapshot!
       const questionIds = session.questions.map(q => q.id);
-      const { data: latestQs } = await supabase
+      const { data: latestQs, error: fetchErr } = await supabase
         .from('questions')
-        .select('id, sub_category, sub_kategori')
+        .select('id, sub_category') // ➔ HANYA INI YANG DIPANGGIL AGAR TIDAK CRASH
         .in('id', questionIds);
 
-      // Gabungkan soal di sesi dengan sub-kategori asli dari database
+      if (fetchErr) {
+        console.error("Gagal menyuntik data live:", fetchErr);
+      }
+
       const injectedQuestions = session.questions.map(q => {
         const liveData = latestQs?.find(l => l.id === q.id);
-        const freshSub = liveData?.sub_category || liveData?.sub_kategori || q.sub_category || q.sub_kategori || 'Umum';
+        const freshSub = liveData?.sub_category || q.sub_category || (q as any).sub_kategori || 'Umum';
         return {
           ...q,
           sub_category: freshSub,
@@ -547,13 +548,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       });
 
       const snapshotPayload = {
-        questions: injectedQuestions, // ➔ Soal masuk ke JSON dalam keadaan 100% steril dan komplit!
+        questions: injectedQuestions, 
         answers: session.answers
       };
 
-      // ─── MENGHINDARI BUG DARI EXAM ENGINE ───
-      // Kita tolak diagnosticBreakdown dari luar, dan paksa AppContext merakit ulang petanya 
-      // menggunakan soal yang sudah disuntik (injectedQuestions).
       const breakdown: Record<string, { correct: number; total: number; percentage: number }> = {};
       injectedQuestions.forEach((q) => {
         const subCat = q.sub_category || 'Umum';
@@ -593,7 +591,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           completed_at: new Date().toISOString(),
           duration_seconds: Math.max(0, (EXAM_CONFIGS[session.examType].timeMinutes * 60) - session.timeRemaining),
           review_snapshot: JSON.stringify(snapshotPayload),
-          diagnostic_breakdown: breakdown // ➔ Diagnosis yang di-save sudah pasti akurat
+          diagnostic_breakdown: breakdown
         })
         .eq('id', dbResultId);
 
