@@ -7,8 +7,19 @@ import ExamCards from './ExamCards';
 import Leaderboard from './Leaderboard';
 import ExamHistory from './ExamHistory';
 import DiagnosticReport from '../exam/DiagnosticReport';
- 
-// 🧠 AKUMULATOR DATA GLOBAL: Murni membaca apa adanya dari database, tanpa rekayasa tebak-tebakan
+
+// 🧠 FUNGSI NORMALISASI SUPER STERIL: Murni membaca apa adanya dari database tanpa rekayasa
+const normalizeQuestionData = (q: any) => {
+  // Tangkap semua kemungkinan penulisan property dari Supabase/Word
+  const rawSub = q.sub_category || q.sub_kategori || q.subCategory || q.subKategori || q.SUB_KATEGORI || q.SUB_CATEGORY || 'Umum';
+  
+  return {
+    ...q,
+    sub_category: rawSub,
+    sub_kategori: rawSub
+  };
+};
+
 function generateGlobalSnapshot(examHistory: any[]) {
   const globalQuestions: any[] = [];
   const globalAnswers: Record<string, any> = {};
@@ -29,15 +40,11 @@ function generateGlobalSnapshot(examHistory: any[]) {
       if (Array.isArray(questionsArray)) {
         questionsArray.forEach((q: any) => {
           const uniqueInstanceId = `${result.id}_${q.id}`;
-          
-          // ─── 🌟 FIX: Murni menangkap variasi huruf tanpa merubah nilai aslinya ───
-          const rawSub = q.sub_category || q.sub_kategori || q.SUB_KATEGORI || (q as any).SUB_CATEGORY || 'Umum';
+          const normalizedQ = normalizeQuestionData(q);
 
           globalQuestions.push({ 
-            ...q, 
-            id: uniqueInstanceId,
-            sub_category: rawSub,
-            sub_kategori: rawSub
+            ...normalizedQ, 
+            id: uniqueInstanceId 
           });
           
           const ans = originalAnswers[q.id] || Object.values(originalAnswers).find((a: any) => a?.questionId === q.id || a?.question_id === q.id);
@@ -86,16 +93,9 @@ export default function ParticipantDashboard() {
         : (snapshot?.questions || snapshot?.activeQuestions || []);
 
       if (Array.isArray(questionsArray)) {
-        const safeQuestions = questionsArray.map((q: any) => {
-          // ─── 🌟 FIX MODAL: Biarkan menampilkan data murni apa adanya ───
-          const rawSub = q.sub_category || q.sub_kategori || q.SUB_KATEGORI || (q as any).SUB_CATEGORY || 'Umum';
-          
-          return {
-            ...q,
-            sub_category: rawSub,
-            sub_kategori: rawSub
-          };
-        });
+        // Biarkan data mengalir natural tanpa ditimpa paksa
+        const safeQuestions = questionsArray.map((q: any) => normalizeQuestionData(q));
+        
         return {
           questions: safeQuestions,
           answers: Array.isArray(snapshot) ? {} : (snapshot?.answers || {})
