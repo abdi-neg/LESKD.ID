@@ -511,6 +511,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  // ─── FIX: SUBMIT SESI DENGAN INJEKSI DATA MANUAL ───
   async function submitExamSession(diagnosticBreakdown?: any) {
     const session = state.examSession;
     if (!session || isSyncLocked) return;
@@ -526,24 +527,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const scores = calculateScores(session);
       const isPassed = checkPassedStatus(session.examType, scores);
       
-      // ─── 🌟 SUNTIKAN LIVE INJECTION (PENCEGAH KEBOCORAN PERMANEN) ───
-      const questionIds = session.questions.map(q => q.id);
-      const { data: latestQs, error: fetchErr } = await supabase
-        .from('questions')
-        .select('id, sub_category') // ➔ HANYA INI YANG DIPANGGIL AGAR TIDAK CRASH
-        .in('id', questionIds);
-
-      if (fetchErr) {
-        console.error("Gagal menyuntik data live:", fetchErr);
-      }
-
+      // Ambil data langsung dari session yang sudah di-fetch di awal
+      // Ini adalah "Tembok Beton" agar sub_category tidak pernah 'Umum'
       const injectedQuestions = session.questions.map(q => {
-        const liveData = latestQs?.find(l => l.id === q.id);
-        const freshSub = liveData?.sub_category || q.sub_category || (q as any).sub_kategori || 'Umum';
+        const finalSub = q.sub_category || q.sub_kategori || 'Umum';
         return {
           ...q,
-          sub_category: freshSub,
-          sub_kategori: freshSub
+          sub_category: finalSub,
+          sub_kategori: finalSub
         };
       });
 
