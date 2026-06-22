@@ -68,8 +68,9 @@ export default function ExamHistoryMonitor() {
     loadExamHistory();
   }, [showTrash]);
 
+  // 🌟 SOFT DELETE: Pindah ke keranjang sampah (Otomatis hilang dari layar peserta)
   async function handleSoftDelete(id: string) {
-    if (!confirm('Pindahkan riwayat ujian peserta ini ke keranjang sampah?')) return;
+    if (!window.confirm('Pindahkan riwayat ujian peserta ini ke keranjang sampah?')) return;
     setActionId(id);
     
     const { error } = await supabase
@@ -85,6 +86,7 @@ export default function ExamHistoryMonitor() {
     setActionId(null);
   }
 
+  // 🌟 RESTORE: Kembalikan dari keranjang sampah
   async function handleRestore(id: string) {
     setActionId(id);
     
@@ -102,7 +104,24 @@ export default function ExamHistoryMonitor() {
     setActionId(null);
   }
 
-  // 🌟 1. PERBAIKAN LOGIKA FILTER: Mendukung pencarian tipe 'TWK' DAN 'MINI_TWK' sekaligus
+  // 🌟 HARD DELETE: Hapus permanen dari database
+  async function handleHardDelete(id: string) {
+    if (!window.confirm('PERINGATAN: Apakah Anda yakin ingin membumihanguskan data ujian ini? Data yang dihapus permanen tidak akan bisa dikembalikan lagi.')) return;
+    setActionId(id);
+    
+    const { error } = await supabase
+      .from('exam_results')
+      .delete()
+      .eq('id', id);
+
+    if (!error) {
+      setRecords(prev => prev.filter(r => r.id !== id));
+    } else {
+      alert('Gagal menghapus data secara permanen.');
+    }
+    setActionId(null);
+  }
+
   const filtered = records.filter((h) => {
     const matchName = h.participant_name.toLowerCase().includes(search.toLowerCase());
     const matchType = filterType === 'ALL' || 
@@ -138,7 +157,6 @@ export default function ExamHistoryMonitor() {
     return `${minutes}m`;
   };
 
-  // 🌟 2. PERBAIKAN SAKELAR WARNA BADGE: Mengenali tipe data MINI_ agar warna badge menyala sesuai jalurnya
   const getExamTypeColor = (type: string) => {
     switch (type) {
       case 'TIU':
@@ -166,7 +184,7 @@ export default function ExamHistoryMonitor() {
             {showTrash ? 'Keranjang Sampah Riwayat' : 'Riwayat Ujian Peserta'}
           </h2>
           <p className="text-gray-500 text-sm mt-1">
-            {showTrash ? 'Daftar riwayat ujian terhapus yang bisa Anda pulihkan' : 'Monitor semua ujian live yang telah selesai'}
+            {showTrash ? 'Daftar riwayat ujian terhapus yang bisa Anda pulihkan atau buang permanen' : 'Monitor semua ujian live yang telah selesai'}
           </p>
         </div>
 
@@ -213,10 +231,10 @@ export default function ExamHistoryMonitor() {
         <motion.div 
           initial={{ opacity: 0, scale: 0.98 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="bg-amber-50 border border-amber-200 text-amber-800 p-4 rounded-2xl flex gap-3 items-center text-sm font-medium"
+          className="bg-rose-50 border border-rose-200 text-rose-800 p-4 rounded-2xl flex gap-3 items-center text-sm font-medium"
         >
-          <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
-          <span>Anda sedang membuka mode berkas sampah. Menghapus data di daftar utama tidak akan merusak kestabilan platform karena data dapat dikembalikan kapan saja dari sini.</span>
+          <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
+          <span>Anda berada di mode Keranjang Sampah. Klik "Hapus Permanen" untuk melenyapkan data percobaan/dummy dari database selamanya.</span>
         </motion.div>
       )}
 
@@ -276,7 +294,6 @@ export default function ExamHistoryMonitor() {
               </thead>
               <tbody className="divide-y divide-gray-100 text-sm text-gray-700 bg-white">
                 {filtered.map((record, i) => {
-                  // 🌟 3. NORMALISASI LOGIKA DETEKSI KOLOM: Berlaku untuk Full Simulasi maupun Mini Paket
                   const isFull = record.exam_type === 'FULL';
                   const isTIU = record.exam_type === 'TIU' || record.exam_type === 'MINI_TIU';
                   const isTWK = record.exam_type === 'TWK' || record.exam_type === 'MINI_TWK';
@@ -370,18 +387,27 @@ export default function ExamHistoryMonitor() {
                           )}
                           
                           {showTrash ? (
-                            <button
-                              disabled={actionId === record.id}
-                              onClick={() => handleRestore(record.id)}
-                              className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-xs rounded-lg transition-colors inline-flex items-center gap-1 disabled:opacity-40 border border-emerald-200"
-                            >
-                              {actionId === record.id ? (
-                                <Loader2 className="w-3 h-3 animate-spin" />
-                              ) : (
-                                <Undo className="w-3 h-3" />
-                              )}
-                              <span>Pulihkan</span>
-                            </button>
+                            <>
+                              {/* Tombol Restore */}
+                              <button
+                                disabled={actionId === record.id}
+                                onClick={() => handleRestore(record.id)}
+                                className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-xs rounded-lg transition-colors inline-flex items-center gap-1 disabled:opacity-40 border border-emerald-200"
+                              >
+                                {actionId === record.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Undo className="w-3 h-3" />}
+                                <span>Pulihkan</span>
+                              </button>
+                              
+                              {/* Tombol Hard Delete */}
+                              <button
+                                disabled={actionId === record.id}
+                                onClick={() => handleHardDelete(record.id)}
+                                className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs rounded-lg transition-colors inline-flex items-center gap-1 disabled:opacity-40 border border-rose-200"
+                              >
+                                {actionId === record.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
+                                <span>Hapus Permanen</span>
+                              </button>
+                            </>
                           ) : (
                             <button
                               disabled={actionId === record.id}
