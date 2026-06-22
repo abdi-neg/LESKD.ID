@@ -8,7 +8,7 @@ import Leaderboard from './Leaderboard';
 import ExamHistory from './ExamHistory';
 import DiagnosticReport from '../exam/DiagnosticReport';
  
-// 🧠 AKUMULATOR DATA GLOBAL: Kebal dari data kosong, riwayat snapshot lama, & wajib melacak variasi huruf kapital Word
+// 🧠 AKUMULATOR DATA GLOBAL: Murni membaca apa adanya dari database, tanpa rekayasa tebak-tebakan
 function generateGlobalSnapshot(examHistory: any[]) {
   const globalQuestions: any[] = [];
   const globalAnswers: Record<string, any> = {};
@@ -30,30 +30,14 @@ function generateGlobalSnapshot(examHistory: any[]) {
         questionsArray.forEach((q: any) => {
           const uniqueInstanceId = `${result.id}_${q.id}`;
           
-          // Ambil nama subkategori dari snapshot di database
+          // ─── 🌟 FIX: Murni menangkap variasi huruf tanpa merubah nilai aslinya ───
           const rawSub = q.sub_category || q.sub_kategori || q.SUB_KATEGORI || (q as any).SUB_CATEGORY || 'Umum';
-          
-          // ─── 🌟 FIX AKURAT: Fallback pintar yang memfilter sub-kategori sesuai rumpun q.category nya ───
-          let normalizedSubCategory = rawSub;
-          if (
-            (!rawSub || rawSub.toLowerCase() === 'umum') && 
-            result.diagnostic_breakdown && 
-            Object.keys(result.diagnostic_breakdown).length > 0
-          ) {
-            // Ambil semua kunci di diagnostic_breakdown yang bukan 'umum'
-            const fallbackKeys = Object.keys(result.diagnostic_breakdown).filter(k => k.toLowerCase() !== 'umum');
-            
-            if (fallbackKeys.length > 0) {
-              // Jika data riwayat lama tidak mencatat pemisahan rumpun, default ke kunci pertama yang relevan
-              normalizedSubCategory = fallbackKeys[0];
-            }
-          }
 
           globalQuestions.push({ 
             ...q, 
             id: uniqueInstanceId,
-            sub_category: normalizedSubCategory,
-            sub_kategori: normalizedSubCategory
+            sub_category: rawSub,
+            sub_kategori: rawSub
           });
           
           const ans = originalAnswers[q.id] || Object.values(originalAnswers).find((a: any) => a?.questionId === q.id || a?.question_id === q.id);
@@ -76,7 +60,6 @@ export default function ParticipantDashboard() {
   const [resultsLoading, setResultsLoading] = useState(true);
   const [selectedExam, setSelectedExam] = useState<any | null>(null);
 
-  // 🌟 KUNCI EMAS ANTI-LOOP: Mengunci trigger kueri Supabase hanya berdasarkan ID user saja.
   useEffect(() => {
     if (!profile?.id) return;
     setResultsLoading(true);
@@ -104,25 +87,13 @@ export default function ParticipantDashboard() {
 
       if (Array.isArray(questionsArray)) {
         const safeQuestions = questionsArray.map((q: any) => {
+          // ─── 🌟 FIX MODAL: Biarkan menampilkan data murni apa adanya ───
           const rawSub = q.sub_category || q.sub_kategori || q.SUB_KATEGORI || (q as any).SUB_CATEGORY || 'Umum';
-          let safeSubCategory = rawSub;
           
-          // ─── 🌟 FIX AKURAT PADA DETAIL MODAL SESI ───
-          if (
-            (!rawSub || rawSub.toLowerCase() === 'umum') && 
-            selectedExam.diagnostic_breakdown && 
-            Object.keys(selectedExam.diagnostic_breakdown).length > 0
-          ) {
-            const fallbackKeys = Object.keys(selectedExam.diagnostic_breakdown).filter(k => k.toLowerCase() !== 'umum');
-            if (fallbackKeys.length > 0) {
-              safeSubCategory = fallbackKeys[0];
-            }
-          }
-
           return {
             ...q,
-            sub_category: safeSubCategory,
-            sub_kategori: safeSubCategory
+            sub_category: rawSub,
+            sub_kategori: rawSub
           };
         });
         return {
