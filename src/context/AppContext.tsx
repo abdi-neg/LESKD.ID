@@ -311,7 +311,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         .from('exam_results')
         .select('*')
         .eq('participant_id', user.id)
-        .neq('is_deleted', true) // 🌟 Filter agar tidak muncul jika sudah di-soft delete Admin
         .order('completed_at', { ascending: false });
 
       if (error) throw error;
@@ -322,7 +321,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
           .from('exam_results')
           .select('*')
           .eq('user_name', user.email)
-          .neq('is_deleted', true) // 🌟 Filter fallback email
           .order('completed_at', { ascending: false });
         
         if (fallbackEmail && fallbackEmail.length > 0) {
@@ -337,7 +335,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
             .from('exam_results')
             .select('*')
             .eq('user_name', profileName)
-            .neq('is_deleted', true) // 🌟 Filter fallback nama
             .order('completed_at', { ascending: false });
           
           if (fallbackName && fallbackName.length > 0) {
@@ -511,7 +508,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  // ─── FIX: SUBMIT SESI DENGAN INJEKSI DATA MANUAL ───
   async function submitExamSession(diagnosticBreakdown?: any) {
     const session = state.examSession;
     if (!session || isSyncLocked) return;
@@ -527,10 +523,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const scores = calculateScores(session);
       const isPassed = checkPassedStatus(session.examType, scores);
       
-      // Ambil data langsung dari session yang sudah di-fetch di awal
-      // Ini adalah "Tembok Beton" agar sub_category tidak pernah 'Umum'
+      // ─── 🌟 PERBAIKAN: Pastikan sub_category terikat permanen ke snapshot ───
       const injectedQuestions = session.questions.map(q => {
-        const finalSub = q.sub_category || q.sub_kategori || 'Umum';
+        const finalSub = q.sub_category || q.sub_kategori || (q as any).SUB_KATEGORI || 'Umum';
         return {
           ...q,
           sub_category: finalSub,
@@ -539,35 +534,39 @@ export function AppProvider({ children }: { children: ReactNode }) {
       });
 
       const snapshotPayload = {
-        questions: injectedQuestions, 
+        questions: injectedQuestions,
         answers: session.answers
       };
 
-      const breakdown: Record<string, { correct: number; total: number; percentage: number }> = {};
-      injectedQuestions.forEach((q) => {
-        const subCat = q.sub_category || 'Umum';
-        const userAnswer = session.answers[q.id];
-        const selected = userAnswer?.selectedAnswer;
+      let finalDiagnostic = diagnosticBreakdown;
+      if (!finalDiagnostic) {
+        const breakdown: Record<string, { correct: number; total: number; percentage: number }> = {};
+        injectedQuestions.forEach((q) => {
+          const subCat = q.sub_category || 'Umum';
+          const userAnswer = session.answers[q.id];
+          const selected = userAnswer?.selectedAnswer;
 
-        if (!breakdown[subCat]) {
-          breakdown[subCat] = { correct: 0, total: 0, percentage: 0 };
-        }
+          if (!breakdown[subCat]) {
+            breakdown[subCat] = { correct: 0, total: 0, percentage: 0 };
+          }
 
-        if (q.category === 'TKP') {
-          const points = selected ? (q as any)[`points_${selected.toLowerCase()}`] || 0 : 0;
-          breakdown[subCat].correct += points;
-          breakdown[subCat].total += 5;
-        } else {
-          const isCorrect = selected === q.correct_answer;
-          breakdown[subCat].correct += isCorrect ? 1 : 0;
-          breakdown[subCat].total += 1;
-        }
-      });
+          if (q.category === 'TKP') {
+            const points = selected ? (q as any)[`points_${selected.toLowerCase()}`] || 0 : 0;
+            breakdown[subCat].correct += points;
+            breakdown[subCat].total += 5;
+          } else {
+            const isCorrect = selected === q.correct_answer;
+            breakdown[subCat].correct += isCorrect ? 1 : 0;
+            breakdown[subCat].total += 1;
+          }
+        });
 
-      Object.keys(breakdown).forEach((key) => {
-        const item = breakdown[key];
-        item.percentage = item.total > 0 ? Math.round((item.correct / item.total) * 100) : 0;
-      });
+        Object.keys(breakdown).forEach((key) => {
+          const item = breakdown[key];
+          item.percentage = item.total > 0 ? Math.round((item.correct / item.total) * 100) : 0;
+        });
+        finalDiagnostic = breakdown;
+      }
       
       const { error } = await supabase
         .from('exam_results')
@@ -582,7 +581,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           completed_at: new Date().toISOString(),
           duration_seconds: Math.max(0, (EXAM_CONFIGS[session.examType].timeMinutes * 60) - session.timeRemaining),
           review_snapshot: JSON.stringify(snapshotPayload),
-          diagnostic_breakdown: breakdown
+          diagnostic_breakdown: finalDiagnostic
         })
         .eq('id', dbResultId);
 
