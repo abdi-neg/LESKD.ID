@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import {
   LogOut, LayoutDashboard, BookOpen, Activity, History,
-  Package, Users, Shield, Menu, X, UserCheck
+  Package, Users, Shield, Menu, X, UserCheck, BarChart3
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { supabase } from '../../lib/supabase';
@@ -13,9 +13,10 @@ import ExamHistoryMonitor from './ExamHistoryMonitor';
 import PackageManager from './PackageManager';
 import ManageAdmins from './ManageAdmins';
 import ManageParticipants from './ManageParticipants';
-import ExamReview from '../exam/ExamReview'; 
+import ExamReview from '../exam/ExamReview';
+import ParticipantDiagnostic from './ParticipantDiagnostic';
 
-type TabPath = 'overview' | 'packages' | 'questions' | 'participants' | 'results' | 'live' | 'admins';
+type TabPath = 'overview' | 'packages' | 'questions' | 'participants' | 'diagnostic' | 'results' | 'live' | 'admins';
 
 interface DashboardStats {
   totalQuestions: number;
@@ -42,6 +43,7 @@ export default function AdminDashboard() {
     { id: 'packages', label: 'Paket Ujian', icon: Package },
     { id: 'questions', label: 'Kelola Soal', icon: BookOpen },
     { id: 'participants', label: 'Peserta', icon: Users },
+    { id: 'diagnostic', label: 'Diagram Kompetensi', icon: BarChart3 },
     { id: 'results', label: 'Hasil Ujian', icon: History },
     { id: 'live', label: 'Monitor Live', icon: Activity },
     { id: 'admins', label: 'Kelola Admin', icon: Shield, superAdminOnly: true },
@@ -89,7 +91,7 @@ export default function AdminDashboard() {
           <div className="flex gap-1 -mb-px">
             {tabs.map((tab) => {
               // 🌟 PINALTI HIGHLIGHT: Pastikan tab Hasil Ujian tetap menyala hijau saat membuka sub-review
-              const isActive = currentSubPath === tab.id || (tab.id === 'results' && currentSubPath.startsWith('results'));
+              const isActive = currentSubPath === tab.id || (tab.id === 'results' && currentSubPath.startsWith('results')) || (tab.id === 'diagnostic' && currentSubPath.startsWith('diagnostic'));
               
               return (
                 <button
@@ -122,6 +124,7 @@ export default function AdminDashboard() {
             <Route path="packages" element={<PackageManager />} />
             <Route path="questions" element={<QuestionManager />} />
             <Route path="participants" element={<ManageParticipants />} />
+            <Route path="diagnostic" element={<ParticipantDiagnostic />} />
             <Route path="results" element={<ExamHistoryMonitor />} />
             
             {/* 🌟 INTEGRASI ROUTE BARU: Daftarkan alamat review resmi di dalam router admin */}
