@@ -18,8 +18,9 @@ interface ExamResultRow {
   total_score: number;
   passed: boolean;
   completed_at: string;
-  questions_snapshot: any[] | null;
-  answers_snapshot: any | null;
+  // 🌟 PERBAIKAN 1: Ganti nama kolom sesuai yang ada di database
+  review_snapshot: any | null; 
+  diagnostic_breakdown: any | null;
 }
 
 interface SubStat {
@@ -145,7 +146,8 @@ function ParticipantDetail({ participant, onBack }: { participant: Profile; onBa
       setLoading(true);
       const { data } = await supabase
         .from('exam_results')
-        .select('id, package_name, package_type, score_tiu, score_twk, score_tkp, total_score, passed, completed_at, questions_snapshot, answers_snapshot')
+        // 🌟 PERBAIKAN 2: Ubah kolom .select() ke review_snapshot
+        .select('id, package_name, package_type, score_tiu, score_twk, score_tkp, total_score, passed, completed_at, review_snapshot, diagnostic_breakdown')
         .eq('participant_id', participant.id)
         .eq('is_deleted', false)
         .order('completed_at', { ascending: false });
@@ -160,8 +162,9 @@ function ParticipantDetail({ participant, onBack }: { participant: Profile; onBa
     setDiags([]);
     setDiagLoading(true);
 
-    let questions = row.questions_snapshot;
-    let answers = row.answers_snapshot;
+    // 🌟 PERBAIKAN 3: Ambil questions dan answers dari dalam objek review_snapshot
+    let questions = row.review_snapshot?.questions;
+    let answers = row.review_snapshot?.answers;
 
     // If snapshots not stored, fetch from exam_sessions
     if (!questions || !answers) {
