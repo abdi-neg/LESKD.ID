@@ -253,116 +253,201 @@ function CategoryCard({ diag }: { diag: CategoryDiag }) {
   );
 }
 
-// ─── Score trend SVG line chart ───────────────────────────────────────────────
+// ─── Score trend charts (redesigned) ─────────────────────────────────────────
+
+const SUB_CATS = [
+  { id: 'TIU', key: 'score_tiu' as const, label: 'Tes Inteligensia Umum', color: '#3b82f6', max: 175 },
+  { id: 'TWK', key: 'score_twk' as const, label: 'Tes Wawasan Kebangsaan', color: '#10b981', max: 150 },
+  { id: 'TKP', key: 'score_tkp' as const, label: 'Tes Karakteristik Pribadi', color: '#f43f5e', max: 225 },
+];
+
+function sparkPath(values: number[], max: number, w: number, h: number): string {
+  if (values.length < 2) return '';
+  return values
+    .map((v, i) => {
+      const x = (i / (values.length - 1)) * w;
+      const y = h - (Math.min(v, max) / max) * h;
+      return `${i === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`;
+    })
+    .join(' ');
+}
+
+function sparkArea(values: number[], max: number, w: number, h: number): string {
+  const line = sparkPath(values, max, w, h);
+  if (!line) return '';
+  return `${line} L ${w} ${h} L 0 ${h} Z`;
+}
 
 function ScoreTrendChart({ results }: { results: ExamResultRow[] }) {
-  const sorted = useMemo(() =>
-    [...results]
-      .filter((r) => r.total_score > 0)
-      .sort((a, b) => new Date(a.completed_at).getTime() - new Date(b.completed_at).getTime()),
+  const sorted = useMemo(
+    () =>
+      [...results]
+        .filter((r) => r.total_score > 0)
+        .sort((a, b) => new Date(a.completed_at).getTime() - new Date(b.completed_at).getTime()),
     [results]
   );
 
   if (sorted.length === 0) return null;
 
-  const padL = 38, padR = 20, padT = 22, padB = 34;
-  const vbW = 500, vbH = 170;
-  const plotW = vbW - padL - padR;
-  const plotH = vbH - padT - padB;
-
-  const maxScore = 500;
-  const getX = (i: number) => padL + (sorted.length > 1 ? (i / (sorted.length - 1)) * plotW : plotW / 2);
-  const getY = (v: number) => padT + (1 - Math.min(v, maxScore) / maxScore) * plotH;
-
-  const pts = sorted.map((r, i) => ({
-    x: getX(i), y: getY(r.total_score),
-    tiuY: getY(r.score_tiu), twkY: getY(r.score_twk), tkpY: getY(r.score_tkp),
-    score: r.total_score, passed: r.passed, date: r.completed_at,
-  }));
-
-  const makePath = (yKey: 'y' | 'tiuY' | 'twkY' | 'tkpY') =>
-    pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(1)} ${p[yKey].toFixed(1)}`).join(' ');
-
-  const areaPath = pts.length > 1
-    ? `${makePath('y')} L ${pts[pts.length - 1].x.toFixed(1)} ${(padT + plotH).toFixed(1)} L ${padL.toFixed(1)} ${(padT + plotH).toFixed(1)} Z`
-    : '';
-
-  const yLabels = [0, 100, 200, 300, 400, 500];
   const formatDate = (s: string) => {
     const d = new Date(s);
     return `${d.getDate()}/${d.getMonth() + 1}`;
   };
 
+  // ── Bar chart constants ──
+  const VW = 500, VH = 155;
+  const PL = 38, PR = 16, PT = 26, PB = 28;
+  const plotW = VW - PL - PR;
+  const plotH = VH - PT - PB;
+  const MAX = 500;
+  const n = sorted.length;
+  const barGap = Math.max(4, Math.min(10, plotW / n * 0.2));
+  const barW = Math.max(10, plotW / n - barGap);
+  const getBarX = (i: number) => PL + i * (plotW / n) + barGap / 2;
+  const getBarH = (score: number) => Math.max(4, (score / MAX) * plotH);
+  const yLabels = [0, 125, 250, 375, 500];
+
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-      <div className="flex items-center justify-between mb-4">
-        <h4 className="text-sm font-bold text-gray-700 flex items-center gap-1.5">
-          <TrendingUp className="w-4 h-4 text-[#1e3a8a]" />
-          Grafik Perkembangan Skor
-        </h4>
-        <div className="flex items-center gap-3 text-[10px] font-semibold text-gray-400">
-          <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-[#1e3a8a] inline-block rounded" /> Total</span>
-          <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-blue-400 inline-block rounded" /> TIU</span>
-          <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-emerald-400 inline-block rounded" /> TWK</span>
-          <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-rose-400 inline-block rounded" /> TKP</span>
+    <div className="space-y-3">
+      {/* ── Total score bar chart ── */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+        <div className="flex items-center justify-between mb-4">
+          <h4 className="text-sm font-bold text-gray-700 flex items-center gap-1.5">
+            <TrendingUp className="w-4 h-4 text-[#1e3a8a]" />
+            Tren Total Skor
+          </h4>
+          <div className="flex items-center gap-3 text-[11px] text-gray-400 font-medium">
+            <span className="flex items-center gap-1.5">
+              <span className="w-3 h-3 rounded-sm bg-emerald-500 shrink-0" /> Lulus
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-3 h-3 rounded-sm bg-rose-400 shrink-0" /> Belum Lulus
+            </span>
+          </div>
         </div>
+
+        {sorted.length < 2 ? (
+          <p className="text-center text-xs text-gray-400 py-4 bg-gray-50 rounded-xl">
+            Butuh minimal 2 riwayat ujian untuk menampilkan grafik perkembangan.
+          </p>
+        ) : (
+          <svg viewBox={`0 0 ${VW} ${VH}`} className="w-full" preserveAspectRatio="xMidYMid meet">
+            {/* Grid lines + Y labels */}
+            {yLabels.map((val) => {
+              const y = PT + (1 - val / MAX) * plotH;
+              return (
+                <g key={val}>
+                  <line x1={PL} y1={y} x2={VW - PR} y2={y}
+                    stroke={val === 0 ? '#d1d5db' : '#f3f4f6'} strokeWidth="1" />
+                  <text x={PL - 5} y={y + 3.5} textAnchor="end" fontSize="8.5" fill="#9ca3af">{val}</text>
+                </g>
+              );
+            })}
+
+            {/* Bars */}
+            {sorted.map((r, i) => {
+              const bH = getBarH(r.total_score);
+              const bX = getBarX(i);
+              const bY = PT + plotH - bH;
+              const fill = r.passed ? '#10b981' : '#fb7185';
+              const fillBg = r.passed ? '#d1fae5' : '#ffe4e6';
+              return (
+                <g key={r.id}>
+                  <rect x={bX} y={PT} width={barW} height={plotH} fill={fillBg} rx="4" />
+                  <rect x={bX} y={bY} width={barW} height={bH} fill={fill} rx="4" />
+                  <text x={bX + barW / 2} y={bY - 5} textAnchor="middle"
+                    fontSize="9" fill="#374151" fontWeight="700">{r.total_score}</text>
+                  <text x={bX + barW / 2} y={VH - 2} textAnchor="middle"
+                    fontSize="8" fill="#9ca3af">{formatDate(r.completed_at)}</text>
+                </g>
+              );
+            })}
+          </svg>
+        )}
       </div>
 
-      {sorted.length < 2 ? (
-        <div className="text-center py-3 text-xs text-gray-400 bg-gray-50 rounded-xl">
-          Butuh minimal 2 riwayat ujian untuk menampilkan grafik perkembangan.
-        </div>
-      ) : (
-        <svg viewBox={`0 0 ${vbW} ${vbH}`} className="w-full" preserveAspectRatio="xMidYMid meet">
-          {/* Y grid + labels */}
-          {yLabels.map((val) => {
-            const y = getY(val);
-            return (
-              <g key={val}>
-                <line x1={padL} y1={y} x2={vbW - padR} y2={y}
-                  stroke={val === 0 ? '#d1d5db' : '#f3f4f6'} strokeWidth="1" />
-                <text x={padL - 5} y={y + 3.5} textAnchor="end" fontSize="9" fill="#9ca3af">{val}</text>
-              </g>
-            );
-          })}
+      {/* ── Sub-category sparkline cards ── */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {SUB_CATS.map((cat) => {
+          const values = sorted
+            .map((r) => r[cat.key])
+            .filter((v) => v > 0);
 
-          {/* Area under total line */}
-          {areaPath && <path d={areaPath} fill="#1e3a8a" fillOpacity="0.05" />}
+          const latest = values.length > 0 ? values[values.length - 1] : null;
+          const avg = values.length > 0
+            ? Math.round(values.reduce((s, v) => s + v, 0) / values.length)
+            : null;
+          const trend =
+            values.length >= 2
+              ? values[values.length - 1] > values[0]
+                ? 'up'
+                : values[values.length - 1] < values[0]
+                ? 'down'
+                : 'stable'
+              : 'stable';
 
-          {/* Sub-score lines (dimmer) */}
-          <path d={makePath('tiuY')} fill="none" stroke="#60a5fa" strokeWidth="1.5"
-            strokeDasharray="4 2" strokeLinejoin="round" strokeLinecap="round" />
-          <path d={makePath('twkY')} fill="none" stroke="#34d399" strokeWidth="1.5"
-            strokeDasharray="4 2" strokeLinejoin="round" strokeLinecap="round" />
-          <path d={makePath('tkpY')} fill="none" stroke="#fb7185" strokeWidth="1.5"
-            strokeDasharray="4 2" strokeLinejoin="round" strokeLinecap="round" />
+          const SW = 200, SH = 52;
+          const line = sparkPath(values, cat.max, SW, SH);
+          const area = sparkArea(values, cat.max, SW, SH);
+          const lastDotY = values.length > 0
+            ? SH - (Math.min(values[values.length - 1], cat.max) / cat.max) * SH
+            : SH / 2;
 
-          {/* Total line */}
-          <path d={makePath('y')} fill="none" stroke="#1e3a8a" strokeWidth="2.5"
-            strokeLinejoin="round" strokeLinecap="round" />
+          return (
+            <div key={cat.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+              <div className="flex items-start justify-between mb-3">
+                <div>
+                  <span
+                    className="text-[10px] font-black px-2 py-0.5 rounded-md tracking-wider uppercase"
+                    style={{ background: `${cat.color}18`, color: cat.color }}
+                  >
+                    {cat.id}
+                  </span>
+                  <p className="text-[11px] text-gray-500 mt-1 leading-tight max-w-[110px]">{cat.label}</p>
+                </div>
+                <div className="text-right shrink-0">
+                  <p className="text-2xl font-black leading-none" style={{ color: cat.color }}>
+                    {latest ?? '—'}
+                  </p>
+                  <p className="text-[10px] text-gray-400 mt-0.5">skor terakhir</p>
+                </div>
+              </div>
 
-          {/* Total score dots + labels */}
-          {pts.map((p, i) => (
-            <g key={i}>
-              <circle cx={p.x} cy={p.y} r="5" fill={p.passed ? '#10b981' : '#f43f5e'}
-                stroke="white" strokeWidth="2" />
-              <text x={p.x} y={p.y - 10} textAnchor="middle" fontSize="9.5"
-                fill="#1f2937" fontWeight="700">{p.score}</text>
-              <text x={p.x} y={vbH - 3} textAnchor="middle" fontSize="8" fill="#9ca3af">
-                {formatDate(p.date)}
-              </text>
-            </g>
-          ))}
-        </svg>
-      )}
+              {values.length >= 2 ? (
+                <svg viewBox={`0 0 ${SW} ${SH}`} className="w-full" preserveAspectRatio="none">
+                  <path d={area} fill={cat.color} fillOpacity="0.08" />
+                  <path d={line} fill="none" stroke={cat.color} strokeWidth="2"
+                    strokeLinejoin="round" strokeLinecap="round" />
+                  <circle cx={SW} cy={lastDotY} r="3.5" fill={cat.color} stroke="white" strokeWidth="1.5" />
+                </svg>
+              ) : (
+                <div className="h-[52px] flex items-center justify-center bg-gray-50 rounded-lg">
+                  <p className="text-[11px] text-gray-300">Grafik belum tersedia</p>
+                </div>
+              )}
 
-      <div className="flex items-center gap-4 mt-2 text-[11px] text-gray-400">
-        <span className="flex items-center gap-1.5">
-          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" /> Lulus
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="w-2.5 h-2.5 rounded-full bg-rose-500 shrink-0" /> Belum Lulus
-        </span>
+              <div className="flex items-center justify-between mt-2.5 pt-2.5 border-t border-gray-50 text-[11px]">
+                <span className="text-gray-400">
+                  Rata-rata:{' '}
+                  <span className="font-bold text-gray-600">{avg ?? '—'}</span>
+                </span>
+                {values.length >= 2 && (
+                  <span
+                    className={`font-bold ${
+                      trend === 'up'
+                        ? 'text-emerald-600'
+                        : trend === 'down'
+                        ? 'text-rose-500'
+                        : 'text-gray-400'
+                    }`}
+                  >
+                    {trend === 'up' ? '▲ Meningkat' : trend === 'down' ? '▼ Menurun' : '─ Stabil'}
+                  </span>
+                )}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
