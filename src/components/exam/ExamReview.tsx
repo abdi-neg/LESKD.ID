@@ -73,9 +73,21 @@ function QuestionCard({ question, answer, index, forceExpand }: any) {
         </div>
         <div className="flex-1 min-w-0">
           <p className={`text-sm font-medium text-gray-800 whitespace-pre-wrap ${expanded ? '' : 'line-clamp-2'}`}><span className="text-gray-400 mr-1">#{index + 1}</span>{qText}</p>
-          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-            <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-gray-100 text-gray-700">{category}</span>
-            <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-gray-50 text-gray-600">Jawaban Peserta: {selected || 'Kosong'}</span>
+          <div className="flex items-center gap-2 mt-2 flex-wrap">
+            {/* 🌟 BADGE KATEGORI UTAMA & SUB KATEGORI (BARU) 🌟 */}
+            <span className="text-xs font-bold px-2.5 py-1 rounded-md bg-[#1e3a8a]/10 text-[#1e3a8a] uppercase tracking-widest border border-[#1e3a8a]/20">
+              {category}
+            </span>
+            
+            <span className="text-xs font-semibold px-2.5 py-1 rounded-md bg-gray-100 text-gray-700 border border-gray-200 shadow-sm flex items-center gap-1">
+              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+              </svg>
+              {question?.sub_category || question?.sub_kategori || question?.SUB_CATEGORY || 'Umum'}
+            </span>
+
+            {/* Sisa Badge Bawaan (Jawaban & Kunci) */}
+            <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-gray-50 text-gray-600 ml-1">Jawaban: {selected || 'Kosong'}</span>
             {!isTKP && correctAns && <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700">Kunci: {correctAns}</span>}
           </div>
         </div>
