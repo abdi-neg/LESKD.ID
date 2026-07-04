@@ -112,8 +112,18 @@ function computeAggregateDiagnostics(results: ExamResultRow[]): CategoryDiag[] {
   const allPairs: Pair[] = [];
 
   for (const result of results) {
-    const snap = result.review_snapshot;
+    // 🌟 FIX UNTUK KASUS ADIBA: Ubah String jadi JSON
+    let snap = result.review_snapshot;
+    if (typeof snap === 'string') {
+      try {
+        snap = JSON.parse(snap);
+      } catch (e) {
+        console.error("Gagal memecah JSON:", e);
+      }
+    }
+
     if (!snap?.questions) continue;
+    
     for (const q of snap.questions) {
       const ans = snap.answers?.[q.id];
       const selectedAnswer = typeof ans === 'string' ? ans : ans?.selectedAnswer || null;
@@ -282,8 +292,7 @@ function ScoreTrendChart({ results }: { results: ExamResultRow[] }) {
   const sorted = useMemo(
     () =>
       [...results]
-        // FIX 1: Mengizinkan skor 0 agar tetap terhitung di chart
-        .filter((r) => typeof r.total_score === 'number')
+        .filter((r) => typeof r.total_score === 'number') // Mengizinkan skor 0
         .sort((a, b) => new Date(a.completed_at).getTime() - new Date(b.completed_at).getTime()),
     [results]
   );
@@ -372,8 +381,7 @@ function ScoreTrendChart({ results }: { results: ExamResultRow[] }) {
         {SUB_CATS.map((cat) => {
           const values = sorted
             .map((r) => r[cat.key])
-            // FIX 2: Mengizinkan nilai 0 pada sub-kategori chart
-            .filter((v) => typeof v === 'number');
+            .filter((v) => typeof v === 'number'); // Mengizinkan skor 0
 
           const latest = values.length > 0 ? values[values.length - 1] : null;
           const avg = values.length > 0
@@ -458,7 +466,6 @@ function ScoreTrendChart({ results }: { results: ExamResultRow[] }) {
 // ─── Overall / aggregate view ─────────────────────────────────────────────────
 
 function OverallView({ results }: { results: ExamResultRow[] }) {
-  // FIX 3: Pastikan ringkasan keseluruhan menghitung ujian yang skornya 0
   const completed = results.filter((r) => typeof r.total_score === 'number');
   const passed = completed.filter((r) => r.passed).length;
   const avgScore = completed.length > 0
@@ -545,7 +552,7 @@ function ParticipantDetail({ participant, onBack }: { participant: Profile; onBa
         .from('exam_results')
         .select('id, package_name, package_type, score_tiu, score_twk, score_tkp, total_score, passed, completed_at, review_snapshot, diagnostic_breakdown')
         .eq('participant_id', participant.id)
-        .eq('is_deleted', false)
+        .not('is_deleted', 'eq', true) // Mencegah bug data null
         .order('completed_at', { ascending: false });
       if (data) setResults(data as ExamResultRow[]);
       setLoading(false);
@@ -557,7 +564,17 @@ function ParticipantDetail({ participant, onBack }: { participant: Profile; onBa
     setSelectedResult(row);
     setDiags([]);
     setDiagLoading(true);
-    const snap = row.review_snapshot;
+    
+    // 🌟 FIX UNTUK KASUS ADIBA: Ubah String jadi JSON
+    let snap = row.review_snapshot;
+    if (typeof snap === 'string') {
+      try {
+        snap = JSON.parse(snap);
+      } catch (e) {
+        console.error("Gagal memecah JSON:", e);
+      }
+    }
+
     if (snap?.questions && snap.questions.length > 0) {
       setDiags(computeDiagnostics(snap.questions, snap.answers));
     }
@@ -738,7 +755,7 @@ export default function ParticipantDiagnostic() {
             .from('exam_results')
             .select('participant_id')
             .in('participant_id', ids)
-            .eq('is_deleted', false);
+            .not('is_deleted', 'eq', true); // Mencegah bug data null
           if (counts) {
             const map: Record<string, number> = {};
             counts.forEach((r: any) => { map[r.participant_id] = (map[r.participant_id] || 0) + 1; });
