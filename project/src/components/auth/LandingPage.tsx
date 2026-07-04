@@ -12,7 +12,7 @@ import {
   Award,
   BarChart3
 } from 'lucide-react';
-import LoginModal from './LoginModal';
+import LoginModal from './LoginModalBaru';
 
 type ModalType = 'admin-login' | 'admin-register' | 'participant-login' | 'participant-register' | null;
 
