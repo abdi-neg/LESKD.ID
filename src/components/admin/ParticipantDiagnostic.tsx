@@ -282,7 +282,8 @@ function ScoreTrendChart({ results }: { results: ExamResultRow[] }) {
   const sorted = useMemo(
     () =>
       [...results]
-        .filter((r) => r.total_score > 0)
+        // FIX 1: Mengizinkan skor 0 agar tetap terhitung di chart
+        .filter((r) => typeof r.total_score === 'number')
         .sort((a, b) => new Date(a.completed_at).getTime() - new Date(b.completed_at).getTime()),
     [results]
   );
@@ -371,7 +372,8 @@ function ScoreTrendChart({ results }: { results: ExamResultRow[] }) {
         {SUB_CATS.map((cat) => {
           const values = sorted
             .map((r) => r[cat.key])
-            .filter((v) => v > 0);
+            // FIX 2: Mengizinkan nilai 0 pada sub-kategori chart
+            .filter((v) => typeof v === 'number');
 
           const latest = values.length > 0 ? values[values.length - 1] : null;
           const avg = values.length > 0
@@ -456,7 +458,8 @@ function ScoreTrendChart({ results }: { results: ExamResultRow[] }) {
 // ─── Overall / aggregate view ─────────────────────────────────────────────────
 
 function OverallView({ results }: { results: ExamResultRow[] }) {
-  const completed = results.filter((r) => r.total_score > 0);
+  // FIX 3: Pastikan ringkasan keseluruhan menghitung ujian yang skornya 0
+  const completed = results.filter((r) => typeof r.total_score === 'number');
   const passed = completed.filter((r) => r.passed).length;
   const avgScore = completed.length > 0
     ? Math.round(completed.reduce((s, r) => s + r.total_score, 0) / completed.length)
