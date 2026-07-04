@@ -164,7 +164,7 @@ export default function LoginModal({ mode, onClose, onSwitchMode }: Props) {
                     {isForgotPass 
                       ? 'Pulihkan Kata Sandi' 
                       : (isRegister
-                        ? (isAdmin ? 'Daftar Admin' : 'Daftar Peserta')
+                        ? (isAdmin ? 'REGISTRASI STAF BARU' : 'Daftar Peserta')
                         : (isAdmin ? 'Login Admin' : 'Login Peserta'))}
                   </h2>
                   <p className="text-white/70 text-sm">LESKD.ID — Simulasi CAT CPNS</p>
