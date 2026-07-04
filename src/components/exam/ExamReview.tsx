@@ -176,9 +176,20 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
         }
 
         if (data && data.review_snapshot) {
-          const snapshot = typeof data.review_snapshot === 'string' 
-            ? JSON.parse(data.review_snapshot) 
-            : data.review_snapshot;
+          let snapshot = data.review_snapshot;
+          
+          // 🌟 PENAWAR ROBUST (ANTI DOUBLE-STRINGIFIED) 🌟
+          if (typeof snapshot === 'string') {
+            try {
+              snapshot = JSON.parse(snapshot);
+              // Jika data ternyata dibungkus string 2 kali, bongkar sekali lagi!
+              if (typeof snapshot === 'string') {
+                snapshot = JSON.parse(snapshot);
+              }
+            } catch (e) {
+              console.error("Gagal parse snapshot di ExamReview:", e);
+            }
+          }
             
           if (snapshot && Array.isArray(snapshot.questions)) {
             // ─── 🌟 TARGET RECOVERY: Amankan pemecahan diagram data riwayat dari bug kapitalisasi Word ───
