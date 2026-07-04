@@ -2,7 +2,6 @@ import { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Upload, FileText, X, Check, AlertCircle, Download, Loader2, ChevronDown, ChevronUp, Eye, Package } from 'lucide-react';
 import mammoth from 'mammoth';
-import JSZip from 'jszip';
 import { Category, AnswerOption, PackageType } from '../../types';
 import { supabase } from '../../lib/supabase';
 
@@ -158,168 +157,17 @@ function parseDocxText(rawText: string, category: Category): { questions: Parsed
   return { questions, errors };
 }
 
-function xmlEscape(str: string) {
-  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
-function wParagraph(runs: string, spacing = '') {
-  return `<w:p>${spacing}<w:pPr></w:pPr>${runs}</w:p>`;
-}
-
-function wMarkerLine(marker: string, content: string, markerColor = '1e3a8a') {
-  return wParagraph(
-    wRun(`[${marker}]`, { bold: true, color: markerColor, size: 22 }) +
-    wRun(`  ${content}`, { size: 22 }),
-    '<w:pPr><w:spacing w:before="80" w:after="60"/></w:pPr>',
-  );
-}
-
-function wRun(text: string, opts: { bold?: boolean; color?: string; size?: number; italic?: boolean } = {}) {
-  const rPr = [
-    opts.bold ? '<w:b/>' : '',
-    opts.italic ? '<w:i/>' : '',
-    opts.color ? `<w:color w:val="${opts.color}"/>` : '',
-    opts.size ? `<w:sz w:val="${opts.size}"/><w:szCs w:val="${opts.size}"/>` : '',
-  ].filter(Boolean).join('');
-  return `<w:r>${rPr ? `<w:rPr>${rPr}</w:rPr>` : ''}<w:t xml:space="preserve">${xmlEscape(text)}</w:t></w:r>`;
-}
-
-function wHeading(text: string, level: 1 | 2) {
-  const size = level === 1 ? 36 : 28;
-  const color = level === 1 ? '1e3a8a' : '374151';
-  return `<w:p><w:pPr><w:pStyle w:val="Heading${level}"/><w:spacing w:after="120"/></w:pPr>${wRun(text, { bold: true, size, color })}</w:p>`;
-}
-
-const EXAMPLES: Record<Category, { q: string; sub: string; opts: string[]; key: string; exp: string }[]> = {
-  TIU: [
-    { q: 'Jika 2x + 4 = 12, maka nilai x adalah...', sub: 'Berhitung Cepat', opts: ['2', '3', '4', '5', '6'], key: 'C', exp: 'Dari 2x + 4 = 12, maka 2x = 8, sehingga x = 4.' },
-    { q: 'Antonim dari kata EKSPANSIF adalah...', sub: 'Analogi Kata', opts: ['Menyebar', 'Meluas', 'Berkembang', 'Menyempit', 'Bertambah'], key: 'D', exp: 'Antonim ekspansif (meluas) adalah menyempit.' },
-  ],
-  TWK: [
-    { q: 'Pancasila sebagai dasar negara pertama kali diusulkan oleh...', sub: 'Nasionalisme', opts: ['Mohammad Hatta', 'Soekarno', 'Mohammad Yamin', 'Soepomo', 'Agus Salim'], key: 'B', exp: 'Pancasila diusulkan oleh Soekarno dalam sidang BPUPKI pada 1 Juni 1945.' },
-    { q: 'Sila ke-3 Pancasila berbunyi...', sub: 'Pilar Negara', opts: ['Ketuhanan Yang Maha Esa', 'Kemanusiaan yang Adil dan Beradab', 'Persatuan Indonesia', 'Kerakyatan yang Dipimpin oleh Hikmat', 'Keadilan Sosial'], key: 'C', exp: 'Sila ke-3 Pancasila adalah Persatuan Indonesia.' },
-  ],
-  TKP: [
-    { q: 'Atasan meminta Anda memalsukan laporan keuangan demi kelancaran proyek perusahaan. Bagaimana tindakan Anda?', sub: 'Berorientasi Pelayanan', opts: ['Langsung menolak dengan keras dan mengancam akan melaporkan hal tersebut ke pihak berwajib | Poin: 2', 'Menolak dengan sopan serta menjelaskan risiko hukum dan dampak buruknya bagi perusahaan | Poin: 5', 'Melaksanakan instruksi tersebut demi menjaga loyalitas kerja dan posisi aman | Poin: 1', 'Pura-pura menyetujui hal tersebut tetapi sengaja menunda-nunda penyelesaian tugasnya | Poin: 3', 'Mengajak rekan kerja yang lain untuk bersama-sama melakukan protes kepada atasan | Poin: 4'], key: 'B', exp: 'Menolak secara sopan merefleksikan integritas kerja yang tinggi tanpa memicu gesekan destruktif.' },
-    { q: 'Seorang rekan dalam tim Anda tampak mengalami penurunan produktivitas yang mengganggu ritme kerja kelompok. Sikap Anda?', sub: 'Kolaboratif', opts: ['Melaporkan penurunan kinerja tersebut langsung kepada atasan tanpa diskusi internal | Poin: 2', 'Mengabaikan kondisi tersebut karena merasa itu adalah urusan pribadi masing-masing | Poin: 1', 'Mengajak berbicara dari hati ke hati secara santun dan menawarkan solusi atau bantuan | Poin: 5', 'Membicarakan keluhan tersebut di belakangnya bersama dengan rekan kerja yang lain | Poin: 3', 'Membantu mengambil alih seluruh beban tugasnya secara diam-diam agar tim tetap aman | Poin: 4'], key: 'C', exp: 'Komunikasi persuasif interpersonal melambangkan kompetensi jejaring kerja dan kepedulian yang sehat.' },
-  ],
-};
-
-async function downloadTemplate(category: Category) {
-  const examples = EXAMPLES[category];
-
-  const exampleParagraphs = examples.flatMap((ex) => [
-    wParagraph(wRun('[SOAL]', { bold: true, color: '1e3a8a', size: 22 }), '<w:pPr><w:spacing w:before="320" w:after="80"/></w:pPr>'),
-    wMarkerLine('SUB_KATEGORI', ex.sub, '4b5563'),
-    wParagraph(wRun(ex.q, { size: 22 }), '<w:pPr><w:spacing w:after="100"/></w:pPr>'),
-    ...(['A', 'B', 'C', 'D', 'E'] as const).map((opt, i) => wMarkerLine(opt, ex.opts[i])),
-    wMarkerLine('KUNCI', ex.key, '059669'),
-    wMarkerLine('PEMBAHASAN', ex.exp),
-    wParagraph('', '<w:pPr><w:spacing w:after="160"/></w:pPr>'),
-  ]);
-
-  const guideRows = [
-    { marker: '[SOAL]', desc: 'Awal setiap nomor soal baru' },
-    { marker: '[SUB_KATEGORI]', desc: 'Nama materi bab spesifik untuk rapor analisis diagnosis (cth: Silogisme, Nasionalisme, Integritas)' },
-    { marker: '[A] hingga [E]', desc: category === 'TKP' ? 'Isi jawaban diakhiri tanda pipa dan poin. Contoh: Teks Jawaban | Poin: 5' : 'Pilihan jawaban A sampai E biasa' },
-    { marker: '[KUNCI]', desc: category === 'TKP' ? 'Bisa diisi huruf opsi dengan poin tertinggi (Opsi formalitas)' : 'Huruf jawaban benar (A, B, C, D, atau E)' },
-    { marker: '[PEMBAHASAN]', desc: 'Penjelasan analisis soal (opsional)' },
-  ];
-
-  const tableRows = guideRows.map((row, i) => {
-    const bg = i % 2 === 0 ? 'F0F4FF' : 'FFFFFF';
-    return `<w:tr>
-      <w:tc><w:tcPr><w:shd w:val="clear" w:color="auto" w:fill="${bg}"/><w:tcW w:w="2200" w:type="dxa"/></w:tcPr>
-        ${wParagraph(wRun(row.marker, { bold: true, color: '1e3a8a', size: 20 }))}</w:tc>
-      <w:tc><w:tcPr><w:shd w:val="clear" w:color="auto" w:fill="${bg}"/></w:tcPr>
-        ${wParagraph(wRun(row.desc, { size: 20 }))}</w:tc>
-    </w:tr>`;
-  }).join('');
-
-  const docXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
-  <w:body>
-    ${wHeading(`Template Import Soal ${category}`, 1)}
-    ${wParagraph(wRun(`Kategori: ${category}  |  Gunakan format marker di bawah ini`, { size: 20, color: '6b7280', italic: true }), '<w:pPr><w:spacing w:after="320"/></w:pPr>')}
-
-    ${wHeading('PANDUAN FORMAT FORMAT MARKER', 2)}
-    ${wParagraph(wRun('Gunakan marker berikut di setiap soal. Setiap soal diawali dengan [SOAL].', { size: 22 }), '<w:pPr><w:spacing w:after="120"/></w:pPr>')}
-
-    <w:tbl>
-      <w:tblPr>
-        <w:tblW w:w="9072" w:type="dxa"/>
-        <w:tblBorders>
-          <w:top w:val="single" w:sz="4" w:space="0" w:color="D1D5DB"/>
-          <w:left w:val="single" w:sz="4" w:space="0" w:color="D1D5DB"/>
-          <w:bottom w:val="single" w:sz="4" w:space="0" w:color="D1D5DB"/>
-          <w:right w:val="single" w:sz="4" w:space="0" w:color="D1D5DB"/>
-          <w:insideH w:val="single" w:sz="4" w:space="0" w:color="D1D5DB"/>
-          <w:insideV w:val="single" w:sz="4" w:space="0" w:color="D1D5DB"/>
-        </w:tblBorders>
-      </w:tblPr>
-      <w:tr>
-        <w:tc><w:tcPr><w:shd w:val="clear" w:color="auto" w:fill="1E3A8A"/><w:tcW w:w="2200" w:type="dxa"/></w:tcPr>
-          ${wParagraph(wRun('Marker', { bold: true, color: 'FFFFFF', size: 20 }))}</w:tc>
-        <w:tc><w:tcPr><w:shd w:val="clear" w:color="auto" w:fill="1E3A8A"/></w:tcPr>
-          ${wParagraph(wRun('Keterangan', { bold: true, color: 'FFFFFF', size: 20 }))}</w:tc>
-      </w:tr>
-      ${tableRows}
-    </w:tbl>
-
-    ${wParagraph('', '<w:pPr><w:spacing w:after="400"/></w:pPr>')}
-    ${wHeading('CONTOH SOAL', 2)}
-    ${wParagraph(wRun('Salin format di bawah ini dan isi dengan soal Anda sendiri:', { size: 20, italic: true, color: '6b7280' }), '<w:pPr><w:spacing w:after="200"/></w:pPr>')}
-
-    ${exampleParagraphs.join('\n')}
-
-    ${wParagraph(wRun('-- Lanjutkan pola di atas untuk soal-soal berikutnya --', { size: 20, italic: true, color: '9CA3AF' }), '<w:pPr><w:jc w:val="center"/><w:spacing w:before="320"/></w:pPr>')}
-
-    <w:sectPr>
-      <w:pgSz w:w="12240" w:h="15840"/>
-      <w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/>
-    </w:sectPr>
-  </w:body>
-</w:document>`;
-
-  const relsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
-</Relationships>`;
-
-  const stylesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
-  <w:style w:type="paragraph" w:styleId="Normal"><w:name w:val="Normal"/><w:rPr><w:sz w:val="22"/><w:szCs w:val="22"/></w:rPr></w:style>
-  <w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:before="240" w:after="120"/></w:pPr><w:rPr><w:b/><w:sz w:val="36"/><w:szCs w:val="36"/></w:rPr></w:style>
-  <w:style w:type="paragraph" w:styleId="Heading2"><w:name w:val="heading 2"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:before="200" w:after="100"/></w:pPr><w:rPr><w:b/><w:sz w:val="28"/><w:szCs w:val="28"/></w:rPr></w:style>
-</w:styles>`;
-
-  const contentTypesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
-  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
-  <Default Extension="xml" ContentType="application/xml"/>
-  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
-  <Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>
-</Types>`;
-
-  const rootRelsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/package/2006/relationships/officeDocument" Target="word/document.xml"/>
-</Relationships>`;
-
-  const zip = new JSZip();
-  zip.file('[Content_Types].xml', contentTypesXml);
-  zip.file('_rels/.rels', rootRelsXml);
-  zip.file('word/document.xml', docXml);
-  zip.file('word/styles.xml', stylesXml);
-  zip.file('word/_rels/document.xml.rels', relsXml);
-
-  const blob = await zip.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
-  const url = URL.createObjectURL(blob);
+// 🌟 FUNGSI DOWNLOAD BARU YANG ANTI-CORRUPT
+function downloadTemplate(category: Category) {
+  const fileUrl = `/templates/Template_${category}.docx`;
+  
   const a = document.createElement('a');
-  a.href = url;
-  a.download = `template_soal_${category.toLowerCase()}.docx`;
+  a.href = fileUrl;
+  a.download = `Template_${category}.docx`; // Nama file saat terdownload
+  
+  document.body.appendChild(a);
   a.click();
-  URL.revokeObjectURL(url);
+  document.body.removeChild(a);
 }
 
 export default function DocxImporter({ packageId, packageType, onImported }: Props) {
