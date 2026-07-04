@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Eye, EyeOff, Shield, Users, Loader2, Mail, CheckCircle, AlertCircle, ArrowLeft } from 'lucide-react';
+import { X, Eye, EyeOff, Shield, Users, Loader2, Mail, CheckCircle, AlertCircle, ArrowLeft, KeyRound } from 'lucide-react';
 import { supabase, upsertProfile } from '../../lib/supabase';
 import { SUPER_ADMIN_EMAIL } from '../../types';
 
@@ -16,6 +16,7 @@ export default function LoginModal({ mode, onClose, onSwitchMode }: Props) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
+  const [adminCode, setAdminCode] = useState(''); // 🌟 STATE BARU UNTUK KODE RAHASIA
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -24,6 +25,9 @@ export default function LoginModal({ mode, onClose, onSwitchMode }: Props) {
 
   const isAdmin = mode.startsWith('admin');
   const isRegister = mode.endsWith('register');
+
+  // 🌟 KODE RAHASIA MASTER (Bisa kamu ganti kapan saja)
+  const SECRET_ADMIN_CODE = 'LESKD-ADMIN-2026';
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -41,10 +45,21 @@ export default function LoginModal({ mode, onClose, onSwitchMode }: Props) {
   async function handleRegister(e: React.FormEvent) {
     e.preventDefault();
     setError('');
+    
     if (!fullName.trim()) { setError('Nama lengkap tidak boleh kosong.'); return; }
+    
+    const isSuperAdmin = email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
+
+    // 🌟 VALIDASI KODE RAHASIA KHUSUS ADMIN
+    if (isAdmin && !isSuperAdmin) {
+      if (adminCode !== SECRET_ADMIN_CODE) {
+        setError('Kode Akses Admin tidak valid! Anda tidak berhak mendaftar sebagai Admin.');
+        return;
+      }
+    }
+
     setLoading(true);
 
-    const isSuperAdmin = email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
     const role = isSuperAdmin ? 'super_admin' : isAdmin ? 'admin' : 'participant';
     const isApproved = isSuperAdmin;
 
@@ -81,7 +96,7 @@ export default function LoginModal({ mode, onClose, onSwitchMode }: Props) {
       isSuperAdmin
         ? 'Akun Super Admin dibuat. Silakan cek email untuk verifikasi.'
         : isAdmin
-        ? 'Pendaftaran berhasil! Cek email untuk verifikasi, lalu tunggu persetujuan Super Admin.'
+        ? 'Pendaftaran Admin berhasil! Cek email untuk verifikasi, lalu tunggu persetujuan Super Admin.'
         : 'Pendaftaran berhasil! Cek email untuk verifikasi, lalu tunggu persetujuan Admin.'
     );
     setLoading(false);
@@ -109,6 +124,7 @@ export default function LoginModal({ mode, onClose, onSwitchMode }: Props) {
     setEmail('');
     setPassword('');
     setFullName('');
+    setAdminCode(''); // 🌟 RESET KODE RAHASIA
     setError('');
     setSuccessMsg('');
     setShowPass(false);
@@ -216,6 +232,23 @@ export default function LoginModal({ mode, onClose, onSwitchMode }: Props) {
                       </div>
                     )}
 
+                    {/* 🌟 KOLOM INPUT KODE RAHASIA (HANYA MUNCUL JIKA DAFTAR ADMIN) */}
+                    {isRegister && isAdmin && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1.5 flex items-center gap-1.5">
+                          <KeyRound className="w-4 h-4 text-[#1e3a8a]" /> Kode Akses Admin
+                        </label>
+                        <input
+                          type="password"
+                          value={adminCode}
+                          onChange={(e) => setAdminCode(e.target.value)}
+                          placeholder="Masukkan kode rahasia staf..."
+                          className={`w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 ${focusRing} transition-all placeholder:text-gray-400`}
+                          required
+                        />
+                      </div>
+                    )}
+
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1.5">Email</label>
                       <input
@@ -228,7 +261,6 @@ export default function LoginModal({ mode, onClose, onSwitchMode }: Props) {
                       />
                     </div>
 
-                    {/* ─── KOLOM KATA SANDI (STRUKTUR TERBARU) ─── */}
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1.5">Kata Sandi</label>
                       <div className="relative">
@@ -250,7 +282,6 @@ export default function LoginModal({ mode, onClose, onSwitchMode }: Props) {
                         </button>
                       </div>
 
-                      {/* 🌟 SEKARANG DI SINI: Tombol diletakkan rapi di bawah input password (hanya muncul saat login) */}
                       {!isRegister && (
                         <div className="text-right mt-2">
                           <button
