@@ -101,23 +101,46 @@ function QuestionCard({ question, answer, index, forceExpand }: any) {
             <div className="mt-3 space-y-2">
               {OPTIONS.map((opt) => {
                 const text = optionTexts[opt];
+                // 🌟 PERBAIKAN: Deteksi apakah konten adalah Link Gambar
+                const content = text || optionImages[opt] || '';
+                const isImageContent = typeof content === 'string' && content.startsWith('http');
+
                 const isKey = !isTKP && String(opt).toUpperCase() === String(correctAns).toUpperCase();
                 const isChosen = String(selected).toUpperCase() === String(opt).toUpperCase();
+                
                 return (
-                  <div key={opt} className={`p-2.5 rounded-xl text-sm border ${isKey ? 'bg-emerald-50 border-emerald-200' : isChosen ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-transparent'}`}>
-                    <span className="font-bold mr-2">{opt}.</span> {text || optionImages[opt] || '(Kosong)'}
-                    {isTKP && getOptionPoints(opt) > 0 && <span className="ml-2 text-xs text-amber-600 font-bold">({getOptionPoints(opt)} Poin)</span>}
+                  <div key={opt} className={`p-3 flex items-start gap-3 rounded-xl text-sm border ${isKey ? 'bg-emerald-50 border-emerald-200' : isChosen ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-transparent'}`}>
+                    <span className="font-bold mt-0.5">{opt}.</span>
+                    <div className="flex-1">
+                      {isImageContent ? (
+                        <img 
+                          src={content} 
+                          alt={`Opsi ${opt}`} 
+                          className="max-h-32 object-contain rounded-xl border border-gray-200 p-1 bg-white"
+                        />
+                      ) : (
+                        <span className="whitespace-pre-wrap leading-relaxed">{content || '(Kosong)'}</span>
+                      )}
+                      
+                      {isTKP && getOptionPoints(opt) > 0 && (
+                        <div className="mt-1.5">
+                          <span className="text-xs text-amber-700 font-bold bg-amber-100/50 px-2 py-0.5 rounded border border-amber-200/50">
+                            {getOptionPoints(opt)} Poin
+                          </span>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 );
               })}
             </div>
             {(explanation || explanationImage) ? (
               <div className="mt-4 bg-blue-50/70 border border-blue-100 rounded-xl p-3.5">
-                <p className="text-xs font-bold text-blue-700 mb-1 flex items-center gap-1">
+                <p className="text-xs font-bold text-blue-700 mb-2 flex items-center gap-1">
                   <BookOpen className="w-3.5 h-3.5" /> Pembahasan Resmi:
                 </p>
-                {explanationImage && <img src={explanationImage} alt="pembahasan" className="max-h-48 object-contain mb-2" />}
-                <p className="text-sm text-gray-700 whitespace-pre-wrap">{explanation}</p>
+                {explanationImage && <img src={explanationImage} alt="pembahasan" className="max-h-48 object-contain mb-3 rounded-xl border border-blue-100 p-1 bg-white" />}
+                {explanation && <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{explanation}</p>}
               </div>
             ) : <div className="mt-4 text-xs text-gray-400 italic text-center">Belum ada pembahasan teks.</div>}
           </div>
