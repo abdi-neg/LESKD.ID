@@ -20,6 +20,41 @@ import DiagnosticReport from './DiagnosticReport';
 type AnswerOption = 'A' | 'B' | 'C' | 'D' | 'E';
 const OPTIONS: AnswerOption[] = ['A', 'B', 'C', 'D', 'E'];
 
+// ─── 🌟 RADAR PENDETEKSI GAMBAR (SOLUSI PAMUNGKAS) ───
+function renderTextWithImages(text: string | any, customImageClass: string = "max-h-40 object-contain my-2 rounded-xl border border-gray-200 p-1 bg-white block") {
+  if (!text || typeof text !== 'string') return text;
+  
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  const parts = text.split(urlRegex);
+
+  if (parts.length === 1) return text;
+
+  return (
+    <span className="whitespace-pre-wrap leading-relaxed">
+      {parts.map((part, i) => {
+        if (part.match(urlRegex)) {
+          if (part.includes('supabase.co/storage') || part.match(/\.(jpeg|jpg|gif|png|webp)(\?.*)?$/i)) {
+            return (
+              <img 
+                key={i} 
+                src={part} 
+                alt="ilustrasi" 
+                className={customImageClass}
+              />
+            );
+          }
+          return (
+            <a key={i} href={part} target="_blank" rel="noreferrer" className="text-blue-600 underline break-all">
+              {part}
+            </a>
+          );
+        }
+        return <React.Fragment key={i}>{part}</React.Fragment>;
+      })}
+    </span>
+  );
+}
+
 function QuestionCard({ question, answer, index, forceExpand }: any) {
   const [localExpanded, setLocalExpanded] = useState(false);
   const expanded = forceExpand || localExpanded;
@@ -62,16 +97,14 @@ function QuestionCard({ question, answer, index, forceExpand }: any) {
 
   const mainImage = question?.image_url || question?.gambar || question?.gambar_soal;
   
-  // ─── 🌟 PERBAIKAN: Tangkap Pembahasan Gambar yang Masuk ke Kolom Teks ───
   let explanationText = question?.explanation || question?.pembahasan || question?.Pembahasan || '';
   let explanationImage = question?.explanation_image || question?.explanation_image_url || question?.pembahasan_gambar || '';
 
-  // Jika teks pembahasan diawali dengan http dan tidak ada spasi (murni URL), jadikan sebagai gambar
   if (typeof explanationText === 'string' && explanationText.trim().startsWith('http') && !explanationText.includes(' ')) {
     if (!explanationImage) {
       explanationImage = explanationText.trim();
     }
-    explanationText = ''; // Kosongkan teks agar URL mentah tidak tercetak
+    explanationText = ''; 
   }
 
   return (
@@ -83,7 +116,10 @@ function QuestionCard({ question, answer, index, forceExpand }: any) {
           {isUnanswered ? <Target className="w-3.5 h-3.5 text-gray-400" /> : isTKP ? <span className="text-[10px] font-extrabold text-white">+{userGainedPoints}</span> : isCorrect ? <CheckCircle className="w-3.5 h-3.5 text-white" /> : <XCircle className="w-3.5 h-3.5 text-white" />}
         </div>
         <div className="flex-1 min-w-0">
-          <p className={`text-sm font-medium text-gray-800 whitespace-pre-wrap ${expanded ? '' : 'line-clamp-2'}`}><span className="text-gray-400 mr-1">#{index + 1}</span>{qText}</p>
+          <p className={`text-sm font-medium text-gray-800 ${expanded ? '' : 'line-clamp-2'}`}>
+            <span className="text-gray-400 mr-1">#{index + 1}</span>
+            {renderTextWithImages(qText, "max-h-64 object-contain mt-2 mb-2 rounded-xl border border-gray-200 p-1 bg-white block")}
+          </p>
           <div className="flex items-center gap-2 mt-2 flex-wrap">
             <span className="text-xs font-bold px-2.5 py-1 rounded-md bg-[#1e3a8a]/10 text-[#1e3a8a] uppercase tracking-widest border border-[#1e3a8a]/20">
               {category}
@@ -107,13 +143,12 @@ function QuestionCard({ question, answer, index, forceExpand }: any) {
         {expanded && (
           <div className="px-4 pb-4 border-t border-gray-50 bg-white">
             {mainImage && <div className="rounded-xl overflow-hidden bg-gray-50 border p-4 mt-3 flex justify-center"><img src={mainImage} alt="soal" className="max-h-64 object-contain" /></div>}
+            
             <div className="mt-3 space-y-2">
               {OPTIONS.map((opt) => {
                 const text = optionTexts[opt];
-                // Perbaikan Opsi Gambar
                 const content = text || optionImages[opt] || '';
-                const isImageContent = typeof content === 'string' && content.startsWith('http');
-
+                
                 const isKey = !isTKP && String(opt).toUpperCase() === String(correctAns).toUpperCase();
                 const isChosen = String(selected).toUpperCase() === String(opt).toUpperCase();
                 
@@ -121,15 +156,8 @@ function QuestionCard({ question, answer, index, forceExpand }: any) {
                   <div key={opt} className={`p-3 flex items-start gap-3 rounded-xl text-sm border ${isKey ? 'bg-emerald-50 border-emerald-200' : isChosen ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-transparent'}`}>
                     <span className="font-bold mt-0.5">{opt}.</span>
                     <div className="flex-1">
-                      {isImageContent ? (
-                        <img 
-                          src={content} 
-                          alt={`Opsi ${opt}`} 
-                          className="max-h-32 object-contain rounded-xl border border-gray-200 p-1 bg-white"
-                        />
-                      ) : (
-                        <span className="whitespace-pre-wrap leading-relaxed">{content || '(Kosong)'}</span>
-                      )}
+                      {/* Terapkan Radar Gambar pada Opsi Jawaban */}
+                      {renderTextWithImages(content, "max-h-32 object-contain rounded-xl border border-gray-200 p-1 bg-white block mt-1")}
                       
                       {isTKP && getOptionPoints(opt) > 0 && (
                         <div className="mt-1.5">
@@ -144,7 +172,6 @@ function QuestionCard({ question, answer, index, forceExpand }: any) {
               })}
             </div>
 
-            {/* ─── 🌟 TAMPILKAN PEMBAHASAN YANG SUDAH AMAN DARI URL ─── */}
             {(explanationText || explanationImage) ? (
               <div className="mt-4 bg-blue-50/70 border border-blue-100 rounded-xl p-3.5">
                 <p className="text-xs font-bold text-blue-700 mb-2 flex items-center gap-1">
@@ -154,13 +181,14 @@ function QuestionCard({ question, answer, index, forceExpand }: any) {
                   <img 
                     src={explanationImage} 
                     alt="pembahasan" 
-                    className="max-h-64 object-contain mb-3 rounded-xl border border-blue-100 p-1 bg-white" 
+                    className="max-h-64 object-contain mb-3 rounded-xl border border-blue-100 p-1 bg-white block" 
                   />
                 )}
                 {explanationText && (
-                  <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
-                    {explanationText}
-                  </p>
+                  <div className="text-sm text-gray-700">
+                    {/* Terapkan Radar Gambar pada Teks Pembahasan */}
+                    {renderTextWithImages(explanationText, "max-h-64 object-contain my-3 rounded-xl border border-blue-200 p-1 bg-white block")}
+                  </div>
                 )}
               </div>
             ) : (
@@ -261,12 +289,35 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
     loadSnapshotFromSupabase();
   }, [state, propQuestions, stateQuestions.length, isAdmin]);
 
-  // ─── PENGURUTAN DIKEMBALIKAN KE VERSI ORIGINAL ───
-  const finalQuestions = (propQuestions && propQuestions.length > 0) ? propQuestions :
+  const rawQuestions = (propQuestions && propQuestions.length > 0) ? propQuestions :
                          (stateQuestions.length > 0) ? stateQuestions : supabaseQuestions;
 
   const finalAnswers = (propQuestions && propQuestions.length > 0) ? propAnswers :
                        (stateQuestions.length > 0) ? stateAnswers : supabaseAnswers;
+
+  // ─── 🌟 LOGIKA PENGURUTAN SOAL YANG DIJAMIN 100% KONSISTEN (ANTI ACAK) ───
+  const finalQuestions = [...rawQuestions].sort((a: any, b: any) => {
+    const catOrder: Record<string, number> = { TWK: 1, TIU: 2, TKP: 3 };
+    const catA = a.category || a.kategori || 'TIU';
+    const catB = b.category || b.kategori || 'TIU';
+    
+    // 1. Urutkan berdasarkan Kategori Paket (TWK selalu pertama, lalu TIU, lalu TKP)
+    if (catOrder[catA] !== catOrder[catB]) {
+      return (catOrder[catA] || 99) - (catOrder[catB] || 99);
+    }
+    
+    // 2. Jika Kategorinya sama, urutkan berdasarkan urutan asli saat dimasukkan ke Database (created_at)
+    if (a.created_at && b.created_at) {
+      const timeA = new Date(a.created_at).getTime();
+      const timeB = new Date(b.created_at).getTime();
+      if (timeA !== timeB) return timeA - timeB;
+    }
+
+    // 3. Fallback Mutlak: Jika waktu input sama persis, urutkan berdasarkan abjad teks soal. 
+    const textA = a.question_text || a.soal || a.text || '';
+    const textB = b.question_text || b.soal || b.text || '';
+    return String(textA).localeCompare(String(textB));
+  });
 
   const getAnswerForQuestion = (qId: string | number) => {
     if (!finalAnswers) return undefined;
