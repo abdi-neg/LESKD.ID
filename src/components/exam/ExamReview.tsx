@@ -27,7 +27,7 @@ function QuestionCard({ question, answer, index, forceExpand }: any) {
   const qText = question?.question_text || question?.soal || question?.text || `Soal Nomor ${index + 1}`;
   const category = question?.category || question?.kategori || 'TIU';
   const correctAns = question?.correct_answer || question?.kunci_jawaban || question?.kunci || '';
-  const explanation = question?.explanation || question?.pembahasan || '';
+  
   const isTKP = category === 'TKP';
 
   const selected = typeof answer === 'string' 
@@ -61,7 +61,18 @@ function QuestionCard({ question, answer, index, forceExpand }: any) {
   };
 
   const mainImage = question?.image_url || question?.gambar || question?.gambar_soal;
-  const explanationImage = question?.explanation_image || question?.explanation_image_url || question?.pembahasan_gambar;
+  
+  // ─── 🌟 PERBAIKAN: Tangkap Pembahasan Gambar yang Masuk ke Kolom Teks ───
+  let explanationText = question?.explanation || question?.pembahasan || question?.Pembahasan || '';
+  let explanationImage = question?.explanation_image || question?.explanation_image_url || question?.pembahasan_gambar || '';
+
+  // Jika teks pembahasan diawali dengan http dan tidak ada spasi (murni URL), jadikan sebagai gambar
+  if (typeof explanationText === 'string' && explanationText.trim().startsWith('http') && !explanationText.includes(' ')) {
+    if (!explanationImage) {
+      explanationImage = explanationText.trim();
+    }
+    explanationText = ''; // Kosongkan teks agar URL mentah tidak tercetak
+  }
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
@@ -74,7 +85,6 @@ function QuestionCard({ question, answer, index, forceExpand }: any) {
         <div className="flex-1 min-w-0">
           <p className={`text-sm font-medium text-gray-800 whitespace-pre-wrap ${expanded ? '' : 'line-clamp-2'}`}><span className="text-gray-400 mr-1">#{index + 1}</span>{qText}</p>
           <div className="flex items-center gap-2 mt-2 flex-wrap">
-            {/* 🌟 BADGE KATEGORI UTAMA & SUB KATEGORI (BARU) 🌟 */}
             <span className="text-xs font-bold px-2.5 py-1 rounded-md bg-[#1e3a8a]/10 text-[#1e3a8a] uppercase tracking-widest border border-[#1e3a8a]/20">
               {category}
             </span>
@@ -86,7 +96,6 @@ function QuestionCard({ question, answer, index, forceExpand }: any) {
               {question?.sub_category || question?.sub_kategori || question?.SUB_CATEGORY || 'Umum'}
             </span>
 
-            {/* Sisa Badge Bawaan (Jawaban & Kunci) */}
             <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-gray-50 text-gray-600 ml-1">Jawaban: {selected || 'Kosong'}</span>
             {!isTKP && correctAns && <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700">Kunci: {correctAns}</span>}
           </div>
@@ -101,7 +110,7 @@ function QuestionCard({ question, answer, index, forceExpand }: any) {
             <div className="mt-3 space-y-2">
               {OPTIONS.map((opt) => {
                 const text = optionTexts[opt];
-                // 🌟 PERBAIKAN: Deteksi apakah konten adalah Link Gambar
+                // Perbaikan Opsi Gambar
                 const content = text || optionImages[opt] || '';
                 const isImageContent = typeof content === 'string' && content.startsWith('http');
 
@@ -134,15 +143,32 @@ function QuestionCard({ question, answer, index, forceExpand }: any) {
                 );
               })}
             </div>
-            {(explanation || explanationImage) ? (
+
+            {/* ─── 🌟 TAMPILKAN PEMBAHASAN YANG SUDAH AMAN DARI URL ─── */}
+            {(explanationText || explanationImage) ? (
               <div className="mt-4 bg-blue-50/70 border border-blue-100 rounded-xl p-3.5">
                 <p className="text-xs font-bold text-blue-700 mb-2 flex items-center gap-1">
                   <BookOpen className="w-3.5 h-3.5" /> Pembahasan Resmi:
                 </p>
-                {explanationImage && <img src={explanationImage} alt="pembahasan" className="max-h-48 object-contain mb-3 rounded-xl border border-blue-100 p-1 bg-white" />}
-                {explanation && <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{explanation}</p>}
+                {explanationImage && (
+                  <img 
+                    src={explanationImage} 
+                    alt="pembahasan" 
+                    className="max-h-64 object-contain mb-3 rounded-xl border border-blue-100 p-1 bg-white" 
+                  />
+                )}
+                {explanationText && (
+                  <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
+                    {explanationText}
+                  </p>
+                )}
               </div>
-            ) : <div className="mt-4 text-xs text-gray-400 italic text-center">Belum ada pembahasan teks.</div>}
+            ) : (
+              <div className="mt-4 text-xs text-gray-400 italic text-center">
+                Belum ada pembahasan teks.
+              </div>
+            )}
+
           </div>
         )}
       </AnimatePresence>
@@ -201,11 +227,9 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
         if (data && data.review_snapshot) {
           let snapshot = data.review_snapshot;
           
-          // 🌟 PENAWAR ROBUST (ANTI DOUBLE-STRINGIFIED) 🌟
           if (typeof snapshot === 'string') {
             try {
               snapshot = JSON.parse(snapshot);
-              // Jika data ternyata dibungkus string 2 kali, bongkar sekali lagi!
               if (typeof snapshot === 'string') {
                 snapshot = JSON.parse(snapshot);
               }
@@ -215,7 +239,6 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
           }
             
           if (snapshot && Array.isArray(snapshot.questions)) {
-            // ─── 🌟 TARGET RECOVERY: Amankan pemecahan diagram data riwayat dari bug kapitalisasi Word ───
             const safeQuestions = snapshot.questions.map((q: any) => {
               const verifiedSub = q.sub_category || q.sub_kategori || q.SUB_KATEGORI || (q as any).SUB_CATEGORY || 'Umum';
               return {
@@ -238,6 +261,7 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
     loadSnapshotFromSupabase();
   }, [state, propQuestions, stateQuestions.length, isAdmin]);
 
+  // ─── PENGURUTAN DIKEMBALIKAN KE VERSI ORIGINAL ───
   const finalQuestions = (propQuestions && propQuestions.length > 0) ? propQuestions :
                          (stateQuestions.length > 0) ? stateQuestions : supabaseQuestions;
 
@@ -265,7 +289,6 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
       dispatch({ type: 'DELETE_EXAM_RESULT', payload: state.reviewResultId });
     }
     
-    // ─── 🌟 FIX NAVIGASI DUPLIKAT STACK HISTORY: Paksa router berpindah secara absolut ───
     if (isAdmin) {
       dispatch({ type: 'SET_VIEW', payload: 'admin-dashboard' });
       navigate('/admin/results', { replace: true });
