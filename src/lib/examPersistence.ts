@@ -27,14 +27,19 @@ export interface ReviewSnapshot {
     correct_answer: AnswerOption;
     explanation: string;
     image_url?: string | null;
+    explanation_image_url?: string | null;
     option_type?: string;
-    
-    // 🧠 TAMBAHAN: Daftarkan tipe poin agar TypeScript tidak error saat kompilasi
+    option_a_image?: string | null;
+    option_b_image?: string | null;
+    option_c_image?: string | null;
+    option_d_image?: string | null;
+    option_e_image?: string | null;
     points_a?: number;
     points_b?: number;
     points_c?: number;
     points_d?: number;
     points_e?: number;
+    [key: string]: any; // Menampung kolom dinamis tambahan
   }>;
   answers: Record<string, QuestionAnswer>;
   scores: { tiu: number; twk: number; tkp: number; total: number };
@@ -86,12 +91,10 @@ export function clearExamProgress(sessionId: string) {
 export function saveReviewSnapshot(resultId: string, snapshot: ReviewSnapshot) {
   try {
     localStorage.setItem(REVIEW_KEY(resultId), JSON.stringify(snapshot));
-    // Keep an index of up to 20 saved reviews (oldest removed first)
     const raw = localStorage.getItem(REVIEW_INDEX_KEY);
     const index: string[] = raw ? JSON.parse(raw) : [];
     const updated = [resultId, ...index.filter((id) => id !== resultId)].slice(0, 20);
     localStorage.setItem(REVIEW_INDEX_KEY, JSON.stringify(updated));
-    // Remove the evicted entry if any
     const evicted = index.slice(19);
     evicted.forEach((id) => localStorage.removeItem(REVIEW_KEY(id)));
   } catch {
@@ -109,55 +112,38 @@ export function loadReviewSnapshot(resultId: string): ReviewSnapshot | null {
   }
 }
 
+// ─── 🌟 FUNGSI BUILD SNAPSHOT YANG SUDAH DIPERBAIKI (ANTI-SARING DATA) ───
 export function buildReviewSnapshot(session: ExamSession): ReviewSnapshot {
   return {
     examType: session.examType,
     packageName: session.packageName,
     completedAt: (session.completedAt ?? new Date()).toISOString(),
     questions: session.questions.map((q: Question) => ({
-      id: q.id,
-      category: q.category,
-      question_text: q.question_text,
-      option_a: q.option_a,
-      option_b: q.option_b,
-      option_c: q.option_c,
-      option_d: q.option_d,
-      option_e: q.option_e,
-      correct_answer: q.correct_answer,
+      ...q, // Mengamankan seluruh data gambar bawaan database (image_url, explanation_image_url, dll)
       explanation: q.explanation ?? '',
-      image_url: q.image_url,
-      option_type: q.option_type ?? 'text',
-      
-      // 🚀 SEKARANG DI SINI: Menyalin nilai bobot poin TKP agar ikut masuk ke dalam snapshot
-      points_a: (q as any).points_a,
-      points_b: (q as any).points_b,
-      points_c: (q as any).points_c,
-      points_d: (q as any).points_d,
-      points_e: (q as any).points_e,
-    })),
+      sub_category: q.sub_category || (q as any).sub_kategori || 'Umum',
+    })) as any,
     answers: session.answers,
     scores: session.scores ?? { tiu: 0, twk: 0, tkp: 0, total: 0 },
   };
 }
+
 /**
  * Menghapus riwayat ujian dari database Supabase dan membersihkan snapshot dari localStorage
  */
 export async function deleteExamResult(resultId: string): Promise<{ success: boolean; error: any }> {
   try {
-    // Memuat instance supabase secara dinamis dari library projek Anda
     const { supabase } = await import('./supabase'); 
 
     const { error } = await supabase
-      .from('exam_results') // 👈 Sesuaikan dengan nama tabel hasil/riwayat ujian di Supabase Anda jika berbeda
+      .from('exam_results') 
       .delete()
       .eq('id', resultId);
 
     if (error) throw error;
 
-    // Bersihkan snapshot review dari LocalStorage agar tidak memenuhi kuota browser
     localStorage.removeItem(REVIEW_KEY(resultId));
 
-    // Perbarui daftar index riwayat review di LocalStorage jika ada
     const rawIndex = localStorage.getItem(REVIEW_INDEX_KEY);
     if (rawIndex) {
       const index: string[] = JSON.parse(rawIndex);
