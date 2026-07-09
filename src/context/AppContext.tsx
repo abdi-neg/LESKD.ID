@@ -72,6 +72,14 @@ async function fetchQuestionsForExam(examType: ExamType, packageId?: string): Pr
           points_c: q.points_c ?? 0,
           points_d: q.points_d ?? 0,
           points_e: q.points_e ?? 0,
+          // ─── 🌟 PERBAIKAN: JANGAN TINGGALKAN GAMBAR DI SINI! ───
+          image_url: q.image_url ?? null,
+          explanation_image_url: q.explanation_image_url ?? null,
+          option_a_image: q.option_a_image ?? null,
+          option_b_image: q.option_b_image ?? null,
+          option_c_image: q.option_c_image ?? null,
+          option_d_image: q.option_d_image ?? null,
+          option_e_image: q.option_e_image ?? null,
         };
       }) as Question[];
       
@@ -94,6 +102,9 @@ async function fetchQuestionsForExam(examType: ExamType, packageId?: string): Pr
       points_c: (q as any).points_c ?? 0,
       points_d: (q as any).points_d ?? 0,
       points_e: (q as any).points_e ?? 0,
+      // Sisipkan juga di mock
+      image_url: (q as any).image_url ?? null,
+      explanation_image_url: (q as any).explanation_image_url ?? null,
     };
   }) as Question[];
   
@@ -117,6 +128,14 @@ function buildSession(examType: ExamType, questions: Question[], pkg?: ExamPacka
       points_c: (q as any).points_c ?? 0,
       points_d: (q as any).points_d ?? 0,
       points_e: (q as any).points_e ?? 0,
+      // ─── 🌟 PERBAIKAN DI SESSION BUILDER ───
+      image_url: (q as any).image_url ?? null,
+      explanation_image_url: (q as any).explanation_image_url ?? null,
+      option_a_image: (q as any).option_a_image ?? null,
+      option_b_image: (q as any).option_b_image ?? null,
+      option_c_image: (q as any).option_c_image ?? null,
+      option_d_image: (q as any).option_d_image ?? null,
+      option_e_image: (q as any).option_e_image ?? null,
     };
   }) as Question[];
 
@@ -370,7 +389,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [state.currentView, state.reviewResultId]);
 
-  // ─── 🌟 AUTO-SAVE JAWABAN & SKOR KE DATABASE ───
   useEffect(() => {
     const session = state.examSession;
     if (!session || session.status === 'completed' || isSyncLocked) return;
@@ -402,7 +420,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [state.examSession?.answers, state.examSession?.status, isSyncLocked]);
 
-  // ─── 🌟 Kunci sisa waktu ke localStorage setiap detik timer berdetak ───
   useEffect(() => {
     const session = state.examSession;
     if (session && session.status === 'in_progress') {
@@ -523,7 +540,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const scores = calculateScores(session);
       const isPassed = checkPassedStatus(session.examType, scores);
       
-      // ─── 🌟 PERBAIKAN: Pastikan sub_category terikat permanen ke snapshot ───
       const injectedQuestions = session.questions.map(q => {
         const finalSub = q.sub_category || q.sub_kategori || (q as any).SUB_KATEGORI || 'Umum';
         return {
