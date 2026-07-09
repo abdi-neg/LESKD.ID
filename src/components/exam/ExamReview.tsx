@@ -20,34 +20,47 @@ import DiagnosticReport from './DiagnosticReport';
 type AnswerOption = 'A' | 'B' | 'C' | 'D' | 'E';
 const OPTIONS: AnswerOption[] = ['A', 'B', 'C', 'D', 'E'];
 
-// ─── 🌟 RADAR PENDETEKSI GAMBAR (VERSI BRUTAL & ANTI-GAGAL) ───
-function renderTextWithImages(text: string | any, customImageClass: string = "max-h-64 object-contain my-3 rounded-xl border border-gray-200 p-1 bg-white block") {
+// ─── 🌟 RADAR PENDETEKSI GAMBAR (DIPERBAIKI UKURAN & KEBERSIHANNYA) ───
+function renderTextWithImages(text: string | any, isOption: boolean = false) {
   if (!text) return null;
   if (typeof text !== 'string') return text;
   
-  // Memecah teks secara agresif berdasarkan awalan http/https
-  const urlRegex = /(https?:\/\/[^\s<]+)/g;
-  const parts = text.split(urlRegex);
+  // Membersihkan sisa tag HTML bawaan dari Word (jika ada) agar URL bersih
+  const cleanText = text.replace(/<[^>]*>?/gm, '').trim();
 
-  if (parts.length === 1) return <span className="whitespace-pre-wrap leading-relaxed">{text}</span>;
+  // Memecah teks untuk menemukan pola URL
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  const parts = cleanText.split(urlRegex);
+
+  // Jika murni hanya teks biasa
+  if (parts.length === 1) return <span className="whitespace-pre-wrap leading-relaxed">{cleanText}</span>;
+
+  // Ukuran khusus: Opsi dibuat kecil (h-24 / 96px), Pembahasan dibuat lebih besar (h-64 / 256px)
+  const imageClass = isOption 
+    ? "max-h-24 w-auto object-contain rounded-lg border border-gray-200 p-1 bg-white inline-block mt-1.5" 
+    : "max-h-64 max-w-full object-contain rounded-xl border border-blue-200 p-1.5 bg-white block my-2";
 
   return (
-    <span className="whitespace-pre-wrap leading-relaxed flex flex-col gap-2 mt-1">
+    <span className="whitespace-pre-wrap leading-relaxed inline-block w-full">
       {parts.map((part, i) => {
-        if (part.startsWith('http')) {
-          return (
-            <img 
-              key={i} 
-              src={part} 
-              alt="Ilustrasi Pembahasan" 
-              className={customImageClass}
-              onError={(e) => {
-                // JURUS RAHASIA: Jika gagal diload (bukan gambar), ubah jadi link biru yang bisa diklik!
-                e.currentTarget.style.display = 'none';
-                e.currentTarget.insertAdjacentHTML('afterend', `<a href="${part}" target="_blank" class="text-blue-500 underline text-xs break-all bg-blue-50 p-1.5 rounded-lg border border-blue-100">${part}</a>`);
-              }}
-            />
-          );
+        if (part.match(urlRegex)) {
+          // Jika URL Supabase/Gambar, tampilkan sebagai wujud gambar
+          if (part.includes('supabase.co/storage') || part.match(/\.(jpeg|jpg|gif|png|webp)(\?.*)?$/i)) {
+            return (
+              <img 
+                key={i} 
+                src={part} 
+                alt="ilustrasi gambar" 
+                className={imageClass}
+                onError={(e) => {
+                  e.currentTarget.style.display = 'none';
+                  e.currentTarget.insertAdjacentHTML('afterend', `<a href="${part}" target="_blank" class="text-blue-500 underline text-xs break-all">${part}</a>`);
+                }}
+              />
+            );
+          }
+          // Jika link biasa, jadikan teks biru yang bisa diklik
+          return <a key={i} href={part} target="_blank" rel="noreferrer" className="text-blue-500 underline break-all">{part}</a>;
         }
         return <span key={i}>{part}</span>;
       })}
@@ -97,7 +110,7 @@ function QuestionCard({ question, answer, index, forceExpand }: any) {
 
   const mainImage = question?.image_url || question?.gambar || question?.gambar_soal;
   
-  // Mengamankan data kolom pembahasan
+  // Mengambil kolom pembahasan
   const explanationText = question?.explanation || question?.pembahasan || question?.Pembahasan || '';
   const explanationImage = question?.explanation_image || question?.explanation_image_url || question?.pembahasan_gambar || '';
 
@@ -113,7 +126,8 @@ function QuestionCard({ question, answer, index, forceExpand }: any) {
           <div className="text-sm font-medium text-gray-800">
             <span className="text-gray-400 mr-1 font-bold">#{index + 1}</span>
             <div className={`inline ${expanded ? '' : 'line-clamp-2'}`}>
-              {renderTextWithImages(qText, "max-h-64 object-contain mt-2 mb-2 rounded-xl border border-gray-200 p-1 bg-white block")}
+              {/* Teks Pertanyaan merender gambar sebagai Opsi biasa agar tidak melebar */}
+              {renderTextWithImages(qText, false)}
             </div>
           </div>
           <div className="flex items-center gap-2 mt-2 flex-wrap">
@@ -135,14 +149,12 @@ function QuestionCard({ question, answer, index, forceExpand }: any) {
           <motion.div initial={{ height: 0 }} animate={{ height: 'auto' }} exit={{ height: 0 }} className="overflow-hidden">
             <div className="px-4 pb-4 border-t border-gray-50 bg-white">
               
-              {/* Gambar Utama Soal */}
               {mainImage && (
                 <div className="rounded-xl overflow-hidden bg-gray-50 border p-4 mt-3 flex justify-center">
                   <img src={mainImage} alt="soal utama" className="max-h-64 object-contain" />
                 </div>
               )}
               
-              {/* Opsi Jawaban A-E */}
               <div className="mt-3 space-y-2">
                 {OPTIONS.map((opt) => {
                   const text = optionTexts[opt];
@@ -154,7 +166,8 @@ function QuestionCard({ question, answer, index, forceExpand }: any) {
                     <div key={opt} className={`p-3 flex items-start gap-3 rounded-xl text-sm border ${isKey ? 'bg-emerald-50 border-emerald-200' : isChosen ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-transparent'}`}>
                       <span className="font-bold mt-0.5">{opt}.</span>
                       <div className="flex-1 min-w-0">
-                        {renderTextWithImages(content, "max-h-32 object-contain rounded-xl border border-gray-200 p-1 bg-white block mt-1")}
+                        {/* 🌟 MENGGUNAKAN isOption = true AGAR GAMBAR OPSI KECIL (MAX TINGGI 96PX) 🌟 */}
+                        {renderTextWithImages(content, true)}
                         
                         {isTKP && getOptionPoints(opt) > 0 && (
                           <div className="mt-2">
@@ -169,26 +182,26 @@ function QuestionCard({ question, answer, index, forceExpand }: any) {
                 })}
               </div>
 
-              {/* ─── 🌟 BLOK PEMBAHASAN YANG DIJAMIN MUNCUL ─── */}
+              {/* ─── 🌟 BLOK PEMBAHASAN ANTI GAGAL ─── */}
               {(explanationText || explanationImage) ? (
                 <div className="mt-4 bg-blue-50/70 border border-blue-100 rounded-xl p-4">
                   <p className="text-xs font-bold text-blue-700 mb-3 flex items-center gap-1.5">
                     <BookOpen className="w-4 h-4" /> PEMBAHASAN RESMI:
                   </p>
                   
-                  {/* Jika di-upload dari kolom khusus gambar pembahasan */}
+                  {/* Eksekusi Kolom Gambar Khusus */}
                   {explanationImage && (
                     <img 
                       src={explanationImage} 
                       alt="Gambar Penjelasan" 
-                      className="max-h-64 object-contain mb-3 rounded-xl border border-blue-100 p-1.5 bg-white block w-full sm:w-auto" 
+                      className="max-h-64 max-w-full object-contain mb-3 rounded-xl border border-blue-100 p-1.5 bg-white block" 
                     />
                   )}
                   
-                  {/* Jika di-upload dari Word atau mengetik link URL di dalam kotak teks pembahasan */}
+                  {/* Eksekusi Teks Pembahasan yang Mengandung Gambar Supabase */}
                   {explanationText && (
                     <div className="text-sm text-gray-700 w-full">
-                      {renderTextWithImages(explanationText, "max-h-64 object-contain my-3 rounded-xl border border-blue-200 p-1.5 bg-white block w-full sm:w-auto")}
+                      {renderTextWithImages(explanationText, false)}
                     </div>
                   )}
                 </div>
@@ -299,7 +312,7 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
   const finalAnswers = (propQuestions && propQuestions.length > 0) ? propAnswers :
                        (stateQuestions.length > 0) ? stateAnswers : supabaseAnswers;
 
-  // ─── GEMBOK PENGURUTAN SOAL KONSISTEN (ANTI-ACAK SAAT REFRESH) ───
+  // ─── PENGURUTAN SOAL KONSISTEN (ANTI-ACAK) ───
   const finalQuestions = [...rawQuestions].sort((a: any, b: any) => {
     const catOrder: Record<string, number> = { TWK: 1, TIU: 2, TKP: 3 };
     const catA = a.category || a.kategori || 'TIU';
