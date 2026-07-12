@@ -28,10 +28,17 @@ export default function ClassReviewMode() {
     }
   }, [packageId]);
 
+  // 🌟 FUNGSI PINTAR YANG SUDAH DI-UPGRADE (KUNCI RAHASIA DITEMUKAN!)
   const extractLetter = (rawContent: any): string => {
     if (rawContent === null || rawContent === undefined) return '';
     if (typeof rawContent === 'string') return rawContent.trim().toLowerCase();
+    
     if (typeof rawContent === 'object') {
+      // Ini dia kunci rahasia dari database kamu!
+      if (rawContent.selectedAnswer) return String(rawContent.selectedAnswer).trim().toLowerCase();
+      
+      // Cadangan lainnya
+      if (rawContent.selected_answer) return String(rawContent.selected_answer).trim().toLowerCase();
       if (rawContent.answer) return String(rawContent.answer).trim().toLowerCase();
       if (rawContent.value) return String(rawContent.value).trim().toLowerCase();
       if (rawContent.option) return String(rawContent.option).trim().toLowerCase();
@@ -70,7 +77,6 @@ export default function ClassReviewMode() {
 
         if (snap && Array.isArray(snap.questions)) {
           snap.questions.forEach((q: any) => {
-            // 🌟 Pastikan kita mencakup semua kemungkinan ID Soal
             const qId = q.id || q.questionId || q.question_id || q.uuid;
             
             if (!groupedData.has(qId)) {
@@ -85,7 +91,6 @@ export default function ClassReviewMode() {
             const stat = groupedData.get(qId)!;
             const studentName = row.user_name || 'Peserta Tanpa Nama';
             
-            // 🌟 MENCARI JAWABAN PESERTA DENGAN LEBIH AGRESIF
             let rawUserAnswer = q.user_answer || q.userAnswer || q.selected_option || q.selectedOption || q.answer;
             
             if (!rawUserAnswer && snap.answers && typeof snap.answers === 'object') {
@@ -98,19 +103,16 @@ export default function ClassReviewMode() {
                rawUserAnswer = snap.participant_answers[qId]; 
             }
 
+            // Eksekusi pembedahan objek
             const parsedUserAnswer = extractLetter(rawUserAnswer);
             const parsedCorrectAnswer = extractLetter(q.correct_answer || q.correctAnswer);
+            
             const isValidOption = ['a', 'b', 'c', 'd', 'e'].includes(parsedUserAnswer);
             const displayAnswer = isValidOption ? parsedUserAnswer.toUpperCase() : '-';
 
+            // Klasifikasi akhir
             if (!isValidOption) {
-              // 🚨 SISTEM RADAR DEBUG DI SINI
-              // Jika kosong, kita cetak wujud asli datanya untuk dianalisis
-              let debugInfo = rawUserAnswer 
-                ? `RAW DATA: ${JSON.stringify(rawUserAnswer)}` 
-                : `SNAP_KEYS: ${Object.keys(snap).join(', ')} | Q_KEYS: ${Object.keys(q).join(', ')}`;
-              
-              stat.unansweredStudents.push({ name: studentName, answer: debugInfo });
+              stat.unansweredStudents.push({ name: studentName, answer: '-' });
             } else if (parsedUserAnswer === parsedCorrectAnswer) {
               stat.correctStudents.push({ name: studentName, answer: displayAnswer });
             } else {
@@ -321,10 +323,8 @@ export default function ClassReviewMode() {
               <div className="p-3 max-h-40 overflow-y-auto scrollbar-thin">
                 <div className="space-y-1.5">
                   {currentStat.unansweredStudents.map((student, idx) => (
-                    <div key={idx} className="flex flex-col px-4 py-2.5 text-sm font-semibold bg-gray-50 rounded-xl border border-gray-100">
-                      <span className="text-gray-700">{student.name}</span>
-                      {/* 🚨 TULISAN RADAR MUNCUL DI SINI 🚨 */}
-                      <span className="text-[10px] font-mono font-medium text-rose-500 mt-1 break-all">{student.answer}</span>
+                    <div key={idx} className="px-4 py-2.5 text-sm font-semibold text-gray-700 bg-gray-50 rounded-xl border border-gray-100">
+                      {student.name}
                     </div>
                   ))}
                 </div>
