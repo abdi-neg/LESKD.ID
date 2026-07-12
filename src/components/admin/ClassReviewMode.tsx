@@ -28,16 +28,9 @@ export default function ClassReviewMode() {
     }
   }, [packageId]);
 
-  // 🌟 FUNGSI PINTAR UNTUK MENGEKSTRAK JAWABAN DARI BENTUK APAPUN (STRING / OBJECT)
   const extractLetter = (rawContent: any): string => {
     if (rawContent === null || rawContent === undefined) return '';
-    
-    // Jika bentuknya string langsung (misal: "A")
-    if (typeof rawContent === 'string') {
-      return rawContent.trim().toLowerCase();
-    }
-    
-    // Jika bentuknya Objek (misal: { answer: "A", score: 5 }) -> Biang kerok [object Object]
+    if (typeof rawContent === 'string') return rawContent.trim().toLowerCase();
     if (typeof rawContent === 'object') {
       if (rawContent.answer) return String(rawContent.answer).trim().toLowerCase();
       if (rawContent.value) return String(rawContent.value).trim().toLowerCase();
@@ -45,7 +38,6 @@ export default function ClassReviewMode() {
       if (rawContent.selected) return String(rawContent.selected).trim().toLowerCase();
       if (rawContent.userAnswer) return String(rawContent.userAnswer).trim().toLowerCase();
     }
-    
     return '';
   };
 
@@ -69,7 +61,6 @@ export default function ClassReviewMode() {
       data.forEach((row) => {
         let snap = row.review_snapshot;
         
-        // Memastikan snapshot terbuka (parsing) sempurna
         if (typeof snap === 'string') {
           try { snap = JSON.parse(snap); } catch (e) {}
         }
@@ -79,7 +70,8 @@ export default function ClassReviewMode() {
 
         if (snap && Array.isArray(snap.questions)) {
           snap.questions.forEach((q: any) => {
-            const qId = q.id || q.questionId;
+            // 🌟 Pastikan kita mencakup semua kemungkinan ID Soal
+            const qId = q.id || q.questionId || q.question_id || q.uuid;
             
             if (!groupedData.has(qId)) {
               groupedData.set(qId, {
@@ -93,23 +85,32 @@ export default function ClassReviewMode() {
             const stat = groupedData.get(qId)!;
             const studentName = row.user_name || 'Peserta Tanpa Nama';
             
-            // 1. Tarik Data Jawaban Mentah
-            let rawUserAnswer = q.user_answer || q.userAnswer || q.selected_option || q.selectedOption;
+            // 🌟 MENCARI JAWABAN PESERTA DENGAN LEBIH AGRESIF
+            let rawUserAnswer = q.user_answer || q.userAnswer || q.selected_option || q.selectedOption || q.answer;
+            
             if (!rawUserAnswer && snap.answers && typeof snap.answers === 'object') {
-               rawUserAnswer = snap.answers[qId]; // Mengambil dari dictionary answers
+               rawUserAnswer = snap.answers[qId]; 
+            }
+            if (!rawUserAnswer && snap.responses && typeof snap.responses === 'object') {
+               rawUserAnswer = snap.responses[qId]; 
+            }
+            if (!rawUserAnswer && snap.participant_answers && typeof snap.participant_answers === 'object') {
+               rawUserAnswer = snap.participant_answers[qId]; 
             }
 
-            // 2. Ekstrak paksa hurufnya menggunakan Fungsi Pintar
             const parsedUserAnswer = extractLetter(rawUserAnswer);
             const parsedCorrectAnswer = extractLetter(q.correct_answer || q.correctAnswer);
-            
-            // 3. Validasi apakah benar-benar huruf a/b/c/d/e
             const isValidOption = ['a', 'b', 'c', 'd', 'e'].includes(parsedUserAnswer);
             const displayAnswer = isValidOption ? parsedUserAnswer.toUpperCase() : '-';
 
-            // 4. Masukkan ke keranjang
             if (!isValidOption) {
-              stat.unansweredStudents.push({ name: studentName, answer: '-' });
+              // 🚨 SISTEM RADAR DEBUG DI SINI
+              // Jika kosong, kita cetak wujud asli datanya untuk dianalisis
+              let debugInfo = rawUserAnswer 
+                ? `RAW DATA: ${JSON.stringify(rawUserAnswer)}` 
+                : `SNAP_KEYS: ${Object.keys(snap).join(', ')} | Q_KEYS: ${Object.keys(q).join(', ')}`;
+              
+              stat.unansweredStudents.push({ name: studentName, answer: debugInfo });
             } else if (parsedUserAnswer === parsedCorrectAnswer) {
               stat.correctStudents.push({ name: studentName, answer: displayAnswer });
             } else {
@@ -157,7 +158,6 @@ export default function ClassReviewMode() {
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
       
-      {/* HEADER NAVIGASI */}
       <div className="flex flex-col sm:flex-row justify-between items-center bg-white p-4 sm:p-5 rounded-3xl shadow-sm border border-gray-100 gap-4">
         <button 
           onClick={() => navigate('/admin/packages')}
@@ -195,12 +195,9 @@ export default function ClassReviewMode() {
         </div>
       </div>
 
-      {/* MAIN GRID */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
-        {/* PANEL KIRI: SOAL & PEMBAHASAN */}
         <div className="lg:col-span-2 space-y-6">
-          
           <div className="bg-white p-6 sm:p-8 rounded-3xl shadow-sm border border-gray-100">
             <div className="flex items-center gap-2 mb-5 pb-5 border-b border-gray-50">
                <span className="bg-[#1e3a8a]/10 text-[#1e3a8a] px-3.5 py-1.5 rounded-xl text-xs font-extrabold uppercase tracking-wider">
@@ -257,9 +254,7 @@ export default function ClassReviewMode() {
           </div>
         </div>
 
-        {/* PANEL KANAN: ANALITIK KELAS */}
         <div className="space-y-6">
-          
           <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100 text-center relative overflow-hidden">
             <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-[#1e3a8a] to-blue-400"></div>
             <h3 className="text-gray-400 font-bold mb-2 text-xs uppercase tracking-widest">Tingkat Keberhasilan</h3>
@@ -272,7 +267,6 @@ export default function ClassReviewMode() {
             </div>
           </div>
 
-          {/* Daftar Peserta (Benar) */}
           <div className="bg-white rounded-3xl shadow-sm border border-emerald-100 overflow-hidden flex flex-col max-h-[350px]">
             <div className="bg-gradient-to-r from-emerald-500 to-emerald-400 px-5 py-4 flex justify-between items-center text-white">
               <div className="flex items-center gap-2 font-bold">
@@ -293,7 +287,6 @@ export default function ClassReviewMode() {
             </div>
           </div>
 
-          {/* Daftar Peserta (Salah) */}
           <div className="bg-white rounded-3xl shadow-sm border border-rose-100 overflow-hidden flex flex-col max-h-[350px]">
             <div className="bg-gradient-to-r from-rose-500 to-rose-400 px-5 py-4 flex justify-between items-center text-white">
               <div className="flex items-center gap-2 font-bold">
@@ -317,7 +310,6 @@ export default function ClassReviewMode() {
             </div>
           </div>
 
-          {/* Daftar Peserta (Kosong/Terlewatkan) */}
           {currentStat.unansweredStudents.length > 0 && (
             <div className="bg-white rounded-3xl shadow-sm border border-amber-100 overflow-hidden">
               <div className="bg-gradient-to-r from-amber-400 to-amber-300 px-5 py-3.5 flex justify-between items-center text-amber-900">
@@ -329,8 +321,10 @@ export default function ClassReviewMode() {
               <div className="p-3 max-h-40 overflow-y-auto scrollbar-thin">
                 <div className="space-y-1.5">
                   {currentStat.unansweredStudents.map((student, idx) => (
-                    <div key={idx} className="px-4 py-2.5 text-sm text-gray-600 font-semibold bg-gray-50 rounded-xl border border-gray-100">
-                      {student.name}
+                    <div key={idx} className="flex flex-col px-4 py-2.5 text-sm font-semibold bg-gray-50 rounded-xl border border-gray-100">
+                      <span className="text-gray-700">{student.name}</span>
+                      {/* 🚨 TULISAN RADAR MUNCUL DI SINI 🚨 */}
+                      <span className="text-[10px] font-mono font-medium text-rose-500 mt-1 break-all">{student.answer}</span>
                     </div>
                   ))}
                 </div>
