@@ -307,33 +307,8 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
   const finalAnswers = (propQuestions && propQuestions.length > 0) ? propAnswers :
                        (stateQuestions.length > 0) ? stateAnswers : supabaseAnswers;
 
-  // ─── 🌟 PENGURUTAN SOAL KONSISTEN (ANTI-ACAK & 100% SINKRON DENGAN HALAMAN PROYEKTOR) ───
-  const finalQuestions = [...rawQuestions].sort((a: any, b: any) => {
-    // 1. Urutkan berdasarkan Kategori (TWK -> TIU -> TKP)
-    const categoryWeight: Record<string, number> = { TWK: 1, TIU: 2, TKP: 3 };
-    const catA = String(a.category || a.kategori || '').toUpperCase();
-    const catB = String(b.category || b.kategori || '').toUpperCase();
-    
-    const weightA = categoryWeight[catA] || 99; 
-    const weightB = categoryWeight[catB] || 99;
-    
-    if (weightA !== weightB) {
-      return weightA - weightB;
-    }
-    
-    // 2. Urutkan berdasarkan waktu pembuatan asli di Supabase (created_at)
-    const timeA = new Date(a.created_at || 0).getTime();
-    const timeB = new Date(b.created_at || 0).getTime();
-    
-    if (timeA !== timeB) {
-      return timeA - timeB;
-    }
-
-    // 3. Cadangan Absolut: Urutkan berdasarkan ID Soal
-    const idA = String(a.id || '');
-    const idB = String(b.id || '');
-    return idA.localeCompare(idB);
-  });
+  // ─── 🌟 MENGGUNAKAN URUTAN ASLI DARI DATABASE (TANPA DIACAK) ───
+  const finalQuestions = [...rawQuestions];
 
   const getAnswerForQuestion = (qId: string | number) => {
     if (!finalAnswers) return undefined;
