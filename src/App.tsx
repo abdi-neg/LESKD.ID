@@ -5,12 +5,13 @@ import { AppProvider, useApp } from './context/AppContext';
 // Import Komponen Halaman
 import LandingPage from './components/auth/LandingPage';
 import WaitingRoom from './components/auth/WaitingRoom';
-import UpdatePassword from './components/auth/UpdatePassword'; // 🌟 TAMBAHKAN IMPORT INI
+import UpdatePassword from './components/auth/UpdatePassword';
 import ParticipantDashboard from './components/participant/ParticipantDashboard';
 import { ExamEngine } from './components/exam/ExamEngine';
 import { ExamResults } from './components/exam/ExamResults';
 import ExamReview from './components/exam/ExamReview';
 import AdminDashboard from './components/admin/AdminDashboard';
+import ClassReviewMode from './components/admin/ClassReviewMode'; // 🌟 TAMBAHKAN IMPORT INI
 
 // ==================================================
 // 🛡️ KOMPONEN SATPAM (Mencegah Akses Tanpa Izin)
@@ -181,6 +182,12 @@ function AppRouter() {
       />
 
       {/* --- RUTE KHUSUS ADMIN --- */}
+      {/* 🌟 TAMBAHAN BARU: RUTE PEMBAHASAN KELAS */}
+      <Route 
+        path="/admin/pembahasan-kelas/:packageId" 
+        element={<ProtectedRoute allowedRoles={['admin', 'super_admin']}><ClassReviewMode /></ProtectedRoute>} 
+      />
+      
       <Route 
         path="/admin/*" 
         element={<ProtectedRoute allowedRoles={['admin', 'super_admin']}><AdminDashboard /></ProtectedRoute>} 
