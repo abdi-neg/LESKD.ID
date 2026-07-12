@@ -15,6 +15,8 @@ import ManageAdmins from './ManageAdmins';
 import ManageParticipants from './ManageParticipants';
 import ExamReview from '../exam/ExamReview';
 import ParticipantDiagnostic from './ParticipantDiagnostic';
+// 🌟 1. IMPORT HALAMAN PEMBAHASAN KELAS DI SINI
+import ClassReviewMode from './ClassReviewMode'; 
 
 type TabPath = 'overview' | 'packages' | 'questions' | 'participants' | 'diagnostic' | 'results' | 'live' | 'admins';
 
@@ -35,8 +37,6 @@ export default function AdminDashboard() {
   const isSuperAdmin = profile?.role === 'super_admin';
 
   const currentSubPath = location.pathname.split('/admin/')[1] || 'overview';
-
-  // ❌ KODE PENCEGAT LAMA DI SINI SUDAH DIHAPUS AGAR ROUTER URL DIAMBIL ALIH PENUH 
 
   const allTabs: { id: TabPath; label: string; icon: React.ElementType; superAdminOnly?: boolean }[] = [
     { id: 'overview', label: 'Ringkasan', icon: LayoutDashboard },
@@ -90,8 +90,11 @@ export default function AdminDashboard() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 border-t border-white/10 overflow-x-auto">
           <div className="flex gap-1 -mb-px">
             {tabs.map((tab) => {
-              // 🌟 PINALTI HIGHLIGHT: Pastikan tab Hasil Ujian tetap menyala hijau saat membuka sub-review
-              const isActive = currentSubPath === tab.id || (tab.id === 'results' && currentSubPath.startsWith('results')) || (tab.id === 'diagnostic' && currentSubPath.startsWith('diagnostic'));
+              // Highlight aktif untuk sub-path, termasuk saat membuka mode proyektor
+              const isActive = currentSubPath === tab.id || 
+                               (tab.id === 'results' && currentSubPath.startsWith('results')) || 
+                               (tab.id === 'diagnostic' && currentSubPath.startsWith('diagnostic')) ||
+                               (tab.id === 'packages' && currentSubPath.startsWith('pembahasan-kelas'));
               
               return (
                 <button
@@ -122,14 +125,15 @@ export default function AdminDashboard() {
           <Routes>
             <Route path="/" element={<AdminOverview onNavigate={handleTabChange} isSuperAdmin={isSuperAdmin} />} />
             <Route path="packages" element={<PackageManager />} />
+            
+            {/* 🌟 2. DAFTARKAN RUTE PEMBAHASAN KELAS DI DALAM DASHBOARD ADMIN */}
+            <Route path="pembahasan-kelas/:packageId" element={<ClassReviewMode />} />
+
             <Route path="questions" element={<QuestionManager />} />
             <Route path="participants" element={<ManageParticipants />} />
             <Route path="diagnostic" element={<ParticipantDiagnostic />} />
             <Route path="results" element={<ExamHistoryMonitor />} />
-            
-            {/* 🌟 INTEGRASI ROUTE BARU: Daftarkan alamat review resmi di dalam router admin */}
             <Route path="results/review" element={<ExamReview />} />
-            
             <Route path="live" element={<LiveScoreMonitor />} />
             <Route 
               path="admins" 
