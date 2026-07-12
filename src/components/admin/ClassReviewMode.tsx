@@ -28,6 +28,27 @@ export default function ClassReviewMode() {
     }
   }, [packageId]);
 
+  // 🌟 FUNGSI PINTAR UNTUK MENGEKSTRAK JAWABAN DARI BENTUK APAPUN (STRING / OBJECT)
+  const extractLetter = (rawContent: any): string => {
+    if (rawContent === null || rawContent === undefined) return '';
+    
+    // Jika bentuknya string langsung (misal: "A")
+    if (typeof rawContent === 'string') {
+      return rawContent.trim().toLowerCase();
+    }
+    
+    // Jika bentuknya Objek (misal: { answer: "A", score: 5 }) -> Biang kerok [object Object]
+    if (typeof rawContent === 'object') {
+      if (rawContent.answer) return String(rawContent.answer).trim().toLowerCase();
+      if (rawContent.value) return String(rawContent.value).trim().toLowerCase();
+      if (rawContent.option) return String(rawContent.option).trim().toLowerCase();
+      if (rawContent.selected) return String(rawContent.selected).trim().toLowerCase();
+      if (rawContent.userAnswer) return String(rawContent.userAnswer).trim().toLowerCase();
+    }
+    
+    return '';
+  };
+
   const fetchClassData = async () => {
     setLoading(true);
     try {
@@ -48,7 +69,7 @@ export default function ClassReviewMode() {
       data.forEach((row) => {
         let snap = row.review_snapshot;
         
-        // Parsing ganda untuk memastikan format JSON terbuka dengan benar
+        // Memastikan snapshot terbuka (parsing) sempurna
         if (typeof snap === 'string') {
           try { snap = JSON.parse(snap); } catch (e) {}
         }
@@ -72,24 +93,24 @@ export default function ClassReviewMode() {
             const stat = groupedData.get(qId)!;
             const studentName = row.user_name || 'Peserta Tanpa Nama';
             
-            // 🌟 PERBAIKAN BUG DETEKSI JAWABAN PESERTA
-            // Kita deteksi semua kemungkinan penamaan variabel dari database
-            let rawAnswer = q.user_answer || q.userAnswer || q.selected_option || q.selectedOption || '';
-            
-            // Jika jawaban ternyata tersimpan di objek 'answers' terpisah
-            if (!rawAnswer && snap.answers && typeof snap.answers === 'object') {
-               rawAnswer = snap.answers[qId] || '';
+            // 1. Tarik Data Jawaban Mentah
+            let rawUserAnswer = q.user_answer || q.userAnswer || q.selected_option || q.selectedOption;
+            if (!rawUserAnswer && snap.answers && typeof snap.answers === 'object') {
+               rawUserAnswer = snap.answers[qId]; // Mengambil dari dictionary answers
             }
 
-            // Normalisasi teks agar perbandingan huruf besar/kecil tidak error
-            const userAnswer = String(rawAnswer).toLowerCase().trim();
-            const correctAnswer = String(q.correct_answer || q.correctAnswer || '').toLowerCase().trim();
-            const displayAnswer = rawAnswer ? String(rawAnswer).toUpperCase() : '-';
+            // 2. Ekstrak paksa hurufnya menggunakan Fungsi Pintar
+            const parsedUserAnswer = extractLetter(rawUserAnswer);
+            const parsedCorrectAnswer = extractLetter(q.correct_answer || q.correctAnswer);
+            
+            // 3. Validasi apakah benar-benar huruf a/b/c/d/e
+            const isValidOption = ['a', 'b', 'c', 'd', 'e'].includes(parsedUserAnswer);
+            const displayAnswer = isValidOption ? parsedUserAnswer.toUpperCase() : '-';
 
-            // Memilah peserta ke keranjang yang tepat
-            if (!userAnswer || userAnswer === '-' || userAnswer === 'null' || userAnswer === 'undefined') {
+            // 4. Masukkan ke keranjang
+            if (!isValidOption) {
               stat.unansweredStudents.push({ name: studentName, answer: '-' });
-            } else if (userAnswer === correctAnswer) {
+            } else if (parsedUserAnswer === parsedCorrectAnswer) {
               stat.correctStudents.push({ name: studentName, answer: displayAnswer });
             } else {
               stat.wrongStudents.push({ name: studentName, answer: displayAnswer });
@@ -131,12 +152,12 @@ export default function ClassReviewMode() {
   const currentStat = questionsStats[currentIndex];
   const q = currentStat.questionData;
   const totalStudents = currentStat.correctStudents.length + currentStat.wrongStudents.length + currentStat.unansweredStudents.length;
-  const successRate = Math.round((currentStat.correctStudents.length / totalStudents) * 100) || 0;
+  const successRate = totalStudents > 0 ? Math.round((currentStat.correctStudents.length / totalStudents) * 100) : 0;
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
       
-      {/* 🌟 HEADER NAVIGASI BARU: TEMA LESKD.ID & TOMBOL KEMBALI */}
+      {/* HEADER NAVIGASI */}
       <div className="flex flex-col sm:flex-row justify-between items-center bg-white p-4 sm:p-5 rounded-3xl shadow-sm border border-gray-100 gap-4">
         <button 
           onClick={() => navigate('/admin/packages')}
@@ -180,11 +201,13 @@ export default function ClassReviewMode() {
         {/* PANEL KIRI: SOAL & PEMBAHASAN */}
         <div className="lg:col-span-2 space-y-6">
           
-          {/* Box Soal */}
           <div className="bg-white p-6 sm:p-8 rounded-3xl shadow-sm border border-gray-100">
             <div className="flex items-center gap-2 mb-5 pb-5 border-b border-gray-50">
                <span className="bg-[#1e3a8a]/10 text-[#1e3a8a] px-3.5 py-1.5 rounded-xl text-xs font-extrabold uppercase tracking-wider">
                  Kategori: {q.category || 'Umum'}
+               </span>
+               <span className="bg-gray-100 text-gray-600 px-3.5 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider">
+                 {q.sub_kategori || q.sub_category || 'Tidak ada Sub Kategori'}
                </span>
             </div>
             
@@ -195,12 +218,11 @@ export default function ClassReviewMode() {
               <img src={q.image_url} alt="Soal" className="max-h-80 object-contain mb-6 rounded-2xl border border-gray-100 shadow-sm mx-auto" />
             )}
             
-            {/* Box Opsi Jawaban Bergaya Elegan */}
             <div className="space-y-3">
               {['a', 'b', 'c', 'd', 'e'].map((opt) => {
                 const optKey = `option_${opt}`;
                 const text = q[optKey];
-                const isCorrect = (q.correct_answer || q.correctAnswer)?.toLowerCase() === opt;
+                const isCorrect = extractLetter(q.correct_answer || q.correctAnswer) === opt;
                 if (!text) return null;
 
                 return (
@@ -219,7 +241,6 @@ export default function ClassReviewMode() {
             </div>
           </div>
 
-          {/* Box Pembahasan */}
           <div className="bg-gradient-to-br from-[#1e3a8a]/5 to-blue-50/50 p-6 sm:p-8 rounded-3xl shadow-sm border border-blue-100/50">
             <h3 className="text-xl font-extrabold text-[#1e3a8a] mb-5 flex items-center gap-3">
               <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[#1e3a8a] to-blue-600 text-white flex items-center justify-center shadow-md shadow-blue-200">
@@ -239,7 +260,6 @@ export default function ClassReviewMode() {
         {/* PANEL KANAN: ANALITIK KELAS */}
         <div className="space-y-6">
           
-          {/* Card Persentase Keberhasilan */}
           <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100 text-center relative overflow-hidden">
             <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-[#1e3a8a] to-blue-400"></div>
             <h3 className="text-gray-400 font-bold mb-2 text-xs uppercase tracking-widest">Tingkat Keberhasilan</h3>
