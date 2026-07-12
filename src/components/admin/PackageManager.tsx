@@ -1,7 +1,10 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Trash2, CreditCard as Edit3, Check, X, RefreshCw, Copy, ToggleLeft, ToggleRight, CheckCircle2, BarChart2, ChevronDown, GraduationCap, BookOpen, Calculator, Users } from 'lucide-react';
+// 🌟 1. TAMBAHAN IMPORT: MonitorPlay (Icon Proyektor)
+import { Plus, Trash2, CreditCard as Edit3, Check, X, RefreshCw, Copy, ToggleLeft, ToggleRight, CheckCircle2, BarChart2, ChevronDown, GraduationCap, BookOpen, Calculator, Users, MonitorPlay } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+// 🌟 2. TAMBAHAN IMPORT: useNavigate
+import { useNavigate } from 'react-router-dom';
 import { ExamPackage, PackageType } from '../../types';
 import { supabase } from '../../lib/supabase';
 import { useApp } from '../../context/AppContext';
@@ -62,6 +65,9 @@ interface PackageCategoryListProps {
 
 function PackageCategoryList({ packages, perPkgCounts, copiedId, copyToken, updateToken, toggleActive, startEdit, setDeleteId }: PackageCategoryListProps) {
   const [openCategories, setOpenCategories] = useState<Set<PackageType>>(new Set());
+  
+  // 🌟 3. INISIALISASI NAVIGATE DI SINI
+  const navigate = useNavigate();
 
   const toggleCategory = (type: PackageType) => {
     setOpenCategories((prev) => {
@@ -151,17 +157,36 @@ function PackageCategoryList({ packages, perPkgCounts, copiedId, copyToken, upda
                                 <QuestionCountBadge pkg={pkg} counts={perPkgCounts[pkg.id] ?? { TIU: 0, TWK: 0, TKP: 0 }} />
                               </div>
                             </div>
+                            
+                            {/* 🌟 4. PENEMPATAN TOMBOL "BAHAS KELAS" DI SINI */}
                             <div className="flex items-center gap-1.5 flex-shrink-0">
+                              
+                              {/* TOMBOL BARU: BAHAS KELAS (PROYEKTOR) */}
+                              <button 
+                                onClick={() => navigate(`/admin/pembahasan-kelas/${pkg.id}`)} 
+                                className="flex items-center gap-1.5 px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg transition-colors border border-indigo-100 shadow-sm"
+                                title="Buka Mode Proyektor untuk Pembahasan Kelas"
+                              >
+                                <MonitorPlay className="w-3.5 h-3.5" />
+                                <span className="text-xs font-bold hidden sm:block">Bahas Kelas</span>
+                              </button>
+
+                              {/* Tombol Status */}
                               <button onClick={() => toggleActive(pkg)} className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${pkg.is_active ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-600' : 'bg-gray-100 hover:bg-gray-200 text-gray-500'}`}>
                                 {pkg.is_active ? <ToggleRight className="w-3.5 h-3.5" /> : <ToggleLeft className="w-3.5 h-3.5" />}
                               </button>
+                              
+                              {/* Tombol Edit */}
                               <button onClick={() => startEdit(pkg)} className="w-7 h-7 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-lg flex items-center justify-center transition-colors">
                                 <Edit3 className="w-3.5 h-3.5" />
                               </button>
+                              
+                              {/* Tombol Hapus */}
                               <button onClick={() => setDeleteId(pkg.id)} className="w-7 h-7 bg-red-50 hover:bg-red-100 text-red-500 rounded-lg flex items-center justify-center transition-colors">
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
                             </div>
+
                           </div>
                         </div>
                       );
@@ -182,7 +207,6 @@ export default function PackageManager() {
   const [packages, setPackages] = useState<ExamPackage[]>([]);
   const [loading, setLoading] = useState(true);
   
-  // 🌟 1. STATE BARU: Jaring pengaman agar layout list tidak hilang saat reload sunyi
   const [initialLoading, setInitialLoading] = useState(true);
 
   const [showForm, setShowForm] = useState(false);
@@ -212,7 +236,6 @@ export default function PackageManager() {
     setPerPkgCounts(counts);
   }
 
-  // 🌟 2. PERBAIKAN MEKANISME LOAD: Ditambahkan parameter isSilent
   async function load(isSilent = false) {
     if (!isSilent) setLoading(true);
     try {
@@ -224,7 +247,7 @@ export default function PackageManager() {
       console.error(err);
     } finally {
       setLoading(false);
-      setInitialLoading(false); // Matikan skeleton permanen setelah load pertama sukses
+      setInitialLoading(false); 
     }
   }
 
@@ -244,7 +267,7 @@ export default function PackageManager() {
     setShowForm(false);
     setEditId(null);
     setForm(emptyForm);
-    load(); // Refresh full aman karena form ditutup
+    load(); 
   }
 
   function startEdit(pkg: ExamPackage) {
@@ -261,7 +284,6 @@ export default function PackageManager() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
-  // 🌟 3. OPTIMASI AKSES SAKELAR TOKEN: Update lokal instan + load sunyi
   async function updateToken(pkg: ExamPackage, newToken: string) {
     setPackages(prev => prev.map(p => p.id === pkg.id ? { ...p, token: newToken } : p));
     await supabase
@@ -271,10 +293,8 @@ export default function PackageManager() {
     load(true); 
   }
 
-  // 🌟 4. OPTIMASI AKSES SAKELAR STATUS (ANTI TUTUP TAB GULIR): Update lokal instan + load sunyi
   async function toggleActive(pkg: ExamPackage) {
     const targetStatus = !pkg.is_active;
-    // Optimistic Update: Langsung ubah warna tombol di layar tanpa tunggu server agar tab tidak hancur
     setPackages(prev => prev.map(p => p.id === pkg.id ? { ...p, is_active: targetStatus } : p));
     
     await supabase
@@ -282,7 +302,7 @@ export default function PackageManager() {
       .update({ is_active: targetStatus })
       .eq('id', pkg.id);
       
-    load(true); // Panggil load versi SILENT (isSilent = true) agar component tidak ter-unmount!
+    load(true); 
   }
 
   async function confirmDelete() {
@@ -433,11 +453,8 @@ export default function PackageManager() {
         )}
       </AnimatePresence>
 
-      {/* Question Counts Indicator */}
       <QuestionCountBadges perPkgCounts={perPkgCounts} packages={packages} />
 
-      {/* Packages List */}
-      {/* 🌟 5. PERBAIKAN UTAMA: Mengunci penayangan list menggunakan kriteria initialLoading */}
       {initialLoading ? (
         <div className="space-y-3">{[1, 2, 3].map((i) => <div key={i} className="bg-gray-100 rounded-2xl h-16 animate-pulse" />)}</div>
       ) : packages.length === 0 ? (
