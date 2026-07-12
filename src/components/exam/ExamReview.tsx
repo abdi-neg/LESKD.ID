@@ -73,7 +73,7 @@ function QuestionCard({ question, answer, index, forceExpand }: any) {
   const expanded = forceExpand || localExpanded;
 
   const qText = question?.question_text || question?.soal || question?.text || `Soal Nomor ${index + 1}`;
-  const category = question?.category || question?.kategori || 'TIU';
+  const category = (question?.category || question?.kategori || 'TIU').toUpperCase();
   const correctAns = question?.correct_answer || question?.kunci_jawaban || question?.kunci || '';
   
   const isTKP = category === 'TKP';
@@ -110,7 +110,6 @@ function QuestionCard({ question, answer, index, forceExpand }: any) {
 
   const mainImage = question?.image_url || question?.gambar || question?.gambar_soal;
   
-  // Mengambil kolom pembahasan
   const explanationText = question?.explanation || question?.pembahasan || question?.Pembahasan || '';
   const explanationImage = question?.explanation_image || question?.explanation_image_url || question?.pembahasan_gambar || '';
 
@@ -126,7 +125,6 @@ function QuestionCard({ question, answer, index, forceExpand }: any) {
           <div className="text-sm font-medium text-gray-800">
             <span className="text-gray-400 mr-1 font-bold">#{index + 1}</span>
             <div className={`inline ${expanded ? '' : 'line-clamp-2'}`}>
-              {/* Teks Pertanyaan merender gambar sebagai Opsi biasa agar tidak melebar */}
               {renderTextWithImages(qText, false)}
             </div>
           </div>
@@ -166,7 +164,6 @@ function QuestionCard({ question, answer, index, forceExpand }: any) {
                     <div key={opt} className={`p-3 flex items-start gap-3 rounded-xl text-sm border ${isKey ? 'bg-emerald-50 border-emerald-200' : isChosen ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-transparent'}`}>
                       <span className="font-bold mt-0.5">{opt}.</span>
                       <div className="flex-1 min-w-0">
-                        {/* 🌟 MENGGUNAKAN isOption = true AGAR GAMBAR OPSI KECIL (MAX TINGGI 96PX) 🌟 */}
                         {renderTextWithImages(content, true)}
                         
                         {isTKP && getOptionPoints(opt) > 0 && (
@@ -189,7 +186,6 @@ function QuestionCard({ question, answer, index, forceExpand }: any) {
                     <BookOpen className="w-4 h-4" /> PEMBAHASAN RESMI:
                   </p>
                   
-                  {/* Eksekusi Kolom Gambar Khusus */}
                   {explanationImage && (
                     <img 
                       src={explanationImage} 
@@ -198,7 +194,6 @@ function QuestionCard({ question, answer, index, forceExpand }: any) {
                     />
                   )}
                   
-                  {/* Eksekusi Teks Pembahasan yang Mengandung Gambar Supabase */}
                   {explanationText && (
                     <div className="text-sm text-gray-700 w-full">
                       {renderTextWithImages(explanationText, false)}
@@ -307,30 +302,37 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
   }, [state, propQuestions, stateQuestions.length, isAdmin]);
 
   const rawQuestions = (propQuestions && propQuestions.length > 0) ? propQuestions :
-                         (stateQuestions.length > 0) ? stateQuestions : supabaseQuestions;
+                       (stateQuestions.length > 0) ? stateQuestions : supabaseQuestions;
 
   const finalAnswers = (propQuestions && propQuestions.length > 0) ? propAnswers :
                        (stateQuestions.length > 0) ? stateAnswers : supabaseAnswers;
 
-  // ─── PENGURUTAN SOAL KONSISTEN (ANTI-ACAK) ───
+  // ─── 🌟 PENGURUTAN SOAL KONSISTEN (ANTI-ACAK & 100% SINKRON DENGAN HALAMAN PROYEKTOR) ───
   const finalQuestions = [...rawQuestions].sort((a: any, b: any) => {
-    const catOrder: Record<string, number> = { TWK: 1, TIU: 2, TKP: 3 };
-    const catA = a.category || a.kategori || 'TIU';
-    const catB = b.category || b.kategori || 'TIU';
+    // 1. Urutkan berdasarkan Kategori (TWK -> TIU -> TKP)
+    const categoryWeight: Record<string, number> = { TWK: 1, TIU: 2, TKP: 3 };
+    const catA = String(a.category || a.kategori || '').toUpperCase();
+    const catB = String(b.category || b.kategori || '').toUpperCase();
     
-    if (catOrder[catA] !== catOrder[catB]) {
-      return (catOrder[catA] || 99) - (catOrder[catB] || 99);
+    const weightA = categoryWeight[catA] || 99; 
+    const weightB = categoryWeight[catB] || 99;
+    
+    if (weightA !== weightB) {
+      return weightA - weightB;
     }
     
-    if (a.created_at && b.created_at) {
-      const timeA = new Date(a.created_at).getTime();
-      const timeB = new Date(b.created_at).getTime();
-      if (timeA !== timeB) return timeA - timeB;
+    // 2. Urutkan berdasarkan waktu pembuatan asli di Supabase (created_at)
+    const timeA = new Date(a.created_at || 0).getTime();
+    const timeB = new Date(b.created_at || 0).getTime();
+    
+    if (timeA !== timeB) {
+      return timeA - timeB;
     }
 
-    const textA = a.question_text || a.soal || a.text || '';
-    const textB = b.question_text || b.soal || b.text || '';
-    return String(textA).localeCompare(String(textB));
+    // 3. Cadangan Absolut: Urutkan berdasarkan ID Soal
+    const idA = String(a.id || '');
+    const idB = String(b.id || '');
+    return idA.localeCompare(idB);
   });
 
   const getAnswerForQuestion = (qId: string | number) => {
@@ -343,7 +345,7 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
   const filteredQuestions = finalQuestions.filter((q: any) => {
     if (!q) return false;
     const qText = q.question_text || q.soal || q.text || '';
-    const category = q.category || q.kategori || 'TIU';
+    const category = (q.category || q.kategori || 'TIU').toUpperCase();
     if (!qText.toLowerCase().includes(searchQuery.toLowerCase())) return false;
     if (selectedCategory !== 'ALL' && category !== selectedCategory) return false;
     return true;
