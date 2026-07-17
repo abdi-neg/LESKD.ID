@@ -332,9 +332,9 @@ export const mockQuestions: Question[] = [
 
 
 export const EXAM_CONFIGS = {
-  TIU: { questionCount: 35, timeMinutes: 30, passingScore: 80 },
+  TIU: { questionCount: 35, timeMinutes: 35, passingScore: 80 },
   TWK: { questionCount: 30, timeMinutes: 30, passingScore: 65 },
-  TKP: { questionCount: 45, timeMinutes: 40, passingScore: 166 },
+  TKP: { questionCount: 45, timeMinutes: 35, passingScore: 166 },
   FULL: { questionCount: 110, timeMinutes: 100, passingScore: 311 },
 };
 
