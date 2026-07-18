@@ -292,18 +292,17 @@ export default function ClassReviewMode() {
                     </div>
                     {/* BAGIAN BARU: Menampilkan Poin Khusus TKP */}
                     {isTKP && (
-                      <div className="flex-shrink-0 pl-4 border-l border-gray-200/50 ml-2">
-                        <div className={`px-3 py-1.5 rounded-lg text-xs font-black
-                          ${tkpPoints === 5 ? 'bg-emerald-100 text-emerald-700' :
-                            tkpPoints === 4 ? 'bg-blue-100 text-blue-700' :
-                            tkpPoints === 1 ? 'bg-rose-100 text-rose-700' :
-                            'bg-gray-200 text-gray-600'
-                          }`}
-                        >
-                          Poin {tkpPoints}
-                        </div>
-                      </div>
-                    )}
+  <div className="flex-shrink-0 pl-4 border-l border-gray-200/50 ml-2">
+    <div className={`px-3 py-1.5 rounded-lg text-xs font-black
+      ${tkpPoints === 5 ? 'bg-emerald-100 text-emerald-700' :
+        tkpPoints === 4 ? 'bg-blue-100 text-blue-700' :
+        'bg-orange-100 text-orange-700' // Ini akan menangkap poin 1, 2, dan 3
+      }`}
+    >
+      Poin {tkpPoints}
+    </div>
+  </div>
+)}
                   </div>
                 );
               })}
