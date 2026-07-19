@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
-import { ArrowLeft, CheckCircle2, XCircle, AlertCircle, ChevronLeft, ChevronRight, Users, Target, CheckSquare, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, XCircle, AlertCircle, ChevronLeft, ChevronRight, Users, Target, CheckSquare, AlertTriangle, Calendar } from 'lucide-react';
 
 interface StudentAnswer {
   name: string;
   answer: string;
-  points?: number; // Tambahan properti khusus untuk TKP
+  points?: number; 
 }
 
 interface QuestionStat {
@@ -14,7 +14,6 @@ interface QuestionStat {
   correctStudents: StudentAnswer[];
   wrongStudents: StudentAnswer[];
   unansweredStudents: StudentAnswer[];
-  // Tambahan kategori stat khusus TKP
   tkpPoint5: StudentAnswer[];
   tkpPoint4: StudentAnswer[];
   tkpPointOthers: StudentAnswer[];
@@ -23,9 +22,15 @@ interface QuestionStat {
 export default function ClassReviewMode() {
   const { packageId } = useParams<{ packageId: string }>(); 
   const navigate = useNavigate();
+  
   const [loading, setLoading] = useState(true);
+  const [rawData, setRawData] = useState<any[]>([]); // Menyimpan data asli dari DB
   const [questionsStats, setQuestionsStats] = useState<QuestionStat[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
+  
+  // State untuk Fitur Filter Tanggal
+  const [availableDates, setAvailableDates] = useState<string[]>([]);
+  const [selectedDate, setSelectedDate] = useState<string>('all');
 
   useEffect(() => {
     if (packageId) {
@@ -49,110 +54,160 @@ export default function ClassReviewMode() {
     return '';
   };
 
+  const parseSnapshot = (rawSnap: any) => {
+    let snap = rawSnap;
+    if (typeof snap === 'string') {
+      try { snap = JSON.parse(snap); } catch (e) {}
+    }
+    if (typeof snap === 'string') {
+      try { snap = JSON.parse(snap); } catch (e) {}
+    }
+    return snap;
+  };
+
   const fetchClassData = async () => {
     setLoading(true);
     try {
+      // PERUBAHAN: Menambahkan pengambilan completed_at / created_at
       const { data, error } = await supabase
         .from('exam_results')
-        .select('participant_id, user_name, review_snapshot')
+        .select('participant_id, user_name, review_snapshot, completed_at, created_at')
         .eq('package_id', packageId)
         .not('review_snapshot', 'is', null);
 
       if (error) throw error;
-      if (!data || data.length === 0) {
-        setLoading(false);
-        return;
-      }
-
-      const groupedData = new Map<string, QuestionStat>();
-
-      data.forEach((row) => {
-        let snap = row.review_snapshot;
+      
+      if (data && data.length > 0) {
+        setRawData(data);
         
-        if (typeof snap === 'string') {
-          try { snap = JSON.parse(snap); } catch (e) {}
-        }
-        if (typeof snap === 'string') {
-          try { snap = JSON.parse(snap); } catch (e) {}
-        }
-
-        if (snap && Array.isArray(snap.questions)) {
-          snap.questions.forEach((q: any) => {
-            const qId = q.id || q.questionId || q.question_id || q.uuid;
-            
-            if (!groupedData.has(qId)) {
-              groupedData.set(qId, {
-                questionData: q,
-                correctStudents: [],
-                wrongStudents: [],
-                unansweredStudents: [],
-                tkpPoint5: [],
-                tkpPoint4: [],
-                tkpPointOthers: []
-              });
+        // Ekstraksi tanggal unik untuk Dropdown Filter
+        const datesMap = new Map<string, number>();
+        data.forEach(item => {
+          const dateStr = item.completed_at || item.created_at;
+          if (dateStr) {
+            const dateObj = new Date(dateStr);
+            const formattedDate = dateObj.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+            if (!datesMap.has(formattedDate)) {
+              datesMap.set(formattedDate, dateObj.getTime());
             }
-
-            const stat = groupedData.get(qId)!;
-            const studentName = row.user_name || 'Peserta Tanpa Nama';
-            
-            let rawUserAnswer = q.user_answer || q.userAnswer || q.selected_option || q.selectedOption || q.answer;
-            
-            if (!rawUserAnswer && snap.answers && typeof snap.answers === 'object') {
-               rawUserAnswer = snap.answers[qId]; 
-            }
-            if (!rawUserAnswer && snap.responses && typeof snap.responses === 'object') {
-               rawUserAnswer = snap.responses[qId]; 
-            }
-            if (!rawUserAnswer && snap.participant_answers && typeof snap.participant_answers === 'object') {
-               rawUserAnswer = snap.participant_answers[qId]; 
-            }
-
-            const parsedUserAnswer = extractLetter(rawUserAnswer);
-            const isValidOption = ['a', 'b', 'c', 'd', 'e'].includes(parsedUserAnswer);
-            const displayAnswer = isValidOption ? parsedUserAnswer.toUpperCase() : '-';
-
-            const isTKP = q.category === 'TKP';
-
-            if (!isValidOption) {
-              stat.unansweredStudents.push({ name: studentName, answer: '-' });
-            } else if (isTKP) {
-              // 🌟 LOGIKA KHUSUS TKP
-              const pointKey = `points_${parsedUserAnswer}`;
-              const points = Number(q[pointKey]) || 0;
-              
-              const studentRecord = { name: studentName, answer: displayAnswer, points };
-              
-              if (points === 5) {
-                stat.tkpPoint5.push(studentRecord);
-              } else if (points === 4) {
-                stat.tkpPoint4.push(studentRecord);
-              } else {
-                stat.tkpPointOthers.push(studentRecord);
-              }
-              // Di TKP, yang dapat poin 5 juga masuk correctStudents untuk statistik Persentase Benar di atas
-              if (points === 5) stat.correctStudents.push(studentRecord);
-              else stat.wrongStudents.push(studentRecord); // Poin 1-4 dihitung 'salah' untuk persentase kelulusan soal
-              
-            } else {
-              // LOGIKA TIU & TWK
-              const parsedCorrectAnswer = extractLetter(q.correct_answer || q.correctAnswer);
-              if (parsedUserAnswer === parsedCorrectAnswer) {
-                stat.correctStudents.push({ name: studentName, answer: displayAnswer });
-              } else {
-                stat.wrongStudents.push({ name: studentName, answer: displayAnswer });
-              }
-            }
-          });
-        }
-      });
-
-      setQuestionsStats(Array.from(groupedData.values()));
+          }
+        });
+        
+        // Urutkan tanggal dari yang paling baru
+        const sortedDates = Array.from(datesMap.entries())
+          .sort((a, b) => b[1] - a[1])
+          .map(entry => entry[0]);
+          
+        setAvailableDates(sortedDates);
+      }
     } catch (error) {
       console.error("Gagal menarik data pembahasan kelas:", error);
     } finally {
       setLoading(false);
     }
   };
+
+  // 🌟 EFEK PINTAR: Memproses data setiap kali filter tanggal diubah
+  useEffect(() => {
+    if (rawData.length === 0) return;
+
+    const groupedData = new Map<string, QuestionStat>();
+
+    // Langkah 1: Kumpulkan SEMUA SOAL terlebih dahulu (agar soal tetap muncul meski difilter 0 siswa)
+    rawData.forEach((row) => {
+      const snap = parseSnapshot(row.review_snapshot);
+      if (snap && Array.isArray(snap.questions)) {
+        snap.questions.forEach((q: any) => {
+          const qId = q.id || q.questionId || q.question_id || q.uuid;
+          if (!groupedData.has(qId)) {
+            groupedData.set(qId, {
+              questionData: q,
+              correctStudents: [],
+              wrongStudents: [],
+              unansweredStudents: [],
+              tkpPoint5: [],
+              tkpPoint4: [],
+              tkpPointOthers: []
+            });
+          }
+        });
+      }
+    });
+
+    // Langkah 2: Saring data siswa berdasarkan tanggal yang dipilih
+    const filteredData = selectedDate === 'all' 
+      ? rawData 
+      : rawData.filter(row => {
+          const dateStr = row.completed_at || row.created_at;
+          if (!dateStr) return false;
+          const formattedDate = new Date(dateStr).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+          return formattedDate === selectedDate;
+        });
+
+    // Langkah 3: Masukkan data siswa (yang sudah difilter) ke dalam statistik
+    filteredData.forEach((row) => {
+      const snap = parseSnapshot(row.review_snapshot);
+      if (snap && Array.isArray(snap.questions)) {
+        snap.questions.forEach((q: any) => {
+          const qId = q.id || q.questionId || q.question_id || q.uuid;
+          const stat = groupedData.get(qId)!;
+          const studentName = row.user_name || 'Peserta Tanpa Nama';
+          
+          let rawUserAnswer = q.user_answer || q.userAnswer || q.selected_option || q.selectedOption || q.answer;
+          
+          if (!rawUserAnswer && snap.answers && typeof snap.answers === 'object') {
+             rawUserAnswer = snap.answers[qId]; 
+          }
+          if (!rawUserAnswer && snap.responses && typeof snap.responses === 'object') {
+             rawUserAnswer = snap.responses[qId]; 
+          }
+          if (!rawUserAnswer && snap.participant_answers && typeof snap.participant_answers === 'object') {
+             rawUserAnswer = snap.participant_answers[qId]; 
+          }
+
+          const parsedUserAnswer = extractLetter(rawUserAnswer);
+          const isValidOption = ['a', 'b', 'c', 'd', 'e'].includes(parsedUserAnswer);
+          const displayAnswer = isValidOption ? parsedUserAnswer.toUpperCase() : '-';
+          const isTKP = q.category === 'TKP';
+
+          if (!isValidOption) {
+            stat.unansweredStudents.push({ name: studentName, answer: '-' });
+          } else if (isTKP) {
+            const pointKey = `points_${parsedUserAnswer}`;
+            const points = Number(q[pointKey]) || 0;
+            const studentRecord = { name: studentName, answer: displayAnswer, points };
+            
+            if (points === 5) {
+              stat.tkpPoint5.push(studentRecord);
+            } else if (points === 4) {
+              stat.tkpPoint4.push(studentRecord);
+            } else {
+              stat.tkpPointOthers.push(studentRecord);
+            }
+            if (points === 5) stat.correctStudents.push(studentRecord);
+            else stat.wrongStudents.push(studentRecord); 
+            
+          } else {
+            const parsedCorrectAnswer = extractLetter(q.correct_answer || q.correctAnswer);
+            if (parsedUserAnswer === parsedCorrectAnswer) {
+              stat.correctStudents.push({ name: studentName, answer: displayAnswer });
+            } else {
+              stat.wrongStudents.push({ name: studentName, answer: displayAnswer });
+            }
+          }
+        });
+      }
+    });
+
+    // Urutkan siswa di kelompok poin 1-3 berdasarkan poin tertinggi
+    const finalStats = Array.from(groupedData.values());
+    finalStats.forEach(stat => {
+      stat.tkpPointOthers.sort((a, b) => (b.points || 0) - (a.points || 0));
+    });
+
+    setQuestionsStats(finalStats);
+    setCurrentIndex(0); // Reset ke soal nomor 1 setiap kali filter diubah
+  }, [rawData, selectedDate]);
 
   if (loading) {
     return (
@@ -162,7 +217,8 @@ export default function ClassReviewMode() {
     );
   }
 
-  if (questionsStats.length === 0) {
+  // Jika memang belum ada data sama sekali di database
+  if (rawData.length === 0) {
     return (
       <div className="p-10 text-center">
         <h3 className="text-xl font-bold text-gray-700 mb-4">Belum ada peserta yang mengerjakan paket soal ini.</h3>
@@ -177,26 +233,46 @@ export default function ClassReviewMode() {
   }
 
   const currentStat = questionsStats[currentIndex];
+  
+  // Safety check (kalau soalnya kosong)
+  if (!currentStat || !currentStat.questionData) return null;
+
   const q = currentStat.questionData;
   const isTKP = q.category === 'TKP';
-  
-  // Total Students tetap sama
   const totalStudents = currentStat.correctStudents.length + currentStat.wrongStudents.length + currentStat.unansweredStudents.length;
-  // Di TKP, success rate dihitung dari jumlah siswa yang mendapat poin 5
   const successRate = totalStudents > 0 ? Math.round((currentStat.correctStudents.length / totalStudents) * 100) : 0;
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
       
-      {/* HEADER NAVIGASI */}
+      {/* HEADER NAVIGASI & FILTER TANGGAL */}
       <div className="flex flex-col sm:flex-row justify-between items-center bg-white p-4 sm:p-5 rounded-3xl shadow-sm border border-gray-100 gap-4">
-        <button 
-          onClick={() => navigate('/admin/packages')}
-          className="flex items-center gap-2 text-gray-500 hover:text-[#1e3a8a] font-semibold transition-colors bg-gray-50 hover:bg-blue-50 px-5 py-2.5 rounded-xl border border-gray-100"
-        >
-          <ArrowLeft className="w-5 h-5" />
-          <span className="hidden sm:inline">Kembali ke Daftar Paket</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-3">
+          <button 
+            onClick={() => navigate('/admin/packages')}
+            className="flex items-center gap-2 text-gray-500 hover:text-[#1e3a8a] font-semibold transition-colors bg-gray-50 hover:bg-blue-50 px-5 py-2.5 rounded-xl border border-gray-100"
+          >
+            <ArrowLeft className="w-5 h-5" />
+            <span className="hidden sm:inline">Kembali</span>
+          </button>
+
+          {/* FILTER DROPDOWN TANGGAL */}
+          {availableDates.length > 0 && (
+            <div className="flex items-center gap-2 bg-blue-50 border border-blue-100 px-3 py-2.5 rounded-xl">
+              <Calendar className="w-4 h-4 text-[#1e3a8a]" />
+              <select 
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
+                className="bg-transparent border-none text-sm font-bold text-[#1e3a8a] focus:ring-0 cursor-pointer outline-none p-0 pr-6"
+              >
+                <option value="all">Semua Hari / Tanggal</option>
+                {availableDates.map(date => (
+                  <option key={date} value={date}>{date}</option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
 
         <div className="flex items-center gap-3 sm:gap-5 bg-gray-50 px-2 py-2 rounded-2xl border border-gray-100">
           <button 
@@ -253,7 +329,6 @@ export default function ClassReviewMode() {
                 const text = q[optKey];
                 if (!text) return null;
 
-                // Logika Pewarnaan Opsi
                 let isCorrect = false;
                 let tkpPoints = 0;
                 let optionStyle = 'bg-gray-50/50 border-gray-100 hover:bg-gray-50';
@@ -262,6 +337,7 @@ export default function ClassReviewMode() {
 
                 if (isTKP) {
                   tkpPoints = Number(q[`points_${opt}`]) || 0;
+                  
                   if (tkpPoints === 5) {
                     optionStyle = 'bg-emerald-50/70 border-emerald-200 shadow-sm';
                     circleStyle = 'bg-emerald-500 text-white shadow-md shadow-emerald-200';
@@ -270,6 +346,18 @@ export default function ClassReviewMode() {
                     optionStyle = 'bg-blue-50/70 border-blue-200 shadow-sm';
                     circleStyle = 'bg-blue-500 text-white shadow-md shadow-blue-200';
                     textStyle = 'text-blue-900 font-semibold';
+                  } else if (tkpPoints === 3) {
+                    optionStyle = 'bg-amber-50/70 border-amber-200 shadow-sm';
+                    circleStyle = 'bg-amber-500 text-white shadow-md shadow-amber-200';
+                    textStyle = 'text-amber-900 font-semibold';
+                  } else if (tkpPoints === 2) {
+                    optionStyle = 'bg-orange-50/70 border-orange-200 shadow-sm';
+                    circleStyle = 'bg-orange-500 text-white shadow-md shadow-orange-200';
+                    textStyle = 'text-orange-900 font-semibold';
+                  } else {
+                    optionStyle = 'bg-rose-50/70 border-rose-200 shadow-sm';
+                    circleStyle = 'bg-rose-500 text-white shadow-md shadow-rose-200';
+                    textStyle = 'text-rose-900 font-semibold';
                   }
                 } else {
                   isCorrect = extractLetter(q.correct_answer || q.correctAnswer) === opt;
@@ -290,19 +378,20 @@ export default function ClassReviewMode() {
                          {text}
                        </div>
                     </div>
-                    {/* BAGIAN BARU: Menampilkan Poin Khusus TKP */}
                     {isTKP && (
-  <div className="flex-shrink-0 pl-4 border-l border-gray-200/50 ml-2">
-    <div className={`px-3 py-1.5 rounded-lg text-xs font-black
-      ${tkpPoints === 5 ? 'bg-emerald-100 text-emerald-700' :
-        tkpPoints === 4 ? 'bg-blue-100 text-blue-700' :
-        'bg-orange-100 text-orange-700' // Ini akan menangkap poin 1, 2, dan 3
-      }`}
-    >
-      Poin {tkpPoints}
-    </div>
-  </div>
-)}
+                      <div className="flex-shrink-0 pl-4 border-l border-gray-200/50 ml-2">
+                        <div className={`px-3 py-1.5 rounded-lg text-xs font-black
+                          ${tkpPoints === 5 ? 'bg-emerald-100 text-emerald-700' :
+                            tkpPoints === 4 ? 'bg-blue-100 text-blue-700' :
+                            tkpPoints === 3 ? 'bg-amber-100 text-amber-700' :
+                            tkpPoints === 2 ? 'bg-orange-100 text-orange-700' :
+                            'bg-rose-100 text-rose-700' 
+                          }`}
+                        >
+                          Poin {tkpPoints}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -332,8 +421,8 @@ export default function ClassReviewMode() {
             <h3 className="text-gray-400 font-bold mb-2 text-xs uppercase tracking-widest">
               {isTKP ? 'Siswa Mendapat Poin 5' : 'Tingkat Keberhasilan'}
             </h3>
-            <div className={`text-6xl font-black my-5 tracking-tighter ${successRate >= 50 ? 'text-emerald-500' : 'text-rose-500'}`}>
-              {successRate}%
+            <div className={`text-6xl font-black my-5 tracking-tighter ${totalStudents === 0 ? 'text-gray-400' : successRate >= 50 ? 'text-emerald-500' : 'text-rose-500'}`}>
+              {totalStudents === 0 ? '-' : `${successRate}%`}
             </div>
             <div className="inline-flex items-center gap-2 bg-gray-50 px-4 py-2 rounded-xl border border-gray-100">
                <Users className="w-4 h-4 text-gray-400" />
@@ -403,7 +492,12 @@ export default function ClassReviewMode() {
                         <span className="text-sm font-bold text-gray-700 truncate mr-3">{student.name}</span>
                         <div className="flex items-center gap-2 flex-shrink-0">
                           <span className="text-[10px] font-bold text-orange-400 uppercase">Jawab:</span>
-                          <span className="text-xs font-black bg-orange-100 text-orange-700 px-2 h-8 flex items-center justify-center rounded-xl shadow-sm shadow-orange-100/50">
+                          <span className={`text-xs font-black px-2 h-8 flex items-center justify-center rounded-xl shadow-sm
+                            ${student.points === 3 ? 'bg-amber-100 text-amber-700 shadow-amber-100/50' :
+                              student.points === 2 ? 'bg-orange-100 text-orange-700 shadow-orange-100/50' :
+                              'bg-rose-100 text-rose-700 shadow-rose-100/50'
+                            }`}
+                          >
                             {student.answer} (Poin {student.points})
                           </span>
                         </div>
