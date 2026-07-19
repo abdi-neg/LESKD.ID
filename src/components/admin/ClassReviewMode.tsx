@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { ArrowLeft, CheckCircle2, XCircle, AlertCircle, ChevronLeft, ChevronRight, Users, Target, CheckSquare, AlertTriangle, Calendar } from 'lucide-react';
@@ -25,7 +25,6 @@ export default function ClassReviewMode() {
   
   const [loading, setLoading] = useState(true);
   const [rawData, setRawData] = useState<any[]>([]); // Menyimpan data asli dari DB
-  const [questionsStats, setQuestionsStats] = useState<QuestionStat[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   
   // State untuk Fitur Filter Tanggal
@@ -37,6 +36,11 @@ export default function ClassReviewMode() {
       fetchClassData();
     }
   }, [packageId]);
+
+  // Reset indeks soal ke nomor 1 jika tanggal filter diubah
+  useEffect(() => {
+    setCurrentIndex(0);
+  }, [selectedDate]);
 
   const extractLetter = (rawContent: any): string => {
     if (rawContent === null || rawContent === undefined) return '';
@@ -68,10 +72,10 @@ export default function ClassReviewMode() {
   const fetchClassData = async () => {
     setLoading(true);
     try {
-      // PERUBAHAN: Menambahkan pengambilan completed_at / created_at
+      // PERBAIKAN: Menggunakan started_at sesuai schema DB kamu, bukan created_at
       const { data, error } = await supabase
         .from('exam_results')
-        .select('participant_id, user_name, review_snapshot, completed_at, created_at')
+        .select('participant_id, user_name, review_snapshot, completed_at, started_at')
         .eq('package_id', packageId)
         .not('review_snapshot', 'is', null);
 
@@ -83,7 +87,7 @@ export default function ClassReviewMode() {
         // Ekstraksi tanggal unik untuk Dropdown Filter
         const datesMap = new Map<string, number>();
         data.forEach(item => {
-          const dateStr = item.completed_at || item.created_at;
+          const dateStr = item.completed_at || item.started_at;
           if (dateStr) {
             const dateObj = new Date(dateStr);
             const formattedDate = dateObj.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -107,13 +111,13 @@ export default function ClassReviewMode() {
     }
   };
 
-  // 🌟 EFEK PINTAR: Memproses data setiap kali filter tanggal diubah
-  useEffect(() => {
-    if (rawData.length === 0) return;
+  // 🌟 LOGIKA FILTER INSTAN: Menggunakan useMemo agar pemilahan data secepat kilat
+  const questionsStats = useMemo(() => {
+    if (rawData.length === 0) return [];
 
     const groupedData = new Map<string, QuestionStat>();
 
-    // Langkah 1: Kumpulkan SEMUA SOAL terlebih dahulu (agar soal tetap muncul meski difilter 0 siswa)
+    // 1. Kumpulkan semua kerangka soal (agar soal tetap tampil walau difilter 0 siswa)
     rawData.forEach((row) => {
       const snap = parseSnapshot(row.review_snapshot);
       if (snap && Array.isArray(snap.questions)) {
@@ -134,17 +138,17 @@ export default function ClassReviewMode() {
       }
     });
 
-    // Langkah 2: Saring data siswa berdasarkan tanggal yang dipilih
+    // 2. Saring data peserta berdasarkan tanggal yang dipilih di dropdown
     const filteredData = selectedDate === 'all' 
       ? rawData 
       : rawData.filter(row => {
-          const dateStr = row.completed_at || row.created_at;
+          const dateStr = row.completed_at || row.started_at;
           if (!dateStr) return false;
           const formattedDate = new Date(dateStr).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
           return formattedDate === selectedDate;
         });
 
-    // Langkah 3: Masukkan data siswa (yang sudah difilter) ke dalam statistik
+    // 3. Masukkan data jawaban peserta ke dalam statistik masing-masing soal
     filteredData.forEach((row) => {
       const snap = parseSnapshot(row.review_snapshot);
       if (snap && Array.isArray(snap.questions)) {
@@ -199,14 +203,13 @@ export default function ClassReviewMode() {
       }
     });
 
-    // Urutkan siswa di kelompok poin 1-3 berdasarkan poin tertinggi
+    // Urutkan siswa poin 1-3 dari nilai terbesar (3 -> 2 -> 1)
     const finalStats = Array.from(groupedData.values());
     finalStats.forEach(stat => {
       stat.tkpPointOthers.sort((a, b) => (b.points || 0) - (a.points || 0));
     });
 
-    setQuestionsStats(finalStats);
-    setCurrentIndex(0); // Reset ke soal nomor 1 setiap kali filter diubah
+    return finalStats;
   }, [rawData, selectedDate]);
 
   if (loading) {
@@ -217,7 +220,7 @@ export default function ClassReviewMode() {
     );
   }
 
-  // Jika memang belum ada data sama sekali di database
+  // Pesan ini HANYA MUNCUL jika di database benar-benar tidak ada data sama sekali
   if (rawData.length === 0) {
     return (
       <div className="p-10 text-center">
@@ -233,12 +236,11 @@ export default function ClassReviewMode() {
   }
 
   const currentStat = questionsStats[currentIndex];
-  
-  // Safety check (kalau soalnya kosong)
   if (!currentStat || !currentStat.questionData) return null;
 
   const q = currentStat.questionData;
   const isTKP = q.category === 'TKP';
+  
   const totalStudents = currentStat.correctStudents.length + currentStat.wrongStudents.length + currentStat.unansweredStudents.length;
   const successRate = totalStudents > 0 ? Math.round((currentStat.correctStudents.length / totalStudents) * 100) : 0;
 
@@ -256,7 +258,7 @@ export default function ClassReviewMode() {
             <span className="hidden sm:inline">Kembali</span>
           </button>
 
-          {/* FILTER DROPDOWN TANGGAL */}
+          {/* DROPDOWN FILTER TANGGAL */}
           {availableDates.length > 0 && (
             <div className="flex items-center gap-2 bg-blue-50 border border-blue-100 px-3 py-2.5 rounded-xl">
               <Calendar className="w-4 h-4 text-[#1e3a8a]" />
@@ -432,7 +434,6 @@ export default function ClassReviewMode() {
             </div>
           </div>
 
-          {/* RENDER KHUSUS TKP */}
           {isTKP ? (
             <>
               {/* Card Poin 5 */}
@@ -509,7 +510,7 @@ export default function ClassReviewMode() {
               </div>
             </>
           ) : (
-            // RENDER KHUSUS TIU & TWK (ASLI)
+            // RENDER KHUSUS TIU & TWK
             <>
               <div className="bg-white rounded-3xl shadow-sm border border-emerald-100 overflow-hidden flex flex-col max-h-[350px]">
                 <div className="bg-gradient-to-r from-emerald-500 to-emerald-400 px-5 py-4 flex justify-between items-center text-white">
@@ -556,7 +557,7 @@ export default function ClassReviewMode() {
             </>
           )}
 
-          {/* CARD KOSONG (BERLAKU UNTUK SEMUA JENIS SOAL) */}
+          {/* CARD KOSONG */}
           {currentStat.unansweredStudents.length > 0 && (
             <div className="bg-white rounded-3xl shadow-sm border border-amber-100 overflow-hidden">
               <div className="bg-gradient-to-r from-amber-400 to-amber-300 px-5 py-3.5 flex justify-between items-center text-amber-900">
