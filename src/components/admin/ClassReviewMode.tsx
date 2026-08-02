@@ -72,7 +72,6 @@ export default function ClassReviewMode() {
   const fetchClassData = async () => {
     setLoading(true);
     try {
-      // PERBAIKAN: Menggunakan started_at sesuai schema DB kamu, bukan created_at
       const { data, error } = await supabase
         .from('exam_results')
         .select('participant_id, user_name, review_snapshot, completed_at, started_at')
@@ -304,10 +303,11 @@ export default function ClassReviewMode() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* PENYESUAIAN LCD PROYEKTOR: Menggunakan md:grid-cols-3 agar tetap menyamping */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
         
         {/* BAGIAN KIRI: SOAL DAN PEMBAHASAN */}
-        <div className="lg:col-span-2 space-y-6">
+        <div className="md:col-span-2 space-y-6">
           <div className="bg-white p-6 sm:p-8 rounded-3xl shadow-sm border border-gray-100">
             <div className="flex items-center gap-2 mb-5 pb-5 border-b border-gray-50">
                <span className="bg-[#1e3a8a]/10 text-[#1e3a8a] px-3.5 py-1.5 rounded-xl text-xs font-extrabold uppercase tracking-wider">
