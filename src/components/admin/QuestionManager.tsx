@@ -47,10 +47,11 @@ const emptyForm = {
   points_e: 0,
 };
 
+// 🌟 UBAH WARNA TKP MENJADI AMBER
 const catColors: Record<string, string> = {
   TIU: 'bg-blue-100 text-blue-700',
   TWK: 'bg-emerald-100 text-emerald-700',
-  TKP: 'bg-rose-100 text-rose-700',
+  TKP: 'bg-amber-100 text-amber-700',
 };
 
 function PackageCompletenessCard({ counts, requirements }: { pkg: ExamPackage; counts: any; requirements: any }) {
@@ -371,10 +372,11 @@ export default function QuestionManager() {
             >
               {selectedPkg ? (
                 <div className="flex items-center gap-2 flex-1 min-w-0">
+                  {/* 🌟 UBAH WARNA TKP MENJADI AMBER */}
                   <span className={`text-xs font-bold px-2 py-0.5 rounded-md flex-shrink-0 ${
                     selectedPkg.package_type === 'MINI_TIU' ? 'bg-blue-100 text-blue-700' :
                     selectedPkg.package_type === 'MINI_TWK' ? 'bg-emerald-100 text-emerald-700' :
-                    selectedPkg.package_type === 'MINI_TKP' ? 'bg-rose-100 text-rose-700' :
+                    selectedPkg.package_type === 'MINI_TKP' ? 'bg-amber-100 text-amber-700' :
                     'bg-[#1e3a8a]/10 text-[#1e3a8a]'
                   }`}>
                     {TYPE_LABELS[selectedPkg.package_type]}
@@ -406,10 +408,11 @@ export default function QuestionManager() {
                       className={`w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-gray-50 transition-colors border-b border-gray-50 last:border-0
                         ${selectedPkg?.id === pkg.id ? 'bg-blue-50' : ''}`}
                     >
+                      {/* 🌟 UBAH WARNA TKP MENJADI AMBER */}
                       <span className={`text-xs font-bold px-2 py-0.5 rounded-md flex-shrink-0 ${
                         pkg.package_type === 'MINI_TIU' ? 'bg-blue-100 text-blue-700' :
                         pkg.package_type === 'MINI_TWK' ? 'bg-emerald-100 text-emerald-700' :
-                        pkg.package_type === 'MINI_TKP' ? 'bg-rose-100 text-rose-700' :
+                        pkg.package_type === 'MINI_TKP' ? 'bg-amber-100 text-amber-700' :
                         'bg-[#1e3a8a]/10 text-[#1e3a8a]'
                       }`}>
                         {TYPE_LABELS[pkg.package_type]}
