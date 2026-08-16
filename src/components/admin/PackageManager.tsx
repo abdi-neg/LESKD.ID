@@ -25,10 +25,12 @@ const TYPE_LABELS: Record<PackageType, string> = {
   MINI_TKP: 'Mini Tryout TKP',
   FULL: 'Full CAT Simulation',
 };
+
+// 🌟 UBAH WARNA TKP MENJADI AMBER
 const TYPE_COLORS: Record<PackageType, string> = {
   MINI_TIU: 'bg-blue-100 text-blue-700',
   MINI_TWK: 'bg-emerald-100 text-emerald-700',
-  MINI_TKP: 'bg-rose-100 text-rose-700',
+  MINI_TKP: 'bg-amber-100 text-amber-700',
   FULL: 'bg-[#1e3a8a]/10 text-[#1e3a8a]',
 };
 
@@ -45,11 +47,12 @@ const emptyForm = {
   is_active: true,
 };
 
+// 🌟 UBAH WARNA ICON DAN ACCORDION TKP MENJADI AMBER
 const CATEGORY_GROUPS: { type: PackageType; label: string; Icon: LucideIcon; iconBg: string; iconColor: string; color: string; border: string; headerBg: string }[] = [
   { type: 'FULL',     label: 'Full Simulasi CAT', Icon: GraduationCap, iconBg: 'bg-[#1e3a8a]/10', iconColor: 'text-[#1e3a8a]',  color: 'text-[#1e3a8a]',  border: 'border-[#1e3a8a]/20', headerBg: 'bg-[#1e3a8a]/5'  },
   { type: 'MINI_TWK', label: 'Mini Tryout TWK',   Icon: BookOpen,      iconBg: 'bg-emerald-100',   iconColor: 'text-emerald-600', color: 'text-emerald-700', border: 'border-emerald-200',  headerBg: 'bg-emerald-50'   },
   { type: 'MINI_TIU', label: 'Mini Tryout TIU',   Icon: Calculator,    iconBg: 'bg-blue-100',      iconColor: 'text-blue-600',    color: 'text-blue-700',    border: 'border-blue-200',    headerBg: 'bg-blue-50'      },
-  { type: 'MINI_TKP', label: 'Mini Tryout TKP',   Icon: Users,         iconBg: 'bg-rose-100',      iconColor: 'text-rose-600',    color: 'text-rose-700',    border: 'border-rose-200',    headerBg: 'bg-rose-50'      },
+  { type: 'MINI_TKP', label: 'Mini Tryout TKP',   Icon: Users,         iconBg: 'bg-amber-100',     iconColor: 'text-amber-600',   color: 'text-amber-700',   border: 'border-amber-200',   headerBg: 'bg-amber-50'     },
 ];
 
 interface PackageCategoryListProps {
@@ -503,10 +506,11 @@ const REQUIRED_COUNTS: Record<PackageType, Partial<Record<keyof QuestionCounts, 
   FULL: { TIU: 35, TWK: 30, TKP: 45 },
 };
 
+// 🌟 UBAH WARNA TKP MENJADI AMBER
 const CAT_BADGE: Record<string, string> = {
   TIU: 'bg-blue-100 text-blue-700',
   TWK: 'bg-emerald-100 text-emerald-700',
-  TKP: 'bg-rose-100 text-rose-700',
+  TKP: 'bg-amber-100 text-amber-700',
 };
 
 type SummaryTab = 'all' | 'full' | 'mini';
@@ -631,7 +635,7 @@ function QuestionCountBadges({ perPkgCounts, packages }: { perPkgCounts: PerPack
                               >
                                 <span className="font-bold">{cat}</span>
                                 <span className="opacity-70">{current}/{required}</span>
-                                {done && <CheckCircle2 className="w-3 h-3" />}
+                                {done && <CheckCircle 2 className="w-3 h-3" />}
                               </div>
                             );
                           })}
