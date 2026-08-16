@@ -635,7 +635,7 @@ function QuestionCountBadges({ perPkgCounts, packages }: { perPkgCounts: PerPack
                               >
                                 <span className="font-bold">{cat}</span>
                                 <span className="opacity-70">{current}/{required}</span>
-                                {done && <CheckCircle 2 className="w-3 h-3" />}
+                                {done && <CheckCircle2 className="w-3 h-3" />}
                               </div>
                             );
                           })}
