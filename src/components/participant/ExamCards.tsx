@@ -6,6 +6,7 @@ import { ExamPackage, PackageType } from '../../types';
 import { supabase } from '../../lib/supabase';
 import TokenGate from '../exam/TokenGate';
 
+// 🌟 PERUBAHAN WARNA TKP DI SINI 🌟
 const PKG_META: Record<PackageType, {
   icon: React.ElementType;
   gradient: string;
@@ -13,7 +14,8 @@ const PKG_META: Record<PackageType, {
 }> = {
   MINI_TIU: { icon: Brain, gradient: 'from-blue-500 to-blue-700', tagColor: 'bg-blue-100 text-blue-700' },
   MINI_TWK: { icon: Globe, gradient: 'from-emerald-500 to-emerald-700', tagColor: 'bg-emerald-100 text-emerald-700' },
-  MINI_TKP: { icon: Heart, gradient: 'from-rose-500 to-rose-700', tagColor: 'bg-rose-100 text-rose-700' },
+  // Mengubah TKP menjadi warna Kuning Emas (Amber) yang premium
+  MINI_TKP: { icon: Heart, gradient: 'from-amber-500 to-amber-600', tagColor: 'bg-amber-100 text-amber-700' },
   FULL: { icon: Zap, gradient: 'from-[#1e3a8a] to-[#1e40af]', tagColor: 'bg-slate-100 text-slate-700' },
 };
 
