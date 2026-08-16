@@ -41,10 +41,11 @@ interface CategoryDiag {
 
 const CIRCUMFERENCE = 100.53;
 
+// 🌟 UBAH WARNA TKP MENJADI AMBER
 const categoryMeta = [
   { id: 'TWK' as const, name: 'Tes Wawasan Kebangsaan', strokeClass: 'stroke-emerald-500', textClass: 'text-emerald-600', badgeBg: 'bg-emerald-50' },
   { id: 'TIU' as const, name: 'Tes Inteligensia Umum', strokeClass: 'stroke-blue-500', textClass: 'text-blue-600', badgeBg: 'bg-blue-50' },
-  { id: 'TKP' as const, name: 'Tes Karakteristik Pribadi', strokeClass: 'stroke-rose-500', textClass: 'text-rose-600', badgeBg: 'bg-rose-50' },
+  { id: 'TKP' as const, name: 'Tes Karakteristik Pribadi', strokeClass: 'stroke-amber-500', textClass: 'text-amber-600', badgeBg: 'bg-amber-50' },
 ];
 
 // ─── Per-exam diagnostics ────────────────────────────────────────────────────
@@ -265,10 +266,11 @@ function CategoryCard({ diag }: { diag: CategoryDiag }) {
 
 // ─── Score trend charts (redesigned) ─────────────────────────────────────────
 
+// 🌟 UBAH WARNA GRAFIK TREN TKP MENJADI AMBER
 const SUB_CATS = [
-  { id: 'TIU', key: 'score_tiu' as const, label: 'Tes Inteligensia Umum', color: '#3b82f6', max: 175 },
-  { id: 'TWK', key: 'score_twk' as const, label: 'Tes Wawasan Kebangsaan', color: '#10b981', max: 150 },
-  { id: 'TKP', key: 'score_tkp' as const, label: 'Tes Karakteristik Pribadi', color: '#f43f5e', max: 225 },
+  { id: 'TIU', key: 'score_tiu' as const, label: 'Tes Inteligensia Umum', color: '#3b82f6', max: 175 }, // Blue
+  { id: 'TWK', key: 'score_twk' as const, label: 'Tes Wawasan Kebangsaan', color: '#10b981', max: 150 }, // Emerald
+  { id: 'TKP', key: 'score_tkp' as const, label: 'Tes Karakteristik Pribadi', color: '#f59e0b', max: 225 }, // Amber
 ];
 
 function sparkPath(values: number[], max: number, w: number, h: number): string {
@@ -701,7 +703,8 @@ function ParticipantDetail({ participant, onBack }: { participant: Profile; onBa
                     { label: 'Total Skor', value: selectedResult.total_score, color: 'text-[#1e3a8a]' },
                     { label: 'TIU', value: selectedResult.score_tiu, color: 'text-blue-600' },
                     { label: 'TWK', value: selectedResult.score_twk, color: 'text-emerald-600' },
-                    { label: 'TKP', value: selectedResult.score_tkp, color: 'text-rose-600' },
+                    // 🌟 UBAH WARNA TKP MENJADI AMBER
+                    { label: 'TKP', value: selectedResult.score_tkp, color: 'text-amber-600' },
                   ].map((s) => (
                     <div key={s.label} className="text-center flex-1 min-w-12">
                       <p className={`text-2xl font-black ${s.color}`}>{s.value}</p>
