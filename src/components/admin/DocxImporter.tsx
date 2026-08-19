@@ -43,10 +43,11 @@ const CATEGORY_LABELS: Record<Category, string> = {
   TKP: 'TKP',
 };
 
+// 🌟 UBAH WARNA TKP MENJADI AMBER
 const CAT_COLORS: Record<Category, string> = {
   TIU: 'bg-blue-100 text-blue-700',
   TWK: 'bg-emerald-100 text-emerald-700',
-  TKP: 'bg-rose-100 text-rose-700',
+  TKP: 'bg-amber-100 text-amber-700',
 };
 
 function parseDocxText(rawText: string, category: Category): { questions: ParsedQuestion[]; errors: string[] } {
@@ -381,7 +382,8 @@ export default function DocxImporter({ packageId, packageType, onImported }: Pro
                               <span className={`font-bold w-4 flex-shrink-0 ${isCorrect ? 'text-[#10b981]' : 'text-gray-400'}`}>{opt}.</span>
                               <span className="flex-1">{val}</span>
                               {category === 'TKP' && poinVal !== undefined && (
-                                <span className="bg-rose-50 text-rose-700 font-bold px-2 py-0.5 rounded border border-rose-200">
+                                // 🌟 UBAH WARNA POIN TKP SAAT PREVIEW MENJADI AMBER
+                                <span className="bg-amber-50 text-amber-700 font-bold px-2 py-0.5 rounded border border-amber-200">
                                   {poinVal} Poin
                                 </span>
                               )}
