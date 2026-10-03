@@ -35,49 +35,56 @@ export default function ExamHistoryMonitor() {
   async function loadExamHistory() {
     setLoading(true);
     try {
-      // 🌟 TARIK DATA DENGAN JOIN KE TABEL PROFILES UNTUK MENDAPATKAN NAMA ASLI PESERTA
-      const { data, error } = await supabase
+      // 1. Ambil data exam_results tanpa join yang memicu error 400
+      const { data: examData, error: examError } = await supabase
         .from('exam_results')
-        .select(`
-          id,
-          participant_id,
-          participant_name,
-          package_type,
-          exam_type,
-          total_score,
-          score_tiu,
-          score_twk,
-          score_tkp,
-          passed,
-          completed_at,
-          duration_seconds,
-          profiles:participant_id ( full_name, name )
-        `)
+        .select('id, participant_id, participant_name, package_type, exam_type, total_score, score_tiu, score_twk, score_tkp, passed, completed_at, duration_seconds')
         .eq('status', 'completed')
         .eq('is_deleted', showTrash) 
         .order('completed_at', { ascending: false });
 
-      if (!error && data) {
-        const mappedRecords: HistoryRecord[] = data.map((r: any) => {
-          // Ambil nama dari tabel relasi profiles atau fallback ke participant_name
-          const profileInfo = Array.isArray(r.profiles) ? r.profiles[0] : r.profiles;
-          const resolvedName = profileInfo?.full_name || profileInfo?.name || r.participant_name || 'Peserta';
-
-          return {
-            id: r.id,
-            participant_name: resolvedName,
-            exam_type: r.package_type || r.exam_type || 'FULL',
-            total_score: r.total_score || 0,
-            score_tiu: r.score_tiu || 0,
-            score_twk: r.score_twk || 0,
-            score_tkp: r.score_tkp || 0,
-            passed: r.passed ?? false,
-            completed_at: r.completed_at || new Date().toISOString(),
-            duration_seconds: r.duration_seconds || 0,
-          };
-        });
-        setRecords(mappedRecords);
+      if (examError || !examData) {
+        console.error("Gagal mengambil exam_results:", examError);
+        setLoading(false);
+        return;
       }
+
+      // 2. Ambil data profiles untuk mencocokkan nama berdasarkan participant_id
+      const participantIds = Array.from(new Set(examData.map((r: any) => r.participant_id).filter(Boolean)));
+      let profileMap: Record<string, string> = {};
+
+      if (participantIds.length > 0) {
+        const { data: profileData } = await supabase
+          .from('profiles')
+          .select('id, full_name, name')
+          .in('id', participantIds);
+
+        if (profileData) {
+          profileData.forEach((p: any) => {
+            profileMap[p.id] = p.full_name || p.name || 'Peserta';
+          });
+        }
+      }
+
+      // 3. Gabungkan data dengan aman di sisi klien
+      const mappedRecords: HistoryRecord[] = examData.map((r: any) => {
+        const resolvedName = profileMap[r.participant_id] || r.participant_name || 'Peserta';
+
+        return {
+          id: r.id,
+          participant_name: resolvedName,
+          exam_type: r.package_type || r.exam_type || 'FULL',
+          total_score: r.total_score || 0,
+          score_tiu: r.score_tiu || 0,
+          score_twk: r.score_twk || 0,
+          score_tkp: r.score_tkp || 0,
+          passed: r.passed ?? false,
+          completed_at: r.completed_at || new Date().toISOString(),
+          duration_seconds: r.duration_seconds || 0,
+        };
+      });
+
+      setRecords(mappedRecords);
     } catch (err) {
       console.error("Gagal menarik data histori admin:", err);
     } finally {
