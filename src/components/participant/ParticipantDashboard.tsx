@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion';
-import { LogOut, User, Trophy, Target, TrendingUp, History, ChevronDown, ChevronUp, ArrowRight, Award, Clock } from 'lucide-react';
+import { LogOut, User, Trophy, Target, TrendingUp, History, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom'; 
 import { useApp } from '../../context/AppContext';
@@ -8,11 +8,9 @@ import Leaderboard from './Leaderboard';
 import ExamHistory from './ExamHistory';
 import DiagnosticReport from '../exam/DiagnosticReport';
 
-// 🧠 FUNGSI NORMALISASI SUPER STERIL: Murni membaca apa adanya dari database tanpa rekayasa
+// 🧠 FUNGSI NORMALISASI SUPER STERIL
 const normalizeQuestionData = (q: any) => {
-  // Tangkap semua kemungkinan penulisan property dari Supabase/Word
   const rawSub = q.sub_category || q.sub_kategori || q.subCategory || q.subKategori || q.SUB_KATEGORI || q.SUB_CATEGORY || 'Umum';
-  
   return {
     ...q,
     sub_category: rawSub,
@@ -20,52 +18,18 @@ const normalizeQuestionData = (q: any) => {
   };
 };
 
-function generateGlobalSnapshot(examHistory: any[]) {
-  const globalQuestions: any[] = [];
-  const globalAnswers: Record<string, any> = {};
-
-  examHistory.forEach((result) => {
-    if (!result.review_snapshot) return;
-    try {
-      const snapshot = typeof result.review_snapshot === 'string'
-        ? JSON.parse(result.review_snapshot)
-        : result.review_snapshot;
-
-      const questionsArray = Array.isArray(snapshot) 
-        ? snapshot 
-        : (snapshot?.questions || snapshot?.activeQuestions || []);
-
-      const originalAnswers = Array.isArray(snapshot) ? {} : (snapshot?.answers || {});
-
-      if (Array.isArray(questionsArray)) {
-        questionsArray.forEach((q: any) => {
-          const uniqueInstanceId = `${result.id}_${q.id}`;
-          const normalizedQ = normalizeQuestionData(q);
-
-          globalQuestions.push({ 
-            ...normalizedQ, 
-            id: uniqueInstanceId 
-          });
-          
-          const ans = originalAnswers[q.id] || Object.values(originalAnswers).find((a: any) => a?.questionId === q.id || a?.question_id === q.id);
-          if (ans) globalAnswers[uniqueInstanceId] = ans;
-        });
-      }
-    } catch (err) {
-      console.error("Gagal merakit akumulasi snapshot global:", err);
-    }
-  });
-  return { questions: globalQuestions, answers: globalAnswers };
-}
-
 export default function ParticipantDashboard() {
-  const { state, signOut, examHistory, fetchUserExamHistory, dispatch } = useApp();
+  const { state, signOut, examHistory, fetchUserExamHistory, dispatch, fetchExamSnapshot } = useApp();
   const profile = state.profile;
   const navigate = useNavigate(); 
   
   const [showHistory, setShowHistory] = useState(false);
   const [resultsLoading, setResultsLoading] = useState(true);
+  
+  // 🌟 STATE BARU UNTUK LAZY LOADING MODAL
   const [selectedExam, setSelectedExam] = useState<any | null>(null);
+  const [selectedSnapshot, setSelectedSnapshot] = useState<any | null>(null);
+  const [modalLoading, setModalLoading] = useState(false);
 
   useEffect(() => {
     if (!profile?.id) return;
@@ -79,31 +43,38 @@ export default function ParticipantDashboard() {
     : 0;
   const passedCount = examHistory.filter((r) => r.passed).length;
 
-  const globalSnapshotData = generateGlobalSnapshot(examHistory);
+  // 🌟 FUNGSI TRIGGER LAZY LOADING SAAT TOMBOL "LIHAT SKOR" DIKLIK
+  const handleViewDetails = async (rec: any) => {
+    setSelectedExam(rec);
+    setModalLoading(true);
+    setSelectedSnapshot(null); // Reset state sebelumnya
 
-  const selectedExamSnapshot = (() => {
-    if (!selectedExam || !selectedExam.review_snapshot) return null;
-    try {
-      const snapshot = typeof selectedExam.review_snapshot === 'string'
-        ? JSON.parse(selectedExam.review_snapshot)
-        : selectedExam.review_snapshot;
-        
-      const questionsArray = Array.isArray(snapshot) 
-        ? snapshot 
-        : (snapshot?.questions || snapshot?.activeQuestions || []);
+    // Tarik JSON tebal HANYA untuk 1 tryout ini saja
+    const data = await fetchExamSnapshot(rec.id);
+    
+    if (data && data.review_snapshot) {
+      try {
+        const snapshot = typeof data.review_snapshot === 'string'
+          ? JSON.parse(data.review_snapshot)
+          : data.review_snapshot;
+          
+        const questionsArray = Array.isArray(snapshot) 
+          ? snapshot 
+          : (snapshot?.questions || snapshot?.activeQuestions || []);
 
-      if (Array.isArray(questionsArray)) {
-        // Biarkan data mengalir natural tanpa ditimpa paksa
-        const safeQuestions = questionsArray.map((q: any) => normalizeQuestionData(q));
-        
-        return {
-          questions: safeQuestions,
-          answers: Array.isArray(snapshot) ? {} : (snapshot?.answers || {})
-        };
+        if (Array.isArray(questionsArray)) {
+          const safeQuestions = questionsArray.map((q: any) => normalizeQuestionData(q));
+          setSelectedSnapshot({
+            questions: safeQuestions,
+            answers: Array.isArray(snapshot) ? {} : (snapshot?.answers || {})
+          });
+        }
+      } catch (e) { 
+        console.error("Gagal mem-parsing snapshot:", e); 
       }
-    } catch (e) { console.error(e); }
-    return null;
-  })();
+    }
+    setModalLoading(false);
+  };
 
   const historyRecords = examHistory.map((r) => ({
     id: r.id,
@@ -171,19 +142,6 @@ export default function ParticipantDashboard() {
             </div>
           </section>
 
-          {/* ─── DIAGNOSTIC REPORT (SMART ANALYTICS) ─── */}
-          {!resultsLoading && totalExams > 0 && (
-            <section className="border-t border-slate-100 pt-10">
-              <div className="mb-6">
-                <span className="text-[10px] font-bold text-[#1e3a8a] uppercase tracking-widest block mb-1">Smart Diagnostic</span>
-                <h2 className="text-xl font-black text-slate-900 tracking-tight">Peta Kekuatan Akumulatif</h2>
-              </div>
-              <div className="bg-white border border-slate-200 rounded-2xl p-2 shadow-sm">
-                <DiagnosticReport questions={globalSnapshotData.questions} answers={globalSnapshotData.answers} />
-              </div>
-            </section>
-          )}
-
           {/* ─── EXAM CARDS ─── */}
           <section className="space-y-4">
             <h2 className="text-xl font-black text-slate-900 tracking-tight">Paket Simulasi Tersedia</h2>
@@ -209,7 +167,7 @@ export default function ParticipantDashboard() {
                   <ExamHistory
                     records={historyRecords}
                     onViewReview={(id) => { dispatch({ type: 'OPEN_REVIEW', payload: id }); navigate('/exam/review'); }}
-                    onViewDetails={(rec) => setSelectedExam(examHistory.find((h) => h.id === rec.id) || rec)}
+                    onViewDetails={handleViewDetails}
                   />
                 </motion.div>
               )}
@@ -226,7 +184,7 @@ export default function ParticipantDashboard() {
 
       {/* ─── MODAL DETAIL ─── */}
       <AnimatePresence>
-        {selectedExam && selectedExamSnapshot && (
+        {selectedExam && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setSelectedExam(null)} className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm" />
             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-white rounded-2xl p-6 w-full max-w-xl shadow-2xl relative z-10 border border-slate-100 max-h-[85vh] overflow-y-auto">
@@ -247,14 +205,26 @@ export default function ParticipantDashboard() {
                 <p className="text-4xl font-black text-[#1e3a8a]">{selectedExam.total_score}</p>
               </div>
 
-              <div className="mb-6 border-t border-slate-100 pt-4">
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Diagnosis Sesi Ini</p>
-                <DiagnosticReport questions={selectedExamSnapshot.questions} answers={selectedExamSnapshot.answers} />
-              </div>
+              {/* 🌟 STATE LOADING UNTUK DIAGNOSTIK */}
+              {modalLoading ? (
+                <div className="flex flex-col items-center justify-center py-10 gap-3 border-t border-slate-100 pt-8">
+                  <Loader2 className="w-8 h-8 text-[#1e3a8a] animate-spin" />
+                  <p className="text-sm font-medium text-slate-500">Menganalisis hasil tryout...</p>
+                </div>
+              ) : selectedSnapshot ? (
+                <div className="mb-6 border-t border-slate-100 pt-4">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Diagnosis Sesi Ini</p>
+                  <DiagnosticReport questions={selectedSnapshot.questions} answers={selectedSnapshot.answers} />
+                </div>
+              ) : (
+                <div className="mb-6 py-6 text-center text-slate-400 border-t border-slate-100">
+                  <p className="text-sm">Detail analisis tidak tersedia.</p>
+                </div>
+              )}
 
               <button
                 onClick={() => setSelectedExam(null)}
-                className="w-full bg-[#1e3a8a] hover:bg-[#152961] text-white font-black py-3 rounded-lg transition-all text-[10px] uppercase tracking-[0.2em] shadow-lg shadow-blue-900/10"
+                className="w-full bg-[#1e3a8a] hover:bg-[#152961] text-white font-black py-3 rounded-lg transition-all text-[10px] uppercase tracking-[0.2em] shadow-lg shadow-blue-900/10 mt-2"
               >
                 Tutup Detail
               </button>
