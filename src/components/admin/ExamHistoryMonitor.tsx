@@ -35,9 +35,10 @@ export default function ExamHistoryMonitor() {
   async function loadExamHistory() {
     setLoading(true);
     try {
+      // 🌟 PERBAIKAN FATAL: Membatasi kolom yang ditarik agar super hemat egress
       const { data, error } = await supabase
         .from('exam_results')
-        .select('*')
+        .select('id, user_name, participant_name, package_type, exam_type, total_score, score_tiu, score_twk, score_tkp, passed, completed_at, duration_seconds')
         .eq('status', 'completed')
         .eq('is_deleted', showTrash) 
         .order('completed_at', { ascending: false });
@@ -167,7 +168,8 @@ export default function ExamHistoryMonitor() {
         return 'bg-emerald-50 text-emerald-700 border border-emerald-100';
       case 'TKP':
       case 'MINI_TKP': 
-        return 'bg-rose-50 text-rose-700 border border-rose-100';
+        // 🌟 UBAH WARNA TKP MENJADI AMBER
+        return 'bg-amber-50 text-amber-700 border border-amber-100';
       case 'FULL': 
         return 'bg-gray-100 text-gray-700 border border-gray-200';
       default: 
