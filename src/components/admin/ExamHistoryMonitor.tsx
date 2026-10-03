@@ -35,27 +35,47 @@ export default function ExamHistoryMonitor() {
   async function loadExamHistory() {
     setLoading(true);
     try {
-      // 🌟 PERBAIKAN FATAL: Menghapus user_name yang tidak ada di database, gunakan participant_name
+      // 🌟 TARIK DATA DENGAN JOIN KE TABEL PROFILES UNTUK MENDAPATKAN NAMA ASLI PESERTA
       const { data, error } = await supabase
         .from('exam_results')
-        .select('id, participant_name, package_type, exam_type, total_score, score_tiu, score_twk, score_tkp, passed, completed_at, duration_seconds')
+        .select(`
+          id,
+          participant_id,
+          participant_name,
+          package_type,
+          exam_type,
+          total_score,
+          score_tiu,
+          score_twk,
+          score_tkp,
+          passed,
+          completed_at,
+          duration_seconds,
+          profiles:participant_id ( full_name, name )
+        `)
         .eq('status', 'completed')
         .eq('is_deleted', showTrash) 
         .order('completed_at', { ascending: false });
 
       if (!error && data) {
-        const mappedRecords: HistoryRecord[] = data.map((r: any) => ({
-          id: r.id,
-          participant_name: r.participant_name || 'Peserta',
-          exam_type: r.package_type || r.exam_type || 'FULL',
-          total_score: r.total_score || 0,
-          score_tiu: r.score_tiu || 0,
-          score_twk: r.score_twk || 0,
-          score_tkp: r.score_tkp || 0,
-          passed: r.passed ?? false,
-          completed_at: r.completed_at || new Date().toISOString(),
-          duration_seconds: r.duration_seconds || 0,
-        }));
+        const mappedRecords: HistoryRecord[] = data.map((r: any) => {
+          // Ambil nama dari tabel relasi profiles atau fallback ke participant_name
+          const profileInfo = Array.isArray(r.profiles) ? r.profiles[0] : r.profiles;
+          const resolvedName = profileInfo?.full_name || profileInfo?.name || r.participant_name || 'Peserta';
+
+          return {
+            id: r.id,
+            participant_name: resolvedName,
+            exam_type: r.package_type || r.exam_type || 'FULL',
+            total_score: r.total_score || 0,
+            score_tiu: r.score_tiu || 0,
+            score_twk: r.score_twk || 0,
+            score_tkp: r.score_tkp || 0,
+            passed: r.passed ?? false,
+            completed_at: r.completed_at || new Date().toISOString(),
+            duration_seconds: r.duration_seconds || 0,
+          };
+        });
         setRecords(mappedRecords);
       }
     } catch (err) {
@@ -69,7 +89,6 @@ export default function ExamHistoryMonitor() {
     loadExamHistory();
   }, [showTrash]);
 
-  // 🌟 SOFT DELETE: Pindah ke keranjang sampah (Otomatis hilang dari layar peserta)
   async function handleSoftDelete(id: string) {
     if (!window.confirm('Pindahkan riwayat ujian peserta ini ke keranjang sampah?')) return;
     setActionId(id);
@@ -87,7 +106,6 @@ export default function ExamHistoryMonitor() {
     setActionId(null);
   }
 
-  // 🌟 RESTORE: Kembalikan dari keranjang sampah
   async function handleRestore(id: string) {
     setActionId(id);
     
@@ -105,7 +123,6 @@ export default function ExamHistoryMonitor() {
     setActionId(null);
   }
 
-  // 🌟 HARD DELETE: Hapus permanen dari database
   async function handleHardDelete(id: string) {
     if (!window.confirm('PERINGATAN: Apakah Anda yakin ingin membumihanguskan data ujian ini? Data yang dihapus permanen tidak akan bisa dikembalikan lagi.')) return;
     setActionId(id);
@@ -168,7 +185,6 @@ export default function ExamHistoryMonitor() {
         return 'bg-emerald-50 text-emerald-700 border border-emerald-100';
       case 'TKP':
       case 'MINI_TKP': 
-        // 🌟 UBAH WARNA TKP MENJADI AMBER
         return 'bg-amber-50 text-amber-700 border border-amber-100';
       case 'FULL': 
         return 'bg-gray-100 text-gray-700 border border-gray-200';
@@ -390,7 +406,6 @@ export default function ExamHistoryMonitor() {
                           
                           {showTrash ? (
                             <>
-                              {/* Tombol Restore */}
                               <button
                                 disabled={actionId === record.id}
                                 onClick={() => handleRestore(record.id)}
@@ -400,7 +415,6 @@ export default function ExamHistoryMonitor() {
                                 <span>Pulihkan</span>
                               </button>
                               
-                              {/* Tombol Hard Delete */}
                               <button
                                 disabled={actionId === record.id}
                                 onClick={() => handleHardDelete(record.id)}
