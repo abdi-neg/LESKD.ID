@@ -14,7 +14,6 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom'; 
 import { useApp } from '../../context/AppContext';
-import { supabase } from '../../lib/supabase';
 import DiagnosticReport from './DiagnosticReport';
 
 type AnswerOption = 'A' | 'B' | 'C' | 'D' | 'E';
@@ -116,6 +115,7 @@ function QuestionCard({ question, answer, index, forceExpand }: any) {
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
       <button onClick={() => setLocalExpanded((v) => !v)} className="w-full p-4 flex items-start gap-3 text-left hover:bg-gray-50/50 transition-colors">
+        {/* 🌟 WARNA AMBER UNTUK TKP DI SESUAIKAN */}
         <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5
           ${isUnanswered ? 'bg-gray-100' : isTKP ? (userGainedPoints === 5 ? 'bg-emerald-500' : 'bg-amber-500') : isCorrect ? 'bg-emerald-500' : 'bg-red-500'}`}
         >
@@ -129,7 +129,12 @@ function QuestionCard({ question, answer, index, forceExpand }: any) {
             </div>
           </div>
           <div className="flex items-center gap-2 mt-2 flex-wrap">
-            <span className="text-xs font-bold px-2.5 py-1 rounded-md bg-[#1e3a8a]/10 text-[#1e3a8a] uppercase tracking-widest border border-[#1e3a8a]/20">
+            {/* 🌟 WARNA TAG TKP DI SESUAIKAN */}
+            <span className={`text-xs font-bold px-2.5 py-1 rounded-md uppercase tracking-widest border ${
+              category === 'TKP' ? 'bg-amber-100/50 text-amber-700 border-amber-200' : 
+              category === 'TWK' ? 'bg-emerald-100/50 text-emerald-700 border-emerald-200' :
+              'bg-[#1e3a8a]/10 text-[#1e3a8a] border-[#1e3a8a]/20'
+            }`}>
               {category}
             </span>
             <span className="text-xs font-semibold px-2.5 py-1 rounded-md bg-gray-100 text-gray-700 border border-gray-200 shadow-sm flex items-center gap-1">
@@ -217,9 +222,8 @@ function QuestionCard({ question, answer, index, forceExpand }: any) {
 }
 
 export function ExamReview({ questions: propQuestions, answers: propAnswers }: any) {
-  const contextData = useApp();
-  const state = contextData?.state || {};
-  const dispatch = contextData?.dispatch;
+  // 🌟 MEMANGGIL FUNGSI LAZY LOADING DARI APPCONTEXT
+  const { state, dispatch, fetchExamSnapshot } = useApp();
   const navigate = useNavigate(); 
 
   const userRole = state?.profile?.role?.toLowerCase() || 'participant';
@@ -229,40 +233,32 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
   const [selectedCategory, setSelectedCategory] = useState<'ALL' | 'TIU' | 'TWK' | 'TKP'>('ALL');
   const [globalExpand, setGlobalExpand] = useState(false);
 
-  const [supabaseQuestions, setSupabaseQuestions] = useState<any[]>([]);
-  const [supabaseAnswers, setSupabaseAnswers] = useState<any>({});
+  const [fetchedQuestions, setFetchedQuestions] = useState<any[]>([]);
+  const [fetchedAnswers, setFetchedAnswers] = useState<any>({});
   const [isFetchingDb, setIsFetchingDb] = useState(false);
 
-  const stateQuestions = state?.examSession?.questions || state?.activeQuestions || state?.questions || [];
-  const stateAnswers = state?.examSession?.answers || state?.activeAnswers || state?.answers || {};
+  // Jika data di-pass langsung via props atau ada di memory (biasanya habis selesai ujian)
+  const memoryQuestions = state?.examSession?.questions || state?.activeQuestions || state?.questions || [];
+  const memoryAnswers = state?.examSession?.answers || state?.activeAnswers || state?.answers || {};
 
   useEffect(() => {
-    if ((propQuestions && propQuestions.length > 0) || stateQuestions.length > 0) {
+    // Jika data sudah dikirim via prop atau memory, tidak perlu fetch ulang
+    if ((propQuestions && propQuestions.length > 0) || memoryQuestions.length > 0) {
       return;
     }
 
-    async function loadSnapshotFromSupabase() {
+    async function loadLazySnapshot() {
       setIsFetchingDb(true);
       try {
         const resultId = state?.reviewResultId || state?.activeReviewId || state?.activeResultId || state?.selectedResultId || state?.reviewId;
         
-        let query = supabase.from('exam_results').select('review_snapshot, id');
-        
-        if (resultId) {
-          query = query.eq('id', resultId);
-        } else if (state?.profile?.id && !isAdmin) {
-          query = query.eq('participant_id', state.profile.id).order('completed_at', { ascending: false }).limit(1);
-        } else {
-          setIsFetchingDb(false);
+        if (!resultId) {
+          console.warn("ExamReview: Tidak ada result ID yang ditemukan di state.");
           return;
         }
 
-        const { data, error } = await query.maybeSingle();
-        
-        if (error) {
-          console.error("Gagal menarik snapshot:", error);
-          return;
-        }
+        // 🌟 GUNAKAN FUNGSI LAZY LOAD YANG BARU DIBUAT! (Super Hemat Kuota)
+        const data = await fetchExamSnapshot(resultId);
 
         if (data && data.review_snapshot) {
           let snapshot = data.review_snapshot;
@@ -274,7 +270,7 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
                 snapshot = JSON.parse(snapshot);
               }
             } catch (e) {
-              console.error("Gagal parse snapshot di ExamReview:", e);
+              console.error("Gagal parse snapshot JSON di ExamReview:", e);
             }
           }
             
@@ -287,27 +283,26 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
                 sub_kategori: verifiedSub
               };
             });
-            setSupabaseQuestions(safeQuestions);
-            setSupabaseAnswers(snapshot.answers || {});
+            setFetchedQuestions(safeQuestions);
+            setFetchedAnswers(snapshot.answers || {});
           }
         }
       } catch (err) {
-        console.error(err);
+        console.error("ExamReview: Gagal memuat snapshot secara Lazy Load", err);
       } finally {
         setIsFetchingDb(false);
       }
     }
 
-    loadSnapshotFromSupabase();
-  }, [state, propQuestions, stateQuestions.length, isAdmin]);
+    loadLazySnapshot();
+  }, [state?.reviewResultId, propQuestions?.length, memoryQuestions.length]);
 
   const rawQuestions = (propQuestions && propQuestions.length > 0) ? propQuestions :
-                       (stateQuestions.length > 0) ? stateQuestions : supabaseQuestions;
+                       (memoryQuestions.length > 0) ? memoryQuestions : fetchedQuestions;
 
   const finalAnswers = (propQuestions && propQuestions.length > 0) ? propAnswers :
-                       (stateQuestions.length > 0) ? stateAnswers : supabaseAnswers;
+                       (memoryQuestions.length > 0) ? memoryAnswers : fetchedAnswers;
 
-  // ─── 🌟 MENGGUNAKAN URUTAN ASLI DARI DATABASE (TANPA DIACAK) ───
   const finalQuestions = [...rawQuestions];
 
   const getAnswerForQuestion = (qId: string | number) => {
