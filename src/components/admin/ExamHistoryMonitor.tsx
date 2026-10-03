@@ -35,44 +35,19 @@ export default function ExamHistoryMonitor() {
   async function loadExamHistory() {
     setLoading(true);
     try {
-      // 1. Ambil data exam_results tanpa join yang memicu error 400
-      const { data: examData, error: examError } = await supabase
+      // 🌟 LANGSUNG TARIK user_name DAN KOLOM LAINNYA DENGAN AMAN
+      const { data, error } = await supabase
         .from('exam_results')
-        .select('id, participant_id, participant_name, package_type, exam_type, total_score, score_tiu, score_twk, score_tkp, passed, completed_at, duration_seconds')
+        .select('id, user_name, participant_name, package_type, exam_type, total_score, score_tiu, score_twk, score_tkp, passed, completed_at, duration_seconds')
         .eq('status', 'completed')
         .eq('is_deleted', showTrash) 
         .order('completed_at', { ascending: false });
 
-      if (examError || !examData) {
-        console.error("Gagal mengambil exam_results:", examError);
-        setLoading(false);
-        return;
-      }
-
-      // 2. Ambil data profiles untuk mencocokkan nama berdasarkan participant_id
-      const participantIds = Array.from(new Set(examData.map((r: any) => r.participant_id).filter(Boolean)));
-      let profileMap: Record<string, string> = {};
-
-      if (participantIds.length > 0) {
-        const { data: profileData } = await supabase
-          .from('profiles')
-          .select('id, full_name, name')
-          .in('id', participantIds);
-
-        if (profileData) {
-          profileData.forEach((p: any) => {
-            profileMap[p.id] = p.full_name || p.name || 'Peserta';
-          });
-        }
-      }
-
-      // 3. Gabungkan data dengan aman di sisi klien
-      const mappedRecords: HistoryRecord[] = examData.map((r: any) => {
-        const resolvedName = profileMap[r.participant_id] || r.participant_name || 'Peserta';
-
-        return {
+      if (!error && data) {
+        const mappedRecords: HistoryRecord[] = data.map((r: any) => ({
           id: r.id,
-          participant_name: resolvedName,
+          // Gunakan user_name, jika kosong fallback ke participant_name
+          participant_name: r.user_name || r.participant_name || 'Peserta',
           exam_type: r.package_type || r.exam_type || 'FULL',
           total_score: r.total_score || 0,
           score_tiu: r.score_tiu || 0,
@@ -81,10 +56,11 @@ export default function ExamHistoryMonitor() {
           passed: r.passed ?? false,
           completed_at: r.completed_at || new Date().toISOString(),
           duration_seconds: r.duration_seconds || 0,
-        };
-      });
-
-      setRecords(mappedRecords);
+        }));
+        setRecords(mappedRecords);
+      } else if (error) {
+        console.error("Supabase Error:", error.message);
+      }
     } catch (err) {
       console.error("Gagal menarik data histori admin:", err);
     } finally {
