@@ -35,10 +35,10 @@ export default function ExamHistoryMonitor() {
   async function loadExamHistory() {
     setLoading(true);
     try {
-      // 🌟 PERBAIKAN FATAL: Membatasi kolom yang ditarik agar super hemat egress
+      // 🌟 PERBAIKAN FATAL: Menghapus user_name yang tidak ada di database, gunakan participant_name
       const { data, error } = await supabase
         .from('exam_results')
-        .select('id, user_name, participant_name, package_type, exam_type, total_score, score_tiu, score_twk, score_tkp, passed, completed_at, duration_seconds')
+        .select('id, participant_name, package_type, exam_type, total_score, score_tiu, score_twk, score_tkp, passed, completed_at, duration_seconds')
         .eq('status', 'completed')
         .eq('is_deleted', showTrash) 
         .order('completed_at', { ascending: false });
@@ -46,7 +46,7 @@ export default function ExamHistoryMonitor() {
       if (!error && data) {
         const mappedRecords: HistoryRecord[] = data.map((r: any) => ({
           id: r.id,
-          participant_name: r.user_name || r.participant_name || 'Peserta',
+          participant_name: r.participant_name || 'Peserta',
           exam_type: r.package_type || r.exam_type || 'FULL',
           total_score: r.total_score || 0,
           score_tiu: r.score_tiu || 0,
@@ -126,8 +126,8 @@ export default function ExamHistoryMonitor() {
   const filtered = records.filter((h) => {
     const matchName = h.participant_name.toLowerCase().includes(search.toLowerCase());
     const matchType = filterType === 'ALL' || 
-                      h.exam_type === filterType || 
-                      h.exam_type === `MINI_${filterType}`;
+                    h.exam_type === filterType || 
+                    h.exam_type === `MINI_${filterType}`;
     return matchName && matchType;
   });
 
