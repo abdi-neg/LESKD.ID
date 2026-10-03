@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { Profile } from '../../types';
+import { useApp } from '../../context/AppContext';
 
 interface ExamResultRow {
   id: string;
@@ -41,7 +42,6 @@ interface CategoryDiag {
 
 const CIRCUMFERENCE = 100.53;
 
-// 🌟 UBAH WARNA TKP MENJADI AMBER
 const categoryMeta = [
   { id: 'TWK' as const, name: 'Tes Wawasan Kebangsaan', strokeClass: 'stroke-emerald-500', textClass: 'text-emerald-600', badgeBg: 'bg-emerald-50' },
   { id: 'TIU' as const, name: 'Tes Inteligensia Umum', strokeClass: 'stroke-blue-500', textClass: 'text-blue-600', badgeBg: 'bg-blue-50' },
@@ -113,7 +113,6 @@ function computeAggregateDiagnostics(results: ExamResultRow[]): CategoryDiag[] {
   const allPairs: Pair[] = [];
 
   for (const result of results) {
-    // 🌟 FIX UNTUK KASUS ADIBA: Ubah String jadi JSON
     let snap = result.review_snapshot;
     if (typeof snap === 'string') {
       try {
@@ -266,11 +265,10 @@ function CategoryCard({ diag }: { diag: CategoryDiag }) {
 
 // ─── Score trend charts (redesigned) ─────────────────────────────────────────
 
-// 🌟 UBAH WARNA GRAFIK TREN TKP MENJADI AMBER
 const SUB_CATS = [
-  { id: 'TIU', key: 'score_tiu' as const, label: 'Tes Inteligensia Umum', color: '#3b82f6', max: 175 }, // Blue
-  { id: 'TWK', key: 'score_twk' as const, label: 'Tes Wawasan Kebangsaan', color: '#10b981', max: 150 }, // Emerald
-  { id: 'TKP', key: 'score_tkp' as const, label: 'Tes Karakteristik Pribadi', color: '#f59e0b', max: 225 }, // Amber
+  { id: 'TIU', key: 'score_tiu' as const, label: 'Tes Inteligensia Umum', color: '#3b82f6', max: 175 },
+  { id: 'TWK', key: 'score_twk' as const, label: 'Tes Wawasan Kebangsaan', color: '#10b981', max: 150 },
+  { id: 'TKP', key: 'score_tkp' as const, label: 'Tes Karakteristik Pribadi', color: '#f59e0b', max: 225 },
 ];
 
 function sparkPath(values: number[], max: number, w: number, h: number): string {
@@ -294,7 +292,7 @@ function ScoreTrendChart({ results }: { results: ExamResultRow[] }) {
   const sorted = useMemo(
     () =>
       [...results]
-        .filter((r) => typeof r.total_score === 'number') // Mengizinkan skor 0
+        .filter((r) => typeof r.total_score === 'number') 
         .sort((a, b) => new Date(a.completed_at).getTime() - new Date(b.completed_at).getTime()),
     [results]
   );
@@ -306,7 +304,6 @@ function ScoreTrendChart({ results }: { results: ExamResultRow[] }) {
     return `${d.getDate()}/${d.getMonth() + 1}`;
   };
 
-  // ── Bar chart constants ──
   const VW = 500, VH = 155;
   const PL = 38, PR = 16, PT = 26, PB = 28;
   const plotW = VW - PL - PR;
@@ -321,7 +318,6 @@ function ScoreTrendChart({ results }: { results: ExamResultRow[] }) {
 
   return (
     <div className="space-y-3">
-      {/* ── Total score bar chart ── */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
         <div className="flex items-center justify-between mb-4">
           <h4 className="text-sm font-bold text-gray-700 flex items-center gap-1.5">
@@ -344,7 +340,6 @@ function ScoreTrendChart({ results }: { results: ExamResultRow[] }) {
           </p>
         ) : (
           <svg viewBox={`0 0 ${VW} ${VH}`} className="w-full" preserveAspectRatio="xMidYMid meet">
-            {/* Grid lines + Y labels */}
             {yLabels.map((val) => {
               const y = PT + (1 - val / MAX) * plotH;
               return (
@@ -355,8 +350,6 @@ function ScoreTrendChart({ results }: { results: ExamResultRow[] }) {
                 </g>
               );
             })}
-
-            {/* Bars */}
             {sorted.map((r, i) => {
               const bH = getBarH(r.total_score);
               const bX = getBarX(i);
@@ -378,12 +371,11 @@ function ScoreTrendChart({ results }: { results: ExamResultRow[] }) {
         )}
       </div>
 
-      {/* ── Sub-category sparkline cards ── */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {SUB_CATS.map((cat) => {
           const values = sorted
             .map((r) => r[cat.key])
-            .filter((v) => typeof v === 'number'); // Mengizinkan skor 0
+            .filter((v) => typeof v === 'number'); 
 
           const latest = values.length > 0 ? values[values.length - 1] : null;
           const avg = values.length > 0
@@ -465,9 +457,9 @@ function ScoreTrendChart({ results }: { results: ExamResultRow[] }) {
   );
 }
 
-// ─── Overall / aggregate view ─────────────────────────────────────────────────
+// ─── Overall / aggregate view (OTOMATIS LOAD SEMUA KHUSUS ADMIN) ────────────
 
-function OverallView({ results }: { results: ExamResultRow[] }) {
+function OverallView({ results, participantId }: { results: ExamResultRow[], participantId: string }) {
   const completed = results.filter((r) => typeof r.total_score === 'number');
   const passed = completed.filter((r) => r.passed).length;
   const avgScore = completed.length > 0
@@ -476,7 +468,34 @@ function OverallView({ results }: { results: ExamResultRow[] }) {
   const bestScore = completed.length > 0 ? Math.max(...completed.map((r) => r.total_score)) : 0;
   const passRate = completed.length > 0 ? Math.round((passed / completed.length) * 100) : 0;
 
-  const diags = useMemo(() => computeAggregateDiagnostics(results), [results]);
+  // 🌟 STATE UNTUK OTOMATIS LOAD SEMUA DIAGNOSTIK
+  const [globalDiags, setGlobalDiags] = useState<CategoryDiag[]>([]);
+  const [loadingGlobal, setLoadingGlobal] = useState(true);
+
+  useEffect(() => {
+    async function loadAllDiagnostics() {
+      setLoadingGlobal(true);
+      try {
+        // 🌟 MENARIK SELURUH JSON MILIK 1 PESERTA INI (TANPA LIMIT)
+        const { data } = await supabase
+          .from('exam_results')
+          .select('id, review_snapshot')
+          .eq('participant_id', participantId)
+          .not('review_snapshot', 'is', null)
+          .not('is_deleted', 'eq', true)
+          .order('completed_at', { ascending: false });
+
+        if (data) {
+          setGlobalDiags(computeAggregateDiagnostics(data as any));
+        }
+      } catch (err) {
+        console.error("Gagal menarik data diagnostik keseluruhan peserta:", err);
+      } finally {
+        setLoadingGlobal(false);
+      }
+    }
+    loadAllDiagnostics();
+  }, [participantId]);
 
   const statsCards = [
     { label: 'Total Ujian', value: completed.length, color: 'text-[#1e3a8a]', bg: 'bg-blue-50' },
@@ -508,21 +527,26 @@ function OverallView({ results }: { results: ExamResultRow[] }) {
         ))}
       </div>
 
-      {/* Score trend chart */}
       <ScoreTrendChart results={completed} />
 
-      {/* Aggregate competency donuts */}
+      {/* Aggregate competency donuts (AUTO-LOAD ALL) */}
       <div>
         <h4 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-1.5">
           <Target className="w-4 h-4 text-[#1e3a8a]" />
           Diagram Kompetensi Kumulatif
           <span className="ml-1 text-[10px] font-normal text-gray-400">
-            (gabungan {completed.length} ujian)
+            (Keseluruhan {completed.length} ujian)
           </span>
         </h4>
-        {diags.length > 0 ? (
+        
+        {loadingGlobal ? (
+          <div className="flex flex-col items-center justify-center py-10 gap-3 text-[#1e3a8a] bg-blue-50 rounded-2xl border border-dashed border-blue-200">
+            <Loader2 className="w-8 h-8 animate-spin" />
+            <p className="text-sm font-semibold">Menganalisis seluruh data ujian peserta...</p>
+          </div>
+        ) : globalDiags.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            {diags.map((diag) => <CategoryCard key={diag.id} diag={diag} />)}
+            {globalDiags.map((diag) => <CategoryCard key={diag.id} diag={diag} />)}
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center py-10 gap-2 text-gray-400 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
@@ -540,6 +564,8 @@ function OverallView({ results }: { results: ExamResultRow[] }) {
 type DetailTab = 'overall' | 'per-exam';
 
 function ParticipantDetail({ participant, onBack }: { participant: Profile; onBack: () => void }) {
+  const { fetchExamSnapshot } = useApp();
+  
   const [results, setResults] = useState<ExamResultRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<DetailTab>('overall');
@@ -552,9 +578,10 @@ function ParticipantDetail({ participant, onBack }: { participant: Profile; onBa
       setLoading(true);
       const { data } = await supabase
         .from('exam_results')
-        .select('id, package_name, package_type, score_tiu, score_twk, score_tkp, total_score, passed, completed_at, review_snapshot, diagnostic_breakdown')
+        // 🌟 HANYA TARIK DATA RINGAN UNTUK LIST
+        .select('id, package_name, package_type, score_tiu, score_twk, score_tkp, total_score, passed, completed_at, diagnostic_breakdown')
         .eq('participant_id', participant.id)
-        .not('is_deleted', 'eq', true) // Mencegah bug data null
+        .not('is_deleted', 'eq', true)
         .order('completed_at', { ascending: false });
       if (data) setResults(data as ExamResultRow[]);
       setLoading(false);
@@ -562,23 +589,27 @@ function ParticipantDetail({ participant, onBack }: { participant: Profile; onBa
     load();
   }, [participant.id]);
 
-  function handleSelectResult(row: ExamResultRow) {
+  async function handleSelectResult(row: ExamResultRow) {
     setSelectedResult(row);
     setDiags([]);
     setDiagLoading(true);
     
-    // 🌟 FIX UNTUK KASUS ADIBA: Ubah String jadi JSON
-    let snap = row.review_snapshot;
-    if (typeof snap === 'string') {
-      try {
-        snap = JSON.parse(snap);
-      } catch (e) {
-        console.error("Gagal memecah JSON:", e);
+    // 🌟 LAZY LOAD SNAPSHOT SAAT ADMIN MENGKLIK UJIAN SPESIFIK
+    const data = await fetchExamSnapshot(row.id);
+    
+    if (data && data.review_snapshot) {
+      let snap = data.review_snapshot;
+      if (typeof snap === 'string') {
+        try {
+          snap = JSON.parse(snap);
+        } catch (e) {
+          console.error("Gagal memecah JSON:", e);
+        }
       }
-    }
 
-    if (snap?.questions && snap.questions.length > 0) {
-      setDiags(computeDiagnostics(snap.questions, snap.answers));
+      if (snap?.questions && snap.questions.length > 0) {
+        setDiags(computeDiagnostics(snap.questions, snap.answers));
+      }
     }
     setDiagLoading(false);
   }
@@ -639,7 +670,7 @@ function ParticipantDetail({ participant, onBack }: { participant: Profile; onBa
           <p className="text-sm font-medium">Peserta belum memiliki riwayat ujian.</p>
         </div>
       ) : activeTab === 'overall' ? (
-        <OverallView results={results} />
+        <OverallView results={results} participantId={participant.id} />
       ) : (
         /* ── Per-exam tab ─────────────────────────────────── */
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -686,9 +717,9 @@ function ParticipantDetail({ participant, onBack }: { participant: Profile; onBa
                 <p className="text-sm font-medium">Pilih riwayat ujian di sebelah kiri untuk melihat diagram kompetensi</p>
               </div>
             ) : diagLoading ? (
-              <div className="flex items-center justify-center h-48 gap-2 text-gray-400">
-                <Loader2 className="w-5 h-5 animate-spin" />
-                <span className="text-sm">Memuat data diagnostik...</span>
+              <div className="flex items-center justify-center h-48 gap-2 text-[#1e3a8a]">
+                <Loader2 className="w-6 h-6 animate-spin" />
+                <span className="text-sm font-semibold">Menarik detail dari database...</span>
               </div>
             ) : diags.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-48 gap-2 text-gray-400 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
@@ -703,7 +734,6 @@ function ParticipantDetail({ participant, onBack }: { participant: Profile; onBa
                     { label: 'Total Skor', value: selectedResult.total_score, color: 'text-[#1e3a8a]' },
                     { label: 'TIU', value: selectedResult.score_tiu, color: 'text-blue-600' },
                     { label: 'TWK', value: selectedResult.score_twk, color: 'text-emerald-600' },
-                    // 🌟 UBAH WARNA TKP MENJADI AMBER
                     { label: 'TKP', value: selectedResult.score_tkp, color: 'text-amber-600' },
                   ].map((s) => (
                     <div key={s.label} className="text-center flex-1 min-w-12">
@@ -758,7 +788,7 @@ export default function ParticipantDiagnostic() {
             .from('exam_results')
             .select('participant_id')
             .in('participant_id', ids)
-            .not('is_deleted', 'eq', true); // Mencegah bug data null
+            .not('is_deleted', 'eq', true);
           if (counts) {
             const map: Record<string, number> = {};
             counts.forEach((r: any) => { map[r.participant_id] = (map[r.participant_id] || 0) + 1; });
