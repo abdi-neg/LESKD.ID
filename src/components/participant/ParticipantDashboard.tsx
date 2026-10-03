@@ -1,8 +1,9 @@
 import { motion, AnimatePresence } from 'framer-motion';
-import { LogOut, User, Trophy, Target, TrendingUp, History, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
+import { LogOut, User, Trophy, Target, TrendingUp, History, ChevronDown, ChevronUp, Loader2, Brain } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom'; 
 import { useApp } from '../../context/AppContext';
+import { supabase } from '../../lib/supabase'; // 🌟 Ditambahkan untuk menarik data on-demand
 import ExamCards from './ExamCards';
 import Leaderboard from './Leaderboard';
 import ExamHistory from './ExamHistory';
@@ -18,6 +19,44 @@ const normalizeQuestionData = (q: any) => {
   };
 };
 
+function generateGlobalSnapshot(examHistory: any[]) {
+  const globalQuestions: any[] = [];
+  const globalAnswers: Record<string, any> = {};
+
+  examHistory.forEach((result) => {
+    if (!result.review_snapshot) return;
+    try {
+      const snapshot = typeof result.review_snapshot === 'string'
+        ? JSON.parse(result.review_snapshot)
+        : result.review_snapshot;
+
+      const questionsArray = Array.isArray(snapshot) 
+        ? snapshot 
+        : (snapshot?.questions || snapshot?.activeQuestions || []);
+
+      const originalAnswers = Array.isArray(snapshot) ? {} : (snapshot?.answers || {});
+
+      if (Array.isArray(questionsArray)) {
+        questionsArray.forEach((q: any) => {
+          const uniqueInstanceId = `${result.id}_${q.id}`;
+          const normalizedQ = normalizeQuestionData(q);
+
+          globalQuestions.push({ 
+            ...normalizedQ, 
+            id: uniqueInstanceId 
+          });
+          
+          const ans = originalAnswers[q.id] || Object.values(originalAnswers).find((a: any) => a?.questionId === q.id || a?.question_id === q.id);
+          if (ans) globalAnswers[uniqueInstanceId] = ans;
+        });
+      }
+    } catch (err) {
+      console.error("Gagal merakit akumulasi snapshot global:", err);
+    }
+  });
+  return { questions: globalQuestions, answers: globalAnswers };
+}
+
 export default function ParticipantDashboard() {
   const { state, signOut, examHistory, fetchUserExamHistory, dispatch, fetchExamSnapshot } = useApp();
   const profile = state.profile;
@@ -26,10 +65,14 @@ export default function ParticipantDashboard() {
   const [showHistory, setShowHistory] = useState(false);
   const [resultsLoading, setResultsLoading] = useState(true);
   
-  // 🌟 STATE BARU UNTUK LAZY LOADING MODAL
+  // 🌟 STATE UNTUK LAZY LOADING DETAIL MODAL
   const [selectedExam, setSelectedExam] = useState<any | null>(null);
   const [selectedSnapshot, setSelectedSnapshot] = useState<any | null>(null);
   const [modalLoading, setModalLoading] = useState(false);
+
+  // 🌟 STATE UNTUK SMART DIAGNOSTIC ON-DEMAND (HEMAT KUOTA)
+  const [globalSnapshot, setGlobalSnapshot] = useState<{questions: any[], answers: any} | null>(null);
+  const [loadingGlobal, setLoadingGlobal] = useState(false);
 
   useEffect(() => {
     if (!profile?.id) return;
@@ -43,13 +86,38 @@ export default function ParticipantDashboard() {
     : 0;
   const passedCount = examHistory.filter((r) => r.passed).length;
 
-  // 🌟 FUNGSI TRIGGER LAZY LOADING SAAT TOMBOL "LIHAT SKOR" DIKLIK
+  // 🌟 FUNGSI TARIK DATA GLOBAL HANYA SAAT TOMBOL DIKLIK
+  const handleLoadGlobalDiagnostic = async () => {
+    if (!profile?.id) return;
+    setLoadingGlobal(true);
+    try {
+      // Hanya narik JSON tebal untuk maksimal 10 ujian terakhir demi menghemat egress
+      const { data, error } = await supabase
+        .from('exam_results')
+        .select('id, review_snapshot')
+        .eq('participant_id', profile.id)
+        .not('review_snapshot', 'is', null)
+        .order('completed_at', { ascending: false })
+        .limit(10); 
+
+      if (error) throw error;
+      
+      if (data) {
+        const snap = generateGlobalSnapshot(data);
+        setGlobalSnapshot(snap);
+      }
+    } catch (err) {
+      console.error("Gagal memuat data diagnostik global", err);
+    } finally {
+      setLoadingGlobal(false);
+    }
+  };
+
   const handleViewDetails = async (rec: any) => {
     setSelectedExam(rec);
     setModalLoading(true);
-    setSelectedSnapshot(null); // Reset state sebelumnya
+    setSelectedSnapshot(null); 
 
-    // Tarik JSON tebal HANYA untuk 1 tryout ini saja
     const data = await fetchExamSnapshot(rec.id);
     
     if (data && data.review_snapshot) {
@@ -69,9 +137,7 @@ export default function ParticipantDashboard() {
             answers: Array.isArray(snapshot) ? {} : (snapshot?.answers || {})
           });
         }
-      } catch (e) { 
-        console.error("Gagal mem-parsing snapshot:", e); 
-      }
+      } catch (e) { console.error("Gagal mem-parsing snapshot:", e); }
     }
     setModalLoading(false);
   };
@@ -126,7 +192,6 @@ export default function ParticipantDashboard() {
               </p>
             </div>
 
-            {/* Quick Stats Grid */}
             <div className="lg:col-span-5 grid grid-cols-3 gap-3">
               {[
                 { icon: Target, label: 'Selesai', value: resultsLoading ? '..' : totalExams, color: 'text-blue-600', bg: 'bg-blue-50' },
@@ -142,8 +207,42 @@ export default function ParticipantDashboard() {
             </div>
           </section>
 
+          {/* ─── DIAGNOSTIC REPORT (ON-DEMAND) ─── */}
+          {!resultsLoading && totalExams > 0 && (
+            <section className="border-t border-slate-100 pt-10">
+              <div className="mb-6">
+                <span className="text-[10px] font-bold text-[#1e3a8a] uppercase tracking-widest block mb-1">Smart Diagnostic</span>
+                <h2 className="text-xl font-black text-slate-900 tracking-tight">Peta Kekuatan Akumulatif</h2>
+              </div>
+              
+              <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+                {!globalSnapshot ? (
+                  <div className="text-center py-6">
+                    <Target className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+                    <h3 className="font-bold text-slate-700 mb-2">Analisis Progres Tryout</h3>
+                    <p className="text-sm text-slate-500 mb-5 max-w-md mx-auto">
+                      Klik tombol di bawah untuk menganalisis dan memuat grafik diagram kompetensi gabungan dari riwayat ujian terakhir Anda.
+                    </p>
+                    <button
+                      onClick={handleLoadGlobalDiagnostic}
+                      disabled={loadingGlobal}
+                      className="bg-[#1e3a8a] hover:bg-[#152961] text-white px-6 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 mx-auto transition-colors disabled:opacity-70 shadow-md shadow-blue-900/10"
+                    >
+                      {loadingGlobal ? <Loader2 className="w-4 h-4 animate-spin" /> : <Brain className="w-4 h-4" />}
+                      {loadingGlobal ? 'Menganalisis Data...' : 'Muat Peta Kekuatan'}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="animate-in fade-in zoom-in duration-300">
+                    <DiagnosticReport questions={globalSnapshot.questions} answers={globalSnapshot.answers} />
+                  </div>
+                )}
+              </div>
+            </section>
+          )}
+
           {/* ─── EXAM CARDS ─── */}
-          <section className="space-y-4">
+          <section className="space-y-4 border-t border-slate-100 pt-10">
             <h2 className="text-xl font-black text-slate-900 tracking-tight">Paket Simulasi Tersedia</h2>
             <ExamCards />
           </section>
@@ -205,7 +304,6 @@ export default function ParticipantDashboard() {
                 <p className="text-4xl font-black text-[#1e3a8a]">{selectedExam.total_score}</p>
               </div>
 
-              {/* 🌟 STATE LOADING UNTUK DIAGNOSTIK */}
               {modalLoading ? (
                 <div className="flex flex-col items-center justify-center py-10 gap-3 border-t border-slate-100 pt-8">
                   <Loader2 className="w-8 h-8 text-[#1e3a8a] animate-spin" />
