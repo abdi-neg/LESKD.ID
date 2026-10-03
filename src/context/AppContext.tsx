@@ -72,7 +72,6 @@ async function fetchQuestionsForExam(examType: ExamType, packageId?: string): Pr
           points_c: q.points_c ?? 0,
           points_d: q.points_d ?? 0,
           points_e: q.points_e ?? 0,
-          // ─── 🌟 PERBAIKAN: JANGAN TINGGALKAN GAMBAR DI SINI! ───
           image_url: q.image_url ?? null,
           explanation_image_url: q.explanation_image_url ?? null,
           option_a_image: q.option_a_image ?? null,
@@ -102,7 +101,6 @@ async function fetchQuestionsForExam(examType: ExamType, packageId?: string): Pr
       points_c: (q as any).points_c ?? 0,
       points_d: (q as any).points_d ?? 0,
       points_e: (q as any).points_e ?? 0,
-      // Sisipkan juga di mock
       image_url: (q as any).image_url ?? null,
       explanation_image_url: (q as any).explanation_image_url ?? null,
     };
@@ -128,7 +126,6 @@ function buildSession(examType: ExamType, questions: Question[], pkg?: ExamPacka
       points_c: (q as any).points_c ?? 0,
       points_d: (q as any).points_d ?? 0,
       points_e: (q as any).points_e ?? 0,
-      // ─── 🌟 PERBAIKAN DI SESSION BUILDER ───
       image_url: (q as any).image_url ?? null,
       explanation_image_url: (q as any).explanation_image_url ?? null,
       option_a_image: (q as any).option_a_image ?? null,
@@ -303,6 +300,8 @@ interface AppContextType {
   submitExamSession: (diagnosticBreakdown?: any) => Promise<void>;
   examHistory: any[];
   fetchUserExamHistory: () => Promise<void>;
+  // 🌟 FUNGSI BARU UNTUK LAZY LOADING JSON PEMBAHASAN
+  fetchExamSnapshot: (resultId: string) => Promise<any | null>;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -321,14 +320,34 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  // 🌟 FUNGSI BARU: Ambil detail snapshot hanya ketika dibutuhkan (HEMAT KUOTA 90%)
+  const fetchExamSnapshot = useCallback(async (resultId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('exam_results')
+        .select('review_snapshot, diagnostic_breakdown')
+        .eq('id', resultId)
+        .single();
+      
+      if (error) throw error;
+      return data;
+    } catch (err) {
+      console.error("Gagal memuat detail snapshot:", err);
+      return null;
+    }
+  }, []);
+
   const fetchUserExamHistory = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
+      // 🌟 PERBAIKAN QUERY: Mengecualikan kolom JSON tebal (review_snapshot & diagnostic_breakdown)
+      const SAFE_COLUMNS = 'id, participant_id, user_name, package_type, package_id, package_name, score_tiu, score_twk, score_tkp, total_score, questions_total, questions_correct, passed, status, started_at, completed_at, duration_seconds';
+
       const { data, error } = await supabase
         .from('exam_results')
-        .select('*')
+        .select(SAFE_COLUMNS)
         .eq('participant_id', user.id)
         .order('completed_at', { ascending: false });
 
@@ -338,7 +357,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (finalRecords.length === 0 && user.email) {
         const { data: fallbackEmail } = await supabase
           .from('exam_results')
-          .select('*')
+          .select(SAFE_COLUMNS)
           .eq('user_name', user.email)
           .order('completed_at', { ascending: false });
         
@@ -352,7 +371,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (profileName) {
           const { data: fallbackName } = await supabase
             .from('exam_results')
-            .select('*')
+            .select(SAFE_COLUMNS)
             .eq('user_name', profileName)
             .order('completed_at', { ascending: false });
           
@@ -685,7 +704,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   return (
     <AppContext.Provider value={{ 
       state, dispatch, signOut, refreshProfile, startExam, deleteHistory, submitExamSession,
-      examHistory, fetchUserExamHistory 
+      examHistory, fetchUserExamHistory, fetchExamSnapshot // 🌟 Fungsi baru disisipkan di sini
     }}>
       {children}
     </AppContext.Provider>
