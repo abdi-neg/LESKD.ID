@@ -5,9 +5,8 @@ import { useApp } from '../../context/AppContext';
 import { EXAM_CONFIGS } from '../../data/mockData';
 import { supabase } from '../../lib/supabase';
 import { buildReviewSnapshot, saveReviewSnapshot } from '../../lib/examPersistence';
-import DiagnosticReport from './DiagnosticReport'; // 🌟 1. IMPORT KOMPONEN GRAFIK RAPOR
+import DiagnosticReport from './DiagnosticReport';
 
-// 🔑 PERBAIKAN: Mengubah menjadi Named Export agar sinkron dengan App.tsx menggunakan kurung kurawal
 export function ExamResults() {
   const { state, dispatch, startExam } = useApp();
   const [savedResultId, setSavedResultId] = useState<string | null>(null);
@@ -27,14 +26,12 @@ export function ExamResults() {
     savedRef.current = true;
 
     const { scores, examType, questions, answers, startedAt, completedAt, packageId, packageName } = session;
-    const dbResultId = (session as any).resultId; // 🔑 AMBIL ID BARIS YANG SUDAH DIBUAT SEBELUMNYA
+    const dbResultId = (session as any).resultId;
 
     (async () => {
-      // 1. Ambil data snapshot pembahasan terlebih dahulu
       const snapshot = buildReviewSnapshot(session);
 
       if (dbResultId) {
-        // 🔑 PERBAIKAN SEJATI: Gunakan .update() berdasarkan dbResultId agar tidak menduplikasi baris liar!
         const { error } = await supabase
           .from('exam_results')
           .update({
@@ -47,11 +44,9 @@ export function ExamResults() {
           return;
         }
 
-        // Simpan snapshot ke cache lokal browser & update state komponen
         saveReviewSnapshot(dbResultId, snapshot);
         setSavedResultId(dbResultId);
 
-        // 🚀 2. OTOMATIS MENGOYAK/MENONAKTIFKAN TOKEN YANG BARU DIGUNAKAN
         if (session.tokenUsed) {
           await supabase
             .from('exam_tokens')
@@ -59,7 +54,6 @@ export function ExamResults() {
             .eq('token', session.tokenUsed.trim().toUpperCase());
         }
       } else {
-        // 🛡️ Fallback Guard: Jika karena suatu alasan teknis ID tidak ditemukan, baru lakukan insert aman
         const config = EXAM_CONFIGS[examType];
         const passed = scores.total >= config.passingScore;
         const durationSeconds = completedAt
@@ -96,7 +90,7 @@ export function ExamResults() {
           duration_seconds: durationSeconds,
           completed_at: (completedAt ?? new Date()).toISOString(),
           review_snapshot: snapshot,
-          status: 'completed' // Amankan status jika terpaksa membuat baris baru
+          status: 'completed'
         }).select('id').maybeSingle();
 
         if (data?.id) {
@@ -127,9 +121,6 @@ export function ExamResults() {
     }
   });
 
-  // ====================================================================
-  // 🧠 MESIN KALKULASI INTERN: Mengubah data sesi menjadi objek diagnosis paket
-  // ====================================================================
   const currentDiagnostic = (() => {
     const breakdown: Record<string, { correct: number; total: number; percentage: number }> = {};
     
@@ -161,17 +152,17 @@ export function ExamResults() {
     return breakdown;
   })();
 
+  // 🌟 UBAH WARNA TKP MENJADI AMBER DI SINI
   const allCategoryStats = [
     { key: 'TIU', score: scores.tiu, max: EXAM_CONFIGS.TIU.questionCount * 5, threshold: EXAM_CONFIGS.TIU.passingScore, color: 'bg-blue-500', lightColor: 'bg-blue-100', textColor: 'text-blue-700' },
     { key: 'TWK', score: scores.twk, max: EXAM_CONFIGS.TWK.questionCount * 5, threshold: EXAM_CONFIGS.TWK.passingScore, color: 'bg-emerald-500', lightColor: 'bg-emerald-100', textColor: 'text-emerald-700' },
-    { key: 'TKP', score: scores.tkp, max: EXAM_CONFIGS.TKP.questionCount * 5, threshold: EXAM_CONFIGS.TKP.passingScore, color: 'bg-rose-500', lightColor: 'bg-rose-100', textColor: 'text-rose-700' },
+    { key: 'TKP', score: scores.tkp, max: EXAM_CONFIGS.TKP.questionCount * 5, threshold: EXAM_CONFIGS.TKP.passingScore, color: 'bg-amber-500', lightColor: 'bg-amber-100', textColor: 'text-amber-700' },
   ];
 
   const categoryStats = examType === 'FULL'
     ? allCategoryStats
     : allCategoryStats.filter((c) => c.key === examType);
 
-  // Fungsi Validasi Token Baru saat mengulang ujian
   const handleVerifyTokenAndRepeat = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputToken.trim()) {
@@ -183,7 +174,6 @@ export function ExamResults() {
     setIsValidating(true);
 
     try {
-      // Cek apakah token baru yang dimasukkan aktif di Supabase
       const { data, error } = await supabase
         .from('exam_tokens')
         .select('*')
@@ -197,7 +187,6 @@ export function ExamResults() {
         return;
       }
 
-      // Jika token baru valid, jalankan ujian ulang
       setIsTokenModalOpen(false);
       setInputToken('');
       startExam(
