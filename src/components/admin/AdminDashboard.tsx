@@ -15,7 +15,6 @@ import ManageAdmins from './ManageAdmins';
 import ManageParticipants from './ManageParticipants';
 import ExamReview from '../exam/ExamReview';
 import ParticipantDiagnostic from './ParticipantDiagnostic';
-// 🌟 1. IMPORT HALAMAN PEMBAHASAN KELAS DI SINI
 import ClassReviewMode from './ClassReviewMode'; 
 
 type TabPath = 'overview' | 'packages' | 'questions' | 'participants' | 'diagnostic' | 'results' | 'live' | 'admins';
@@ -90,7 +89,6 @@ export default function AdminDashboard() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 border-t border-white/10 overflow-x-auto">
           <div className="flex gap-1 -mb-px">
             {tabs.map((tab) => {
-              // Highlight aktif untuk sub-path, termasuk saat membuka mode proyektor
               const isActive = currentSubPath === tab.id || 
                                (tab.id === 'results' && currentSubPath.startsWith('results')) || 
                                (tab.id === 'diagnostic' && currentSubPath.startsWith('diagnostic')) ||
@@ -125,10 +123,7 @@ export default function AdminDashboard() {
           <Routes>
             <Route path="/" element={<AdminOverview onNavigate={handleTabChange} isSuperAdmin={isSuperAdmin} />} />
             <Route path="packages" element={<PackageManager />} />
-            
-            {/* 🌟 2. DAFTARKAN RUTE PEMBAHASAN KELAS DI DALAM DASHBOARD ADMIN */}
             <Route path="pembahasan-kelas/:packageId" element={<ClassReviewMode />} />
-
             <Route path="questions" element={<QuestionManager />} />
             <Route path="participants" element={<ManageParticipants />} />
             <Route path="diagnostic" element={<ParticipantDiagnostic />} />
@@ -161,6 +156,7 @@ function AdminOverview({ onNavigate, isSuperAdmin }: { onNavigate: (tab: TabPath
     let isMounted = true;
     async function load() {
       try {
+        // 🌟 AMAN 100%: Menggunakan "head: true" hanya mengambil jumlah baris (count), tidak mengunduh data JSON/barisnya. Egress sangat hemat!
         const [q, p, r, pa, pp] = await Promise.all([
           supabase.from('questions').select('id', { count: 'exact', head: true }),
           supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'participant').eq('is_approved', true),
