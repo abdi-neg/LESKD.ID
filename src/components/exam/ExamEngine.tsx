@@ -145,10 +145,11 @@ export function ExamEngine() {
     E: currentQuestion.option_e,
   };
 
+  // 🌟 UBAH WARNA TKP MENJADI AMBER AGAR KONSISTEN
   const categoryColors: Record<string, string> = {
     TIU: 'bg-blue-100 text-blue-700 font-semibold',
     TWK: 'bg-emerald-100 text-emerald-700 font-semibold',
-    TKP: 'bg-rose-100 text-rose-700 font-semibold',
+    TKP: 'bg-amber-100 text-amber-700 font-semibold',
   };
 
   return (
@@ -196,7 +197,6 @@ export function ExamEngine() {
                 <span className={`text-xs px-2.5 py-1 rounded-full uppercase tracking-wider ${categoryColors[currentQuestion.category] || 'bg-gray-100 text-gray-700'}`}>
                   {currentQuestion.category}
                 </span>
-                {/* ─── 🌟 VISUAL STERILIZATION RESMI BERHASIL DIMASAK: Tag sub-category di sini resmi kita tiadakan dari layar demi menjaga keaslian visual CAT BKN ─── */}
               </div>
               <button
                 onClick={handleToggleMark}
