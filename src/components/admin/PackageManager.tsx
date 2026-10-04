@@ -220,6 +220,7 @@ export default function PackageManager() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [perPkgCounts, setPerPkgCounts] = useState<PerPackageCounts>({});
 
+  // 🌟 PERBAIKAN: Case-insensitive & Trim spasi
   async function loadQuestionCounts(pkgList: ExamPackage[]) {
     if (pkgList.length === 0) return;
     const { data } = await supabase
@@ -231,9 +232,13 @@ export default function PackageManager() {
     pkgList.forEach((p) => {
       counts[p.id] = { TIU: 0, TWK: 0, TKP: 0 };
     });
+    
     (data ?? []).forEach((row: { category: string; package_id: string }) => {
-      if (counts[row.package_id] && (row.category === 'TIU' || row.category === 'TWK' || row.category === 'TKP')) {
-        counts[row.package_id][row.category as keyof QuestionCounts]++;
+      if (counts[row.package_id] && row.category) {
+        const cleanCategory = row.category.trim().toUpperCase();
+        if (cleanCategory === 'TIU' || cleanCategory === 'TWK' || cleanCategory === 'TKP') {
+          counts[row.package_id][cleanCategory as keyof QuestionCounts]++;
+        }
       }
     });
     setPerPkgCounts(counts);
