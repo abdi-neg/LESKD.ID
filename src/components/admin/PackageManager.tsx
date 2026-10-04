@@ -1,9 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-// 🌟 1. TAMBAHAN IMPORT: MonitorPlay (Icon Proyektor)
 import { Plus, Trash2, CreditCard as Edit3, Check, X, RefreshCw, Copy, ToggleLeft, ToggleRight, CheckCircle2, BarChart2, ChevronDown, GraduationCap, BookOpen, Calculator, Users, MonitorPlay } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-// 🌟 2. TAMBAHAN IMPORT: useNavigate
 import { useNavigate } from 'react-router-dom';
 import { ExamPackage, PackageType } from '../../types';
 import { supabase } from '../../lib/supabase';
@@ -26,7 +24,6 @@ const TYPE_LABELS: Record<PackageType, string> = {
   FULL: 'Full CAT Simulation',
 };
 
-// 🌟 UBAH WARNA TKP MENJADI AMBER
 const TYPE_COLORS: Record<PackageType, string> = {
   MINI_TIU: 'bg-blue-100 text-blue-700',
   MINI_TWK: 'bg-emerald-100 text-emerald-700',
@@ -47,7 +44,6 @@ const emptyForm = {
   is_active: true,
 };
 
-// 🌟 UBAH WARNA ICON DAN ACCORDION TKP MENJADI AMBER
 const CATEGORY_GROUPS: { type: PackageType; label: string; Icon: LucideIcon; iconBg: string; iconColor: string; color: string; border: string; headerBg: string }[] = [
   { type: 'FULL',     label: 'Full Simulasi CAT', Icon: GraduationCap, iconBg: 'bg-[#1e3a8a]/10', iconColor: 'text-[#1e3a8a]',  color: 'text-[#1e3a8a]',  border: 'border-[#1e3a8a]/20', headerBg: 'bg-[#1e3a8a]/5'  },
   { type: 'MINI_TWK', label: 'Mini Tryout TWK',   Icon: BookOpen,      iconBg: 'bg-emerald-100',   iconColor: 'text-emerald-600', color: 'text-emerald-700', border: 'border-emerald-200',  headerBg: 'bg-emerald-50'   },
@@ -68,8 +64,6 @@ interface PackageCategoryListProps {
 
 function PackageCategoryList({ packages, perPkgCounts, copiedId, copyToken, updateToken, toggleActive, startEdit, setDeleteId }: PackageCategoryListProps) {
   const [openCategories, setOpenCategories] = useState<Set<PackageType>>(new Set());
-  
-  // 🌟 3. INISIALISASI NAVIGATE DI SINI
   const navigate = useNavigate();
 
   const toggleCategory = (type: PackageType) => {
@@ -89,7 +83,6 @@ function PackageCategoryList({ packages, perPkgCounts, copiedId, copyToken, upda
 
         return (
           <div key={type} className={`rounded-2xl border ${border} overflow-hidden bg-white shadow-sm`}>
-            {/* Accordion Header */}
             <button
               onClick={() => toggleCategory(type)}
               className={`w-full flex items-center justify-between px-4 py-3.5 ${headerBg} hover:brightness-95 transition-all`}
@@ -106,7 +99,6 @@ function PackageCategoryList({ packages, perPkgCounts, copiedId, copyToken, upda
               <ChevronDown className={`w-4 h-4 ${color} opacity-70 transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`} />
             </button>
 
-            {/* Accordion Body */}
             <AnimatePresence initial={false}>
               {isOpen && (
                 <motion.div
@@ -161,10 +153,7 @@ function PackageCategoryList({ packages, perPkgCounts, copiedId, copyToken, upda
                               </div>
                             </div>
                             
-                            {/* 🌟 4. PENEMPATAN TOMBOL "BAHAS KELAS" DI SINI */}
                             <div className="flex items-center gap-1.5 flex-shrink-0">
-                              
-                              {/* TOMBOL BARU: BAHAS KELAS (PROYEKTOR) */}
                               <button 
                                 onClick={() => navigate(`/admin/pembahasan-kelas/${pkg.id}`)} 
                                 className="flex items-center gap-1.5 px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg transition-colors border border-indigo-100 shadow-sm"
@@ -173,18 +162,12 @@ function PackageCategoryList({ packages, perPkgCounts, copiedId, copyToken, upda
                                 <MonitorPlay className="w-3.5 h-3.5" />
                                 <span className="text-xs font-bold hidden sm:block">Bahas Kelas</span>
                               </button>
-
-                              {/* Tombol Status */}
                               <button onClick={() => toggleActive(pkg)} className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${pkg.is_active ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-600' : 'bg-gray-100 hover:bg-gray-200 text-gray-500'}`}>
                                 {pkg.is_active ? <ToggleRight className="w-3.5 h-3.5" /> : <ToggleLeft className="w-3.5 h-3.5" />}
                               </button>
-                              
-                              {/* Tombol Edit */}
                               <button onClick={() => startEdit(pkg)} className="w-7 h-7 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-lg flex items-center justify-center transition-colors">
                                 <Edit3 className="w-3.5 h-3.5" />
                               </button>
-                              
-                              {/* Tombol Hapus */}
                               <button onClick={() => setDeleteId(pkg.id)} className="w-7 h-7 bg-red-50 hover:bg-red-100 text-red-500 rounded-lg flex items-center justify-center transition-colors">
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
@@ -209,9 +192,7 @@ export default function PackageManager() {
   const { state } = useApp();
   const [packages, setPackages] = useState<ExamPackage[]>([]);
   const [loading, setLoading] = useState(true);
-  
   const [initialLoading, setInitialLoading] = useState(true);
-
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
@@ -220,27 +201,36 @@ export default function PackageManager() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [perPkgCounts, setPerPkgCounts] = useState<PerPackageCounts>({});
 
-  // 🌟 PERBAIKAN: Case-insensitive & Trim spasi
+  // 🌟 PERBAIKAN FATAL: Membaca data hitungan langsung dari View package_stats (bebas limit 1000 row & super hemat kuota)
   async function loadQuestionCounts(pkgList: ExamPackage[]) {
     if (pkgList.length === 0) return;
-    const { data } = await supabase
-      .from('questions')
-      .select('category, package_id')
-      .in('package_id', pkgList.map((p) => p.id));
-
+    
+    // Inisialisasi awal menjadi 0
     const counts: PerPackageCounts = {};
     pkgList.forEach((p) => {
       counts[p.id] = { TIU: 0, TWK: 0, TKP: 0 };
     });
-    
-    (data ?? []).forEach((row: { category: string; package_id: string }) => {
-      if (counts[row.package_id] && row.category) {
-        const cleanCategory = row.category.trim().toUpperCase();
-        if (cleanCategory === 'TIU' || cleanCategory === 'TWK' || cleanCategory === 'TKP') {
-          counts[row.package_id][cleanCategory as keyof QuestionCounts]++;
+
+    // Panggil View package_stats, bukan tabel questions
+    const { data, error } = await supabase
+      .from('package_stats')
+      .select('package_id, tiu_count, twk_count, tkp_count')
+      .in('package_id', pkgList.map((p) => p.id));
+
+    if (!error && data) {
+      data.forEach((row: any) => {
+        if (counts[row.package_id]) {
+          counts[row.package_id] = {
+            TIU: Number(row.tiu_count) || 0,
+            TWK: Number(row.twk_count) || 0,
+            TKP: Number(row.tkp_count) || 0,
+          };
         }
-      }
-    });
+      });
+    } else if (error) {
+      console.error("Gagal menarik data dari package_stats view:", error);
+    }
+    
     setPerPkgCounts(counts);
   }
 
@@ -344,7 +334,6 @@ export default function PackageManager() {
         </motion.button>
       </div>
 
-      {/* Form */}
       <AnimatePresence>
         {showForm && (
           <motion.div
@@ -482,7 +471,6 @@ export default function PackageManager() {
         />
       )}
 
-      {/* Delete Confirm */}
       <AnimatePresence>
         {deleteId && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -511,7 +499,6 @@ const REQUIRED_COUNTS: Record<PackageType, Partial<Record<keyof QuestionCounts, 
   FULL: { TIU: 35, TWK: 30, TKP: 45 },
 };
 
-// 🌟 UBAH WARNA TKP MENJADI AMBER
 const CAT_BADGE: Record<string, string> = {
   TIU: 'bg-blue-100 text-blue-700',
   TWK: 'bg-emerald-100 text-emerald-700',
@@ -540,7 +527,6 @@ function QuestionCountBadges({ perPkgCounts, packages }: { perPkgCounts: PerPack
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-      {/* Accordion trigger */}
       <button
         onClick={() => setOpen((v) => !v)}
         className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50/70 transition-colors"
@@ -561,7 +547,6 @@ function QuestionCountBadges({ perPkgCounts, packages }: { perPkgCounts: PerPack
         />
       </button>
 
-      {/* Accordion body */}
       <AnimatePresence initial={false}>
         {open && (
           <motion.div
@@ -573,7 +558,6 @@ function QuestionCountBadges({ perPkgCounts, packages }: { perPkgCounts: PerPack
             className="overflow-hidden"
           >
             <div className="px-5 pb-5 border-t border-gray-100">
-              {/* Tab filter */}
               <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-xl mt-4 mb-4 w-fit">
                 {tabs.map(({ key, label, count }) => (
                   <button
@@ -590,7 +574,6 @@ function QuestionCountBadges({ perPkgCounts, packages }: { perPkgCounts: PerPack
                 ))}
               </div>
 
-              {/* Grid */}
               {filtered.length === 0 ? (
                 <p className="text-center text-sm text-gray-400 py-4">Tidak ada paket di kategori ini.</p>
               ) : (
