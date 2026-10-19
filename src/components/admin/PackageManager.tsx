@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Trash2, CreditCard as Edit3, Check, X, RefreshCw, Copy, ToggleLeft, ToggleRight, CheckCircle2, BarChart2, ChevronDown, GraduationCap, BookOpen, Calculator, Users, MonitorPlay } from 'lucide-react';
+import { Plus, Trash2, CreditCard as Edit3, Check, X, RefreshCw, Copy, ToggleLeft, ToggleRight, CheckCircle2, BarChart2, ChevronDown, GraduationCap, BookOpen, Calculator, Users, MonitorPlay, Clock } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { ExamPackage, PackageType } from '../../types';
@@ -35,6 +35,7 @@ function generateToken() {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
+// Default form menggunakan waktu standar dari FULL CAT
 const emptyForm = {
   name: '',
   description: '',
@@ -42,6 +43,7 @@ const emptyForm = {
   token: generateToken(),
   auto_refresh_token: false,
   is_active: true,
+  duration_minutes: EXAM_CONFIGS.FULL.timeMinutes, 
 };
 
 const CATEGORY_GROUPS: { type: PackageType; label: string; Icon: LucideIcon; iconBg: string; iconColor: string; color: string; border: string; headerBg: string }[] = [
@@ -118,6 +120,9 @@ function PackageCategoryList({ packages, perPkgCounts, copiedId, copyToken, upda
                         : pkg.package_type === 'MINI_TWK' ? 'TWK'
                         : pkg.package_type === 'MINI_TKP' ? 'TKP' : 'FULL';
                       const config = EXAM_CONFIGS[examType as keyof typeof EXAM_CONFIGS];
+                      
+                      // 🌟 Gunakan durasi custom jika ada, jika tidak gunakan bawaan
+                      const displayDuration = pkg.duration_minutes || config.timeMinutes;
 
                       return (
                         <div key={pkg.id} className="px-4 py-4 hover:bg-gray-50/60 transition-colors">
@@ -148,7 +153,14 @@ function PackageCategoryList({ packages, perPkgCounts, copiedId, copyToken, upda
                                     <RefreshCw className="w-3.5 h-3.5" />
                                   </button>
                                 </div>
-                                <span className="text-xs text-gray-400">{config.questionCount} soal · {config.timeMinutes} menit</span>
+                                <span className="text-xs font-medium text-gray-500 bg-gray-50 px-2 py-1 rounded-lg border border-gray-100">
+                                  {config.questionCount} soal
+                                </span>
+                                {/* 🌟 Badge Durasi Tampil di Sini */}
+                                <span className="flex items-center gap-1 text-xs font-medium text-[#1e3a8a] bg-blue-50 px-2 py-1 rounded-lg border border-blue-100">
+                                  <Clock className="w-3 h-3" />
+                                  {displayDuration} menit
+                                </span>
                                 <QuestionCountBadge pkg={pkg} counts={perPkgCounts[pkg.id] ?? { TIU: 0, TWK: 0, TKP: 0 }} />
                               </div>
                             </div>
@@ -201,17 +213,14 @@ export default function PackageManager() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [perPkgCounts, setPerPkgCounts] = useState<PerPackageCounts>({});
 
-  // 🌟 PERBAIKAN FATAL: Membaca data hitungan langsung dari View package_stats (bebas limit 1000 row & super hemat kuota)
   async function loadQuestionCounts(pkgList: ExamPackage[]) {
     if (pkgList.length === 0) return;
     
-    // Inisialisasi awal menjadi 0
     const counts: PerPackageCounts = {};
     pkgList.forEach((p) => {
       counts[p.id] = { TIU: 0, TWK: 0, TKP: 0 };
     });
 
-    // Panggil View package_stats, bukan tabel questions
     const { data, error } = await supabase
       .from('package_stats')
       .select('package_id, tiu_count, twk_count, tkp_count')
@@ -227,8 +236,6 @@ export default function PackageManager() {
           };
         }
       });
-    } else if (error) {
-      console.error("Gagal menarik data dari package_stats view:", error);
     }
     
     setPerPkgCounts(counts);
@@ -269,6 +276,13 @@ export default function PackageManager() {
   }
 
   function startEdit(pkg: ExamPackage) {
+    const examType = pkg.package_type === 'MINI_TIU' ? 'TIU'
+      : pkg.package_type === 'MINI_TWK' ? 'TWK'
+      : pkg.package_type === 'MINI_TKP' ? 'TKP' : 'FULL';
+    
+    // Fallback jika database belum ada nilainya
+    const defaultDuration = EXAM_CONFIGS[examType as keyof typeof EXAM_CONFIGS]?.timeMinutes || 0;
+
     setForm({
       name: pkg.name,
       description: pkg.description,
@@ -276,6 +290,7 @@ export default function PackageManager() {
       token: pkg.token,
       auto_refresh_token: pkg.auto_refresh_token,
       is_active: pkg.is_active,
+      duration_minutes: pkg.duration_minutes || defaultDuration, // 🌟 Tarik data durasi dari DB
     });
     setEditId(pkg.id);
     setShowForm(true);
@@ -363,7 +378,16 @@ export default function PackageManager() {
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">Tipe Paket</label>
                   <select
                     value={form.package_type}
-                    onChange={(e) => setForm({ ...form, package_type: e.target.value as PackageType })}
+                    onChange={(e) => {
+                      const val = e.target.value as PackageType;
+                      const examType = val === 'MINI_TIU' ? 'TIU' : val === 'MINI_TWK' ? 'TWK' : val === 'MINI_TKP' ? 'TKP' : 'FULL';
+                      setForm({ 
+                        ...form, 
+                        package_type: val,
+                        // 🌟 Set otomatis rekomendasi waktu saat ganti tipe
+                        duration_minutes: EXAM_CONFIGS[examType].timeMinutes 
+                      });
+                    }}
                     className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/30 focus:border-[#1e3a8a]"
                   >
                     {PKG_TYPES.map((t) => <option key={t} value={t}>{TYPE_LABELS[t]}</option>)}
@@ -371,15 +395,34 @@ export default function PackageManager() {
                 </div>
               </div>
 
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Deskripsi</label>
-                <textarea
-                  value={form.description}
-                  onChange={(e) => setForm({ ...form, description: e.target.value })}
-                  rows={2}
-                  placeholder="Deskripsi singkat paket ujian"
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/30 focus:border-[#1e3a8a] resize-none"
-                />
+              {/* 🌟 BARIS BARU: DESKRIPSI & INPUT DURASI WAKTU */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Deskripsi</label>
+                  <textarea
+                    value={form.description}
+                    onChange={(e) => setForm({ ...form, description: e.target.value })}
+                    rows={2}
+                    placeholder="Deskripsi singkat paket ujian"
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/30 focus:border-[#1e3a8a] resize-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Durasi Waktu (Menit)</label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      min="1"
+                      required
+                      value={form.duration_minutes || ''}
+                      onChange={(e) => setForm({ ...form, duration_minutes: parseInt(e.target.value) || 0 })}
+                      className="w-full border border-gray-200 rounded-xl pl-4 pr-14 py-2.5 text-sm font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/30 focus:border-[#1e3a8a]"
+                    />
+                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-gray-400 font-medium">
+                      menit
+                    </span>
+                  </div>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
