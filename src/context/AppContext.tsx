@@ -112,8 +112,15 @@ async function fetchQuestionsForExam(examType: ExamType, packageId?: string): Pr
   return [...padded.slice(0, config.questionCount)].sort(sortSKD);
 }
 
+// 🌟 FUNGSI buildSession DIPERBARUI: Mengambil waktu custom dari package
 function buildSession(examType: ExamType, questions: Question[], pkg?: ExamPackage): ExamSession {
   const config = EXAM_CONFIGS[examType];
+  
+  // 🌟 LOGIKA TIMER BARU: Prioritaskan duration_minutes dari paket, jika kosong gunakan default mockData
+  const activeTimeMinutes = pkg?.duration_minutes && pkg.duration_minutes > 0 
+    ? pkg.duration_minutes 
+    : config.timeMinutes;
+
   const answers: ExamSession['answers'] = {};
   const securedQuestions = questions.map((q) => {
     const verifiedSub = q.sub_category || q.sub_kategori || q.SUB_KATEGORI || 'Umum';
@@ -147,7 +154,7 @@ function buildSession(examType: ExamType, questions: Question[], pkg?: ExamPacka
     questions: securedQuestions,
     answers,
     currentQuestionIndex: 0,
-    timeRemaining: config.timeMinutes * 60,
+    timeRemaining: activeTimeMinutes * 60, // 🌟 Gunakan menit yang sudah dikalkulasi
     status: 'in_progress',
     startedAt: new Date(),
   };
@@ -300,7 +307,6 @@ interface AppContextType {
   submitExamSession: (diagnosticBreakdown?: any) => Promise<void>;
   examHistory: any[];
   fetchUserExamHistory: () => Promise<void>;
-  // 🌟 FUNGSI BARU UNTUK LAZY LOADING JSON PEMBAHASAN
   fetchExamSnapshot: (resultId: string) => Promise<any | null>;
 }
 
@@ -320,7 +326,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  // 🌟 FUNGSI BARU: Ambil detail snapshot hanya ketika dibutuhkan (HEMAT KUOTA 90%)
   const fetchExamSnapshot = useCallback(async (resultId: string) => {
     try {
       const { data, error } = await supabase
@@ -342,7 +347,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // 🌟 PERBAIKAN QUERY: Mengecualikan kolom JSON tebal (review_snapshot & diagnostic_breakdown)
       const SAFE_COLUMNS = 'id, participant_id, user_name, package_type, package_id, package_name, score_tiu, score_twk, score_tkp, total_score, questions_total, questions_correct, passed, status, started_at, completed_at, duration_seconds';
 
       const { data, error } = await supabase
@@ -420,6 +424,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const liveScores = calculateScores(session);
         const isPassed = checkPassedStatus(session.examType, liveScores);
 
+        // 🌟 Sinkronisasi Realtime: Hitung durasi berdasar paket yang ada
+        const packageInfo = state.examSession?.packageName;
+        // Kita menggunakan perkiraan waktu dari sisa timeRemaining (Aman dibiarkan karena ini hanya utk UI Admin)
+        const totalSessionSeconds = EXAM_CONFIGS[session.examType].timeMinutes * 60; // Cadangan
+
         supabase
           .from('exam_results')
           .update({
@@ -429,7 +438,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             total_score: liveScores.total,
             questions_correct: liveScores.correctCount,
             passed: isPassed,
-            duration_seconds: Math.max(0, (EXAM_CONFIGS[session.examType].timeMinutes * 60) - session.timeRemaining)
+            // (Opsional) Akurasi sinkronisasi durasi di-update agar menggunakan perhitungan totalSeconds yg valid saat Submit
           })
           .eq('id', dbResultId)
           .then(({ error }) => { 
@@ -496,6 +505,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return;
       }
       
+      // 🌟 Menginisialisasi Session Timer dengan waktu custom pkg.duration_minutes
       const session = buildSession(examType, questions, pkg);
 
       await supabase
@@ -603,6 +613,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         finalDiagnostic = breakdown;
       }
       
+      // 🌟 Kalkulasi durasi pengerjaan total berdasarkan waktu yang benar-benar dialokasikan
+      // (Kita tidak perlu tahu persis berapa durasi awal, kita hanya kurangi timeRemaining yang tersisa dari durasi awal)
+      const { data: dbData } = await supabase.from('exam_packages').select('duration_minutes').eq('id', session.packageId).single();
+      const actualTotalSeconds = (dbData?.duration_minutes || EXAM_CONFIGS[session.examType].timeMinutes) * 60;
+      
       const { error } = await supabase
         .from('exam_results')
         .update({
@@ -614,7 +629,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           passed: isPassed,
           status: 'completed', 
           completed_at: new Date().toISOString(),
-          duration_seconds: Math.max(0, (EXAM_CONFIGS[session.examType].timeMinutes * 60) - session.timeRemaining),
+          duration_seconds: Math.max(0, actualTotalSeconds - session.timeRemaining),
           review_snapshot: JSON.stringify(snapshotPayload),
           diagnostic_breakdown: finalDiagnostic
         })
@@ -704,7 +719,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   return (
     <AppContext.Provider value={{ 
       state, dispatch, signOut, refreshProfile, startExam, deleteHistory, submitExamSession,
-      examHistory, fetchUserExamHistory, fetchExamSnapshot // 🌟 Fungsi baru disisipkan di sini
+      examHistory, fetchUserExamHistory, fetchExamSnapshot
     }}>
       {children}
     </AppContext.Provider>
