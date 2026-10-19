@@ -51,6 +51,7 @@ export interface ExamPackage {
   is_active: boolean;
   created_by?: string;
   created_at?: string;
+  duration_minutes?: number; // 🌟 TAMBAHAN BARU UNTUK FITUR TIMER
 }
 
 export interface QuestionAnswer {
