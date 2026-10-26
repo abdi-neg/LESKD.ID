@@ -412,6 +412,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [state.currentView, state.reviewResultId]);
 
+  // 🌟 SINKRONISASI REALTIME (Memancarkan sisa waktu ke Live Monitor)
   useEffect(() => {
     const session = state.examSession;
     if (!session || session.status === 'completed' || isSyncLocked) return;
@@ -424,36 +425,40 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const liveScores = calculateScores(session);
         const isPassed = checkPassedStatus(session.examType, liveScores);
 
-        // 🌟 Sinkronisasi Realtime: Hitung durasi berdasar paket yang ada
-        const packageInfo = state.examSession?.packageName;
-        // Kita menggunakan perkiraan waktu dari sisa timeRemaining (Aman dibiarkan karena ini hanya utk UI Admin)
-        const totalSessionSeconds = EXAM_CONFIGS[session.examType].timeMinutes * 60; // Cadangan
+        // Ambil durasi total dari session (waktu awal paket - sisa waktu)
+        const getSessionInitialSeconds = async () => {
+          let initialSeconds = EXAM_CONFIGS[session.examType].timeMinutes * 60;
+          if (session.packageId) {
+             const { data } = await supabase.from('exam_packages').select('duration_minutes').eq('id', session.packageId).single();
+             if (data?.duration_minutes) {
+                 initialSeconds = data.duration_minutes * 60;
+             }
+          }
+          
+          // Hitung durasi terpakai: Waktu awal dikurangi waktu tersisa di layar siswa
+          const durationUsed = Math.max(0, initialSeconds - session.timeRemaining);
 
-        supabase
-          .from('exam_results')
-          .update({
-            score_tiu: liveScores.tiu,
-            score_twk: liveScores.twk,
-            score_tkp: liveScores.tkp,
-            total_score: liveScores.total,
-            questions_correct: liveScores.correctCount,
-            passed: isPassed,
-            // (Opsional) Akurasi sinkronisasi durasi di-update agar menggunakan perhitungan totalSeconds yg valid saat Submit
-          })
-          .eq('id', dbResultId)
-          .then(({ error }) => { 
-            if (error) console.error("Realtime Sync Error:", error); 
-          });
+          supabase
+            .from('exam_results')
+            .update({
+              score_tiu: liveScores.tiu,
+              score_twk: liveScores.twk,
+              score_tkp: liveScores.tkp,
+              total_score: liveScores.total,
+              questions_correct: liveScores.correctCount,
+              passed: isPassed,
+              duration_seconds: durationUsed // 👈 INI YANG MEMBUAT LIVE MONITOR BERJALAN
+            })
+            .eq('id', dbResultId)
+            .then(({ error }) => { 
+              if (error) console.error("Realtime Sync Error:", error); 
+            });
+        };
+        
+        getSessionInitialSeconds();
       }
     }
-  }, [state.examSession?.answers, state.examSession?.status, isSyncLocked]);
-
-  useEffect(() => {
-    const session = state.examSession;
-    if (session && session.status === 'in_progress') {
-      saveExamProgress(session);
-    }
-  }, [state.examSession?.timeRemaining]);
+  }, [state.examSession?.answers, state.examSession?.timeRemaining, state.examSession?.status, isSyncLocked]);
 
   useEffect(() => {
     if (!state.examSession || state.examSession.status !== 'in_progress') return;
@@ -614,7 +619,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       
       // 🌟 Kalkulasi durasi pengerjaan total berdasarkan waktu yang benar-benar dialokasikan
-      // (Kita tidak perlu tahu persis berapa durasi awal, kita hanya kurangi timeRemaining yang tersisa dari durasi awal)
       const { data: dbData } = await supabase.from('exam_packages').select('duration_minutes').eq('id', session.packageId).single();
       const actualTotalSeconds = (dbData?.duration_minutes || EXAM_CONFIGS[session.examType].timeMinutes) * 60;
       
