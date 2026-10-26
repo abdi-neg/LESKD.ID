@@ -72,6 +72,13 @@ async function fetchQuestionsForExam(examType: ExamType, packageId?: string): Pr
           points_c: q.points_c ?? 0,
           points_d: q.points_d ?? 0,
           points_e: q.points_e ?? 0,
+          image_url: q.image_url ?? null,
+          explanation_image_url: q.explanation_image_url ?? null,
+          option_a_image: q.option_a_image ?? null,
+          option_b_image: q.option_b_image ?? null,
+          option_c_image: q.option_c_image ?? null,
+          option_d_image: q.option_d_image ?? null,
+          option_e_image: q.option_e_image ?? null,
         };
       }) as Question[];
       
@@ -94,6 +101,8 @@ async function fetchQuestionsForExam(examType: ExamType, packageId?: string): Pr
       points_c: (q as any).points_c ?? 0,
       points_d: (q as any).points_d ?? 0,
       points_e: (q as any).points_e ?? 0,
+      image_url: (q as any).image_url ?? null,
+      explanation_image_url: (q as any).explanation_image_url ?? null,
     };
   }) as Question[];
   
@@ -103,11 +112,19 @@ async function fetchQuestionsForExam(examType: ExamType, packageId?: string): Pr
   return [...padded.slice(0, config.questionCount)].sort(sortSKD);
 }
 
+// 🌟 FUNGSI buildSession: Menyimpan initialTimeSeconds di memori agar tidak perlu query berulang ke DB
 function buildSession(examType: ExamType, questions: Question[], pkg?: ExamPackage): ExamSession {
   const config = EXAM_CONFIGS[examType];
+  
+  const activeTimeMinutes = pkg?.duration_minutes && pkg.duration_minutes > 0 
+    ? pkg.duration_minutes 
+    : config.timeMinutes;
+
+  const initialSeconds = activeTimeMinutes * 60;
+
   const answers: ExamSession['answers'] = {};
   const securedQuestions = questions.map((q) => {
-    const verifiedSub = q.sub_category || q.sub_kategori || q.SUB_KATEGORI || 'Umum';
+    const verifiedSub = q.sub_category || (q as any).sub_kategori || (q as any).SUB_KATEGORI || 'Umum';
     return {
       ...q,
       sub_category: verifiedSub,
@@ -117,12 +134,20 @@ function buildSession(examType: ExamType, questions: Question[], pkg?: ExamPacka
       points_c: (q as any).points_c ?? 0,
       points_d: (q as any).points_d ?? 0,
       points_e: (q as any).points_e ?? 0,
+      image_url: (q as any).image_url ?? null,
+      explanation_image_url: (q as any).explanation_image_url ?? null,
+      option_a_image: (q as any).option_a_image ?? null,
+      option_b_image: (q as any).option_b_image ?? null,
+      option_c_image: (q as any).option_c_image ?? null,
+      option_d_image: (q as any).option_d_image ?? null,
+      option_e_image: (q as any).option_e_image ?? null,
     };
   }) as Question[];
 
   securedQuestions.forEach((q) => {
     answers[q.id] = { questionId: q.id, selectedAnswer: null, isMarked: false };
   });
+
   return {
     id: crypto.randomUUID(),
     packageId: pkg?.id,
@@ -131,10 +156,11 @@ function buildSession(examType: ExamType, questions: Question[], pkg?: ExamPacka
     questions: securedQuestions,
     answers,
     currentQuestionIndex: 0,
-    timeRemaining: config.timeMinutes * 60,
+    timeRemaining: initialSeconds,
+     initialTimeSeconds: initialSeconds, // 🌟 Penanda waktu awal di memori lokal
     status: 'in_progress',
     startedAt: new Date(),
-  };
+  } as ExamSession;
 }
 
 function calculateScores(session: ExamSession) {
@@ -146,11 +172,11 @@ function calculateScores(session: ExamSession) {
     if (q.category === 'TKP') {
       const selected = answer.selectedAnswer.toLowerCase();
       let points = 0;
-      if (selected === 'a') points = Number(q.points_a ?? 0);
-      else if (selected === 'b') points = Number(q.points_b ?? 0);
-      else if (selected === 'c') points = Number(q.points_c ?? 0);
-      else if (selected === 'd') points = Number(q.points_d ?? 0);
-      else if (selected === 'e') points = Number(q.points_e ?? 0);
+      if (selected === 'a') points = Number((q as any).points_a ?? 0);
+      else if (selected === 'b') points = Number((q as any).points_b ?? 0);
+      else if (selected === 'c') points = Number((q as any).points_c ?? 0);
+      else if (selected === 'd') points = Number((q as any).points_d ?? 0);
+      else if (selected === 'e') points = Number((q as any).points_e ?? 0);
       tkp += points;
       if (points > 0) correctCount++;
     } else {
@@ -284,6 +310,7 @@ interface AppContextType {
   submitExamSession: (diagnosticBreakdown?: any) => Promise<void>;
   examHistory: any[];
   fetchUserExamHistory: () => Promise<void>;
+  fetchExamSnapshot: (resultId: string) => Promise<any | null>;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -302,14 +329,32 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  const fetchExamSnapshot = useCallback(async (resultId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('exam_results')
+        .select('review_snapshot, diagnostic_breakdown')
+        .eq('id', resultId)
+        .single();
+      
+      if (error) throw error;
+      return data;
+    } catch (err) {
+      console.error("Gagal memuat detail snapshot:", err);
+      return null;
+    }
+  }, []);
+
   const fetchUserExamHistory = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
+      const SAFE_COLUMNS = 'id, participant_id, user_name, package_type, package_id, package_name, score_tiu, score_twk, score_tkp, total_score, questions_total, questions_correct, passed, status, started_at, completed_at, duration_seconds';
+
       const { data, error } = await supabase
         .from('exam_results')
-        .select('*')
+        .select(SAFE_COLUMNS)
         .eq('participant_id', user.id)
         .order('completed_at', { ascending: false });
 
@@ -319,7 +364,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (finalRecords.length === 0 && user.email) {
         const { data: fallbackEmail } = await supabase
           .from('exam_results')
-          .select('*')
+          .select(SAFE_COLUMNS)
           .eq('user_name', user.email)
           .order('completed_at', { ascending: false });
         
@@ -333,7 +378,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (profileName) {
           const { data: fallbackName } = await supabase
             .from('exam_results')
-            .select('*')
+            .select(SAFE_COLUMNS)
             .eq('user_name', profileName)
             .order('completed_at', { ascending: false });
           
@@ -370,7 +415,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [state.currentView, state.reviewResultId]);
 
-  // ─── 🌟 AUTO-SAVE JAWABAN & SKOR KE DATABASE ───
+  // 🌟 SINKRONISASI REALTIME HEMAT KUOTA (Hanya tembak DB saat siswa klik jawaban, tanpa query SELECT berulang)
   useEffect(() => {
     const session = state.examSession;
     if (!session || session.status === 'completed' || isSyncLocked) return;
@@ -383,6 +428,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const liveScores = calculateScores(session);
         const isPassed = checkPassedStatus(session.examType, liveScores);
 
+        // Hitung durasi akurat dari waktu mulai (startedAt) hingga detik ini tanpa perlu query ke exam_packages
+        const startedTimeMs = session.startedAt ? new Date(session.startedAt).getTime() : Date.now();
+        const elapsedFromStart = Math.floor((Date.now() - startedTimeMs) / 1000);
+        const initialSec = (session as any).initialTimeSeconds || (EXAM_CONFIGS[session.examType].timeMinutes * 60);
+        const durationUsed = elapsedFromStart > 0 ? elapsedFromStart : Math.max(0, initialSec - session.timeRemaining);
+
         supabase
           .from('exam_results')
           .update({
@@ -392,7 +443,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             total_score: liveScores.total,
             questions_correct: liveScores.correctCount,
             passed: isPassed,
-            duration_seconds: Math.max(0, (EXAM_CONFIGS[session.examType].timeMinutes * 60) - session.timeRemaining)
+            duration_seconds: durationUsed
           })
           .eq('id', dbResultId)
           .then(({ error }) => { 
@@ -402,7 +453,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [state.examSession?.answers, state.examSession?.status, isSyncLocked]);
 
-  // ─── 🌟 Kunci sisa waktu ke localStorage setiap detik timer berdetak ───
+  // Simpan sisa detik ke LocalStorage HP siswa (0 Kuota Internet)
   useEffect(() => {
     const session = state.examSession;
     if (session && session.status === 'in_progress') {
@@ -523,9 +574,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const scores = calculateScores(session);
       const isPassed = checkPassedStatus(session.examType, scores);
       
-      // ─── 🌟 PERBAIKAN: Pastikan sub_category terikat permanen ke snapshot ───
       const injectedQuestions = session.questions.map(q => {
-        const finalSub = q.sub_category || q.sub_kategori || (q as any).SUB_KATEGORI || 'Umum';
+        const finalSub = q.sub_category || (q as any).sub_kategori || (q as any).SUB_KATEGORI || 'Umum';
         return {
           ...q,
           sub_category: finalSub,
@@ -568,6 +618,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         finalDiagnostic = breakdown;
       }
       
+      // 🌟 Hitung durasi akhir secara instan & akurat dari selisih waktu mulai atau initialTimeSeconds
+      const startedTimeMs = session.startedAt ? new Date(session.startedAt).getTime() : Date.now();
+      const elapsedSeconds = Math.floor((Date.now() - startedTimeMs) / 1000);
+      const fallbackInitial = (session as any).initialTimeSeconds || (EXAM_CONFIGS[session.examType].timeMinutes * 60);
+      const finalDurationSeconds = elapsedSeconds > 0 ? elapsedSeconds : Math.max(0, fallbackInitial - session.timeRemaining);
+      
       const { error } = await supabase
         .from('exam_results')
         .update({
@@ -579,7 +635,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           passed: isPassed,
           status: 'completed', 
           completed_at: new Date().toISOString(),
-          duration_seconds: Math.max(0, (EXAM_CONFIGS[session.examType].timeMinutes * 60) - session.timeRemaining),
+          duration_seconds: finalDurationSeconds,
           review_snapshot: JSON.stringify(snapshotPayload),
           diagnostic_breakdown: finalDiagnostic
         })
@@ -669,7 +725,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   return (
     <AppContext.Provider value={{ 
       state, dispatch, signOut, refreshProfile, startExam, deleteHistory, submitExamSession,
-      examHistory, fetchUserExamHistory 
+      examHistory, fetchUserExamHistory, fetchExamSnapshot
     }}>
       {children}
     </AppContext.Provider>
