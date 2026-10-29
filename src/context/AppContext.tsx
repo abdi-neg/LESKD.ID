@@ -112,18 +112,18 @@ async function fetchQuestionsForExam(examType: ExamType, packageId?: string): Pr
   return [...padded.slice(0, config.questionCount)].sort(sortSKD);
 }
 
-// 🌟 FUNGSI buildSession DIPERBARUI: Mengambil waktu custom dari package
 function buildSession(examType: ExamType, questions: Question[], pkg?: ExamPackage): ExamSession {
   const config = EXAM_CONFIGS[examType];
   
-  // 🌟 LOGIKA TIMER BARU: Prioritaskan duration_minutes dari paket, jika kosong gunakan default mockData
   const activeTimeMinutes = pkg?.duration_minutes && pkg.duration_minutes > 0 
     ? pkg.duration_minutes 
     : config.timeMinutes;
 
+  const initialSeconds = activeTimeMinutes * 60;
+
   const answers: ExamSession['answers'] = {};
   const securedQuestions = questions.map((q) => {
-    const verifiedSub = q.sub_category || q.sub_kategori || q.SUB_KATEGORI || 'Umum';
+    const verifiedSub = q.sub_category || (q as any).sub_kategori || (q as any).SUB_KATEGORI || 'Umum';
     return {
       ...q,
       sub_category: verifiedSub,
@@ -146,6 +146,7 @@ function buildSession(examType: ExamType, questions: Question[], pkg?: ExamPacka
   securedQuestions.forEach((q) => {
     answers[q.id] = { questionId: q.id, selectedAnswer: null, isMarked: false };
   });
+
   return {
     id: crypto.randomUUID(),
     packageId: pkg?.id,
@@ -154,10 +155,11 @@ function buildSession(examType: ExamType, questions: Question[], pkg?: ExamPacka
     questions: securedQuestions,
     answers,
     currentQuestionIndex: 0,
-    timeRemaining: activeTimeMinutes * 60, // 🌟 Gunakan menit yang sudah dikalkulasi
+    timeRemaining: initialSeconds,
+    initialTimeSeconds: initialSeconds, // 🌟 Penanda waktu awal di memori lokal
     status: 'in_progress',
     startedAt: new Date(),
-  };
+  } as ExamSession;
 }
 
 function calculateScores(session: ExamSession) {
@@ -166,18 +168,24 @@ function calculateScores(session: ExamSession) {
   session.questions.forEach((q) => {
     const answer = session.answers[q.id];
     if (!answer?.selectedAnswer) return;
+    
     if (q.category === 'TKP') {
-      const selected = answer.selectedAnswer.toLowerCase();
+      // 🌟 PERBAIKAN: Kebal terhadap spasi/huruf kecil di TKP
+      const selected = answer.selectedAnswer.toLowerCase().trim();
       let points = 0;
-      if (selected === 'a') points = Number(q.points_a ?? 0);
-      else if (selected === 'b') points = Number(q.points_b ?? 0);
-      else if (selected === 'c') points = Number(q.points_c ?? 0);
-      else if (selected === 'd') points = Number(q.points_d ?? 0);
-      else if (selected === 'e') points = Number(q.points_e ?? 0);
+      if (selected === 'a') points = Number((q as any).points_a ?? 0);
+      else if (selected === 'b') points = Number((q as any).points_b ?? 0);
+      else if (selected === 'c') points = Number((q as any).points_c ?? 0);
+      else if (selected === 'd') points = Number((q as any).points_d ?? 0);
+      else if (selected === 'e') points = Number((q as any).points_e ?? 0);
       tkp += points;
       if (points > 0) correctCount++;
     } else {
-      const pts = answer.selectedAnswer === q.correct_answer ? 5 : 0;
+      // 🌟 PERBAIKAN: Kebal terhadap spasi ekstra/huruf kecil di TIU & TWK
+      const userAns = answer.selectedAnswer.toUpperCase().trim();
+      const trueAns = (q.correct_answer || '').toUpperCase().trim();
+      const pts = userAns === trueAns ? 5 : 0;
+      
       if (pts > 0) correctCount++;
       if (q.category === 'TIU') tiu += pts;
       else twk += pts;
@@ -412,7 +420,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [state.currentView, state.reviewResultId]);
 
-  // 🌟 SINKRONISASI REALTIME (Memancarkan sisa waktu ke Live Monitor)
+  // 🌟 SINKRONISASI REALTIME HEMAT KUOTA (Hanya tembak DB saat siswa klik jawaban, tanpa query SELECT berulang)
   useEffect(() => {
     const session = state.examSession;
     if (!session || session.status === 'completed' || isSyncLocked) return;
@@ -425,40 +433,38 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const liveScores = calculateScores(session);
         const isPassed = checkPassedStatus(session.examType, liveScores);
 
-        // Ambil durasi total dari session (waktu awal paket - sisa waktu)
-        const getSessionInitialSeconds = async () => {
-          let initialSeconds = EXAM_CONFIGS[session.examType].timeMinutes * 60;
-          if (session.packageId) {
-             const { data } = await supabase.from('exam_packages').select('duration_minutes').eq('id', session.packageId).single();
-             if (data?.duration_minutes) {
-                 initialSeconds = data.duration_minutes * 60;
-             }
-          }
-          
-          // Hitung durasi terpakai: Waktu awal dikurangi waktu tersisa di layar siswa
-          const durationUsed = Math.max(0, initialSeconds - session.timeRemaining);
+        // Hitung durasi akurat dari waktu mulai (startedAt) hingga detik ini
+        const startedTimeMs = session.startedAt ? new Date(session.startedAt).getTime() : Date.now();
+        const elapsedFromStart = Math.floor((Date.now() - startedTimeMs) / 1000);
+        const initialSec = (session as any).initialTimeSeconds || (EXAM_CONFIGS[session.examType].timeMinutes * 60);
+        const durationUsed = elapsedFromStart > 0 ? elapsedFromStart : Math.max(0, initialSec - session.timeRemaining);
 
-          supabase
-            .from('exam_results')
-            .update({
-              score_tiu: liveScores.tiu,
-              score_twk: liveScores.twk,
-              score_tkp: liveScores.tkp,
-              total_score: liveScores.total,
-              questions_correct: liveScores.correctCount,
-              passed: isPassed,
-              duration_seconds: durationUsed // 👈 INI YANG MEMBUAT LIVE MONITOR BERJALAN
-            })
-            .eq('id', dbResultId)
-            .then(({ error }) => { 
-              if (error) console.error("Realtime Sync Error:", error); 
-            });
-        };
-        
-        getSessionInitialSeconds();
+        supabase
+          .from('exam_results')
+          .update({
+            score_tiu: liveScores.tiu,
+            score_twk: liveScores.twk,
+            score_tkp: liveScores.tkp,
+            total_score: liveScores.total,
+            questions_correct: liveScores.correctCount,
+            passed: isPassed,
+            duration_seconds: durationUsed
+          })
+          .eq('id', dbResultId)
+          .then(({ error }) => { 
+            if (error) console.error("Realtime Sync Error:", error); 
+          });
       }
     }
-  }, [state.examSession?.answers, state.examSession?.timeRemaining, state.examSession?.status, isSyncLocked]);
+  }, [state.examSession?.answers, state.examSession?.status, isSyncLocked]);
+
+  // 🌟 PERBAIKAN: Simpan ke LocalStorage HP SETIAP KALI peserta klik jawaban!
+  useEffect(() => {
+    const session = state.examSession;
+    if (session && session.status === 'in_progress') {
+      saveExamProgress(session);
+    }
+  }, [state.examSession?.timeRemaining, state.examSession?.answers]);
 
   useEffect(() => {
     if (!state.examSession || state.examSession.status !== 'in_progress') return;
@@ -468,15 +474,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(timer);
   }, [state.examSession?.status, state.examSession?.id]);
 
+  // 🌟 PERBAIKAN: Cegah Infinite Loop (Looping Submit yang bikin browser crash & logout)
   useEffect(() => {
     if (
       state.examSession && 
       state.examSession.status === 'in_progress' && 
-      state.examSession.timeRemaining <= 0
+      state.examSession.timeRemaining <= 0 &&
+      !isSyncLocked // <-- Kunci krusial: Jika sedang submit, jangan trigger lagi!
     ) {
       submitExamSession();
     }
-  }, [state.examSession?.timeRemaining, state.examSession?.status]);
+  }, [state.examSession?.timeRemaining, state.examSession?.status, isSyncLocked]);
 
   async function refreshProfile(retries = 3) {
     const { data: { user } } = await supabase.auth.getUser();
@@ -510,7 +518,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return;
       }
       
-      // 🌟 Menginisialisasi Session Timer dengan waktu custom pkg.duration_minutes
       const session = buildSession(examType, questions, pkg);
 
       await supabase
@@ -575,7 +582,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const isPassed = checkPassedStatus(session.examType, scores);
       
       const injectedQuestions = session.questions.map(q => {
-        const finalSub = q.sub_category || q.sub_kategori || (q as any).SUB_KATEGORI || 'Umum';
+        const finalSub = q.sub_category || (q as any).sub_kategori || (q as any).SUB_KATEGORI || 'Umum';
         return {
           ...q,
           sub_category: finalSub,
@@ -618,9 +625,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         finalDiagnostic = breakdown;
       }
       
-      // 🌟 Kalkulasi durasi pengerjaan total berdasarkan waktu yang benar-benar dialokasikan
-      const { data: dbData } = await supabase.from('exam_packages').select('duration_minutes').eq('id', session.packageId).single();
-      const actualTotalSeconds = (dbData?.duration_minutes || EXAM_CONFIGS[session.examType].timeMinutes) * 60;
+      // 🌟 Hitung durasi akhir secara instan & akurat dari selisih waktu mulai atau initialTimeSeconds
+      const startedTimeMs = session.startedAt ? new Date(session.startedAt).getTime() : Date.now();
+      const elapsedSeconds = Math.floor((Date.now() - startedTimeMs) / 1000);
+      const fallbackInitial = (session as any).initialTimeSeconds || (EXAM_CONFIGS[session.examType].timeMinutes * 60);
+      const finalDurationSeconds = elapsedSeconds > 0 ? elapsedSeconds : Math.max(0, fallbackInitial - session.timeRemaining);
       
       const { error } = await supabase
         .from('exam_results')
@@ -633,7 +642,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           passed: isPassed,
           status: 'completed', 
           completed_at: new Date().toISOString(),
-          duration_seconds: Math.max(0, actualTotalSeconds - session.timeRemaining),
+          duration_seconds: finalDurationSeconds,
           review_snapshot: JSON.stringify(snapshotPayload),
           diagnostic_breakdown: finalDiagnostic
         })
@@ -641,7 +650,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       if (error) throw error;
 
-      await fetchUserExamHistory();
+      // 🌟 PERBAIKAN: Bersihkan memori dan ganti halaman DULU agar peserta tidak merasa "Lag"
       clearExamProgress(session.id);
       
       localStorage.removeItem('exam_active_session_id');
@@ -656,10 +665,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       dispatch({ type: 'FINALIZE_EXAM_STORE', payload: completedSession });
 
+      // Load riwayat ujian (yang memakan waktu) ditaruh terakhir
+      fetchUserExamHistory();
+
     } catch (err) {
       console.error("Terjadi kegagalan submit:", err);
       setIsSyncLocked(false); 
-      alert("Gagal mengirimkan lembar jawaban ke server. Silakan coba klik submit kembali.");
+      alert("Gagal mengirimkan jawaban. Pastikan koneksi internet stabil lalu klik 'Selesai' lagi.");
     }
   }
 
