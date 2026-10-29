@@ -29,6 +29,7 @@ const FILTER_OPTIONS: { value: 'ALL' | PackageType; label: string }[] = [
 type ResultWithName = ExamResult & { participant_name: string };
 
 function formatDuration(seconds: number) {
+  if (seconds < 0) return '0m 0s';
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
   return `${m}m ${s}s`;
@@ -42,19 +43,23 @@ export default function LiveScoreMonitor() {
   const [countdown, setCountdown] = useState<number>(5); 
   const [searchQuery, setSearchQuery] = useState('');
   
-  // Inisialisasi filter tanggal hari ini (Format lokal: YYYY-MM-DD)
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toLocaleDateString('en-CA'));
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'ONGOING' | 'SUBMITTED'>('ALL');
   
   const [filter, setFilter] = useState<'ALL' | PackageType>('ALL');
   const [isFilterOpen, setIsFilterOpen] = useState(false); 
   
+  // State dummy khusus untuk trigger re-render agar timer peserta yang in_progress berjalan di UI
+  const [nowTick, setNowTick] = useState<number>(Date.now());
+
   const syncRef = useRef<() => Promise<void>>(async () => {});
 
   const syncLiveMonitorData = useCallback(async () => {
+    // 🌟 PERBAIKAN 1: Hapus select('*') yang menarik JSON raksasa.
+    // Kita hanya menarik kolom esensial agar HP Admin tidak lag saat ada 200 data.
     const { data: examData, error: examError } = await supabase
       .from('exam_results')
-      .select('*') 
+      .select('id, participant_id, user_name, package_type, package_name, score_tiu, score_twk, score_tkp, total_score, passed, status, started_at, completed_at, duration_seconds') 
       .order('id', { ascending: false })
       .limit(200);
 
@@ -85,7 +90,7 @@ export default function LiveScoreMonitor() {
       participant_name: r.user_name || nameMap[r.participant_id] || 'Peserta SKD',
     }));
 
-    setResults(mapped);
+    setResults(mapped as any); // Type assertion untuk keamanan Typescript
     setLastUpdated(new Date());
     setLoading(false);
   }, []);
@@ -102,37 +107,42 @@ export default function LiveScoreMonitor() {
   useEffect(() => {
     if (!isRealtime) return;
 
+    // Timer untuk fetch data dari Supabase (Setiap 5 detik)
     const pollingTimer = setInterval(() => {
       syncRef.current();
       setCountdown(5); 
     }, 5000);
 
+    // Timer untuk UI visual countdown (Setiap 1 detik)
     const visualTimer = setInterval(() => {
       setCountdown((prev) => (prev > 1 ? prev - 1 : 5));
+    }, 1000);
+
+    // 🌟 PERBAIKAN 2: Timer untuk memaksa HP Admin menghitung sendiri durasi sesi 'in_progress' setiap detik
+    // Ini mengobati penyakit timer peserta yang "beku" saat jaringan mereka terputus.
+    const tickTimer = setInterval(() => {
+      setNowTick(Date.now());
     }, 1000);
 
     return () => {
       clearInterval(pollingTimer);
       clearInterval(visualTimer);
+      clearInterval(tickTimer);
     };
   }, [isRealtime]);
 
-  // ─── 🌟 FILTER ENGINE BARU BERBASIS KOLOM STATUS RESMI ───
+  // ─── 🌟 FILTER ENGINE BERBASIS KOLOM STATUS RESMI ───
   const filteredResults = results.filter((r) => {
-    // 1. Filter Paket Ujian
     const matchesPackage = filter === 'ALL' || r.package_type === filter;
 
-    // 2. Tentukan Status Berdasarkan Teks Kolom Status Sumber Database
     const currentStatus = String(r.status || '').toLowerCase().trim();
     const isOngoingSession = currentStatus === 'in_progress';
     const isSubmittedSession = currentStatus === 'completed' || currentStatus === 'selesai';
 
-    // Filter Berdasarkan Tab Pilihan Status Atas Dashboard
     const matchesStatus = 
       statusFilter === 'ALL' ? true :
       statusFilter === 'ONGOING' ? isOngoingSession : isSubmittedSession;
 
-    // 3. Filter Mengunci Tanggal Hari Ini (Abaikan validasi tanggal jika statusnya terbukti sedang aktif dikerjakan)
     const todayStr = new Date().toLocaleDateString('en-CA');
     const rawDate = r.started_at || (r as any).created_at;
     let examDate = '';
@@ -148,7 +158,6 @@ export default function LiveScoreMonitor() {
       ? (examDate === selectedDate || (isOngoingSession && selectedDate === todayStr))
       : true;
 
-    // 4. Filter Kotak Pencarian Nama
     const matchesSearch = searchQuery 
       ? r.participant_name?.toLowerCase().includes(searchQuery.toLowerCase())
       : true;
@@ -203,7 +212,7 @@ export default function LiveScoreMonitor() {
     return b.score_twk - a.score_twk;
   });
 
-  // METRIK KARTU RINGKASAN DATA (Berbasis Kolom Status Akurat)
+  // METRIK KARTU RINGKASAN DATA
   const totalCount = filteredResults.length;
   const submittedCount = filteredResults.filter((r) => String(r.status).toLowerCase().trim() === 'completed' || String(r.status).toLowerCase().trim() === 'selesai').length;
   const ongoingCount = filteredResults.filter((r) => String(r.status).toLowerCase().trim() === 'in_progress').length;
@@ -212,7 +221,6 @@ export default function LiveScoreMonitor() {
     ? Math.round(filteredResults.filter(r => String(r.status).toLowerCase().trim() === 'completed' || String(r.status).toLowerCase().trim() === 'selesai').reduce((s, r) => s + r.total_score, 0) / submittedCount)
     : 0;
 
-  // Hitung jumlah sub-status untuk counter badge di tombol tab secara real
   const baseListForCounters = results.filter(r => filter === 'ALL' || r.package_type === filter);
   const todayStr = new Date().toLocaleDateString('en-CA');
   
@@ -425,6 +433,13 @@ export default function LiveScoreMonitor() {
 
                   const sessionStatus = String(r.status || '').toLowerCase().trim();
                   const isCompleted = sessionStatus === 'completed' || sessionStatus === 'selesai';
+                  
+                  // 🌟 PERBAIKAN 3: Kalkulasi durasi realtime mandiri (anti beku)
+                  // Jika masih in_progress, ambil durasi selisih antara Date.now() dan r.started_at
+                  // Jika sudah completed, tampilkan durasi final dari database (r.duration_seconds)
+                  const displaySeconds = isCompleted 
+                    ? (r.duration_seconds || 0) 
+                    : (r.started_at ? Math.floor((nowTick - new Date(r.started_at).getTime()) / 1000) : 0);
 
                   return (
                     <motion.tr
@@ -469,7 +484,8 @@ export default function LiveScoreMonitor() {
                       <td className="px-5 py-3.5 text-center">
                         <span className="inline-flex items-center gap-1 text-xs text-slate-400 bg-slate-900 px-2 py-1 rounded-md font-mono">
                           <Clock className="w-3 h-3 text-slate-500" />
-                          {formatDuration(r.duration_seconds || 0)}
+                          {/* Format durasi yang sudah diperbaiki */}
+                          {formatDuration(displaySeconds)}
                         </span>
                       </td>
 
