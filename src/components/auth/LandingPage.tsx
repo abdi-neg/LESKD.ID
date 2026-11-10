@@ -11,6 +11,7 @@ import {
   BookOpen,
   Award,
   BarChart3
+  CheckCircle2
 } from 'lucide-react';
 import LoginModal from './LoginModal';
 import { useNavigate } from 'react-router-dom';
