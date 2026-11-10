@@ -1,5 +1,21 @@
 import { motion, AnimatePresence } from 'framer-motion';
-import { LogOut, User, Trophy, Target, TrendingUp, History, ChevronDown, ChevronUp, Loader2, Brain, Activity, PieChart, Award } from 'lucide-react';
+import { 
+  LogOut, 
+  User, 
+  Trophy, 
+  Target, 
+  TrendingUp, 
+  History, 
+  ChevronDown, 
+  ChevronUp, 
+  Loader2, 
+  Brain, 
+  Activity, 
+  PieChart, 
+  Award,
+  Calendar,    // ✅ Sudah ditambahkan
+  AlertCircle  // ✅ Sudah ditambahkan sekalian untuk mencegah error berikutnya
+} from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom'; 
 import { useApp } from '../../context/AppContext';
