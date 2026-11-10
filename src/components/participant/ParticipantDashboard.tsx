@@ -157,8 +157,8 @@ export default function ParticipantDashboard() {
     <div className="min-h-screen bg-slate-50 font-sans text-slate-800 antialiased">
       {/* ─── HEADER BARU (Lebih Slim & Proporsional) ─── */}
       <nav className="bg-slate-900 border-b border-slate-800 py-3.5 px-6 md:px-10 flex items-center justify-between sticky top-0 z-50 shadow-xl shadow-slate-900/20">
-         <div className="text-xl sm:text-2xl font-black text-white tracking-tight flex items-center gap-2 cursor-pointer" onClick={() => navigate('/')}>
-            LESKD<span className="text-blue-500">.ID</span>
+         <div className="text-xl sm:text-2xl font-black text-white tracking-tight cursor-pointer hover:text-blue-100 transition-colors" onClick={() => navigate('/')}>
+            LESKD.ID
          </div>
          
          <div className="flex items-center gap-3">
