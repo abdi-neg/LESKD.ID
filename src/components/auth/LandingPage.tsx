@@ -13,7 +13,7 @@ export default function LandingPage() {
          {/* Logo dengan warna biru asli LESKD */}
          <div className="text-2xl md:text-3xl font-black tracking-tight cursor-pointer">
             <span className="text-[#1e3a8a]">LESKD</span>
-            <span className="text-slate-900">.ID</span>
+            <span className="text-[#1e3a8a]">.ID</span>
          </div>
          
          <div className="flex items-center gap-4 md:gap-6">
