@@ -322,48 +322,39 @@ export default function ClassReviewMode() {
 
                 let isCorrect = false;
                 let tkpPoints = 0;
-                let optionStyle = 'bg-gray-50/50 border-gray-100 hover:bg-gray-50';
-                let circleStyle = 'bg-white text-gray-500 border border-gray-200 shadow-sm';
-                let textStyle = 'text-gray-600 font-medium';
+                
+                // 🌟 TEMA MINIMALIS: Latar belakang bersih, tanpa blok warna, tulisan netral.
+                let optionStyle = 'bg-white border-gray-200 hover:bg-gray-50 shadow-sm';
+                let circleStyle = 'bg-gray-50 text-gray-500 border border-gray-200';
+                let textStyle = 'text-gray-700 font-medium';
                 let badgeStyle = '';
 
                 if (isTKP) {
                   tkpPoints = Number(q[`points_${opt}`]) || 0;
                   
-                  // 🌟 TEMA MONOCHROME EMERALD (Gradasi Hijau yang Elegan)
+                  // 🌟 FOKUS WARNA HANYA PADA BADGE POIN SAJA
                   if (tkpPoints === 5) {
-                    optionStyle = 'bg-emerald-600 border-emerald-600 shadow-md';
-                    circleStyle = 'bg-white text-emerald-700 shadow-sm border-none';
-                    textStyle = 'text-white font-bold';
-                    badgeStyle  = 'bg-white/20 text-white shadow-sm backdrop-blur-sm';
+                    // Beri sedikit highlight pada opsi poin 5 agar mudah dikenali
+                    optionStyle = 'bg-emerald-50/30 border-emerald-100 hover:bg-emerald-50 shadow-sm';
+                    circleStyle = 'bg-white text-emerald-700 border border-emerald-200';
+                    textStyle = 'text-emerald-900 font-bold';
+                    badgeStyle  = 'bg-emerald-600 text-white shadow-sm';
                   } else if (tkpPoints === 4) {
-                    optionStyle = 'bg-emerald-100 border-emerald-300 shadow-sm';
-                    circleStyle = 'bg-emerald-500 text-white shadow-sm border-none';
-                    textStyle = 'text-emerald-900 font-semibold';
-                    badgeStyle  = 'bg-emerald-200 text-emerald-800';
-                  } else if (tkpPoints === 3) {
-                    optionStyle = 'bg-emerald-50 border-emerald-200 shadow-sm';
-                    circleStyle = 'bg-emerald-400 text-white shadow-sm border-none';
-                    textStyle = 'text-emerald-800 font-medium';
                     badgeStyle  = 'bg-emerald-100 text-emerald-700';
+                  } else if (tkpPoints === 3) {
+                    badgeStyle  = 'bg-gray-100 text-gray-600';
                   } else if (tkpPoints === 2) {
-                    optionStyle = 'bg-white border-emerald-100 shadow-sm';
-                    circleStyle = 'bg-emerald-200 text-emerald-800 shadow-sm border-none';
-                    textStyle = 'text-emerald-700 font-medium';
-                    badgeStyle  = 'bg-emerald-50 text-emerald-600 border border-emerald-100';
+                    badgeStyle  = 'bg-gray-50 text-gray-500';
                   } else {
-                    // Poin 1 atau 0 (Paling Pudar)
-                    optionStyle = 'bg-white border-gray-100 shadow-sm';
-                    circleStyle = 'bg-gray-100 text-gray-400 shadow-sm border-none';
-                    textStyle = 'text-gray-500 font-normal';
-                    badgeStyle  = 'bg-gray-50 text-gray-400 border border-gray-100';
+                    // Poin 1 atau 0
+                    badgeStyle  = 'bg-transparent text-gray-400 border border-gray-200';
                   }
                 } else {
                   isCorrect = extractLetter(q.correct_answer || q.correctAnswer) === opt;
                   if (isCorrect) {
                     optionStyle = 'bg-emerald-50/70 border-emerald-200 shadow-sm';
-                    circleStyle = 'bg-emerald-500 text-white shadow-md shadow-emerald-200';
-                    textStyle = 'text-emerald-900 font-semibold';
+                    circleStyle = 'bg-emerald-500 text-white border-none shadow-md';
+                    textStyle = 'text-emerald-900 font-bold';
                   }
                 }
 
@@ -378,7 +369,7 @@ export default function ClassReviewMode() {
                        </div>
                     </div>
                     {isTKP && (
-                      <div className="flex-shrink-0 pl-4 border-l border-emerald-200/30 ml-2">
+                      <div className="flex-shrink-0 pl-4 border-l border-gray-200 ml-2">
                         <div className={`px-3 py-1.5 rounded-lg text-xs font-black ${badgeStyle}`}>
                           Poin {tkpPoints}
                         </div>
@@ -426,20 +417,20 @@ export default function ClassReviewMode() {
 
           {isTKP ? (
             <>
-              {/* 🌟 Card Poin 5 (Sangat Mencolok - Hijau Tua) */}
-              <div className="bg-white rounded-3xl shadow-sm border border-emerald-600 overflow-hidden flex flex-col max-h-[250px]">
-                <div className="bg-gradient-to-r from-emerald-600 to-emerald-500 px-5 py-4 flex justify-between items-center text-white">
+              {/* 🌟 Card Poin 5 (Satu-satunya yang berwarna mencolok) */}
+              <div className="bg-white rounded-3xl shadow-sm border border-emerald-200 overflow-hidden flex flex-col max-h-[250px]">
+                <div className="bg-emerald-600 px-5 py-4 flex justify-between items-center text-white">
                   <div className="flex items-center gap-2 font-bold">
                     <Target className="w-5 h-5 opacity-90" /> Poin 5 (Sangat Tepat)
                   </div>
-                  <span className="bg-white/20 text-white px-3 py-1 rounded-xl text-sm font-black backdrop-blur-sm">{currentStat.tkpPoint5.length}</span>
+                  <span className="bg-white/20 text-white px-3 py-1 rounded-xl text-sm font-black">{currentStat.tkpPoint5.length}</span>
                 </div>
                 <div className="p-3 overflow-y-auto scrollbar-thin">
                   <div className="space-y-1.5">
                     {currentStat.tkpPoint5.map((student, idx) => (
-                      <div key={idx} className="flex justify-between items-center px-4 py-3 hover:bg-emerald-50 rounded-2xl transition-colors border border-transparent hover:border-emerald-100">
+                      <div key={idx} className="flex justify-between items-center px-4 py-3 hover:bg-emerald-50/50 rounded-2xl transition-colors border border-transparent hover:border-emerald-100">
                         <span className="text-sm font-bold text-gray-700">{student.name}</span>
-                        <span className="text-xs font-black bg-emerald-600 text-white w-8 h-8 flex items-center justify-center rounded-xl shadow-sm shadow-emerald-200">{student.answer}</span>
+                        <span className="text-xs font-black bg-emerald-600 text-white w-8 h-8 flex items-center justify-center rounded-xl shadow-sm">{student.answer}</span>
                       </div>
                     ))}
                     {currentStat.tkpPoint5.length === 0 && <div className="text-center text-gray-400 text-sm font-medium py-6">Tidak ada peserta</div>}
@@ -447,20 +438,20 @@ export default function ClassReviewMode() {
                 </div>
               </div>
 
-              {/* 🌟 Card Poin 4 (Menyatu Tapi Sedikit Lebih Muda) */}
-              <div className="bg-white rounded-3xl shadow-sm border border-emerald-200 overflow-hidden flex flex-col max-h-[250px]">
-                <div className="bg-emerald-100 px-5 py-4 flex justify-between items-center text-emerald-900 border-b border-emerald-200">
+              {/* 🌟 Card Poin 4 (Bersih dengan highlight hijau muda) */}
+              <div className="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden flex flex-col max-h-[250px]">
+                <div className="bg-gray-50 px-5 py-4 flex justify-between items-center text-gray-700 border-b border-gray-200">
                   <div className="flex items-center gap-2 font-bold">
-                    <CheckSquare className="w-5 h-5 opacity-80 text-emerald-700" /> Poin 4 (Tepat)
+                    <CheckSquare className="w-5 h-5 opacity-80 text-emerald-600" /> Poin 4 (Tepat)
                   </div>
-                  <span className="bg-emerald-200 text-emerald-900 px-3 py-1 rounded-xl text-sm font-black">{currentStat.tkpPoint4.length}</span>
+                  <span className="bg-emerald-100 text-emerald-700 px-3 py-1 rounded-xl text-sm font-black">{currentStat.tkpPoint4.length}</span>
                 </div>
                 <div className="p-3 overflow-y-auto scrollbar-thin">
                   <div className="space-y-1.5">
                     {currentStat.tkpPoint4.map((student, idx) => (
-                      <div key={idx} className="flex justify-between items-center px-4 py-3 hover:bg-emerald-50 rounded-2xl transition-colors border border-transparent hover:border-emerald-100">
-                        <span className="text-sm font-bold text-slate-700">{student.name}</span>
-                        <span className="text-xs font-black bg-emerald-100 text-emerald-800 border border-emerald-200 w-8 h-8 flex items-center justify-center rounded-xl">{student.answer}</span>
+                      <div key={idx} className="flex justify-between items-center px-4 py-3 hover:bg-gray-50 rounded-2xl transition-colors border border-transparent hover:border-gray-100">
+                        <span className="text-sm font-bold text-gray-600">{student.name}</span>
+                        <span className="text-xs font-black bg-emerald-100 text-emerald-700 w-8 h-8 flex items-center justify-center rounded-xl">{student.answer}</span>
                       </div>
                     ))}
                     {currentStat.tkpPoint4.length === 0 && <div className="text-center text-gray-400 text-sm font-medium py-6">Tidak ada peserta</div>}
@@ -468,33 +459,28 @@ export default function ClassReviewMode() {
                 </div>
               </div>
 
-              {/* 🌟 Card Poin 1,2,3 (Kalem & Putih Tulang) */}
+              {/* 🌟 Card Poin 1,2,3 (Sangat netral dan bersih) */}
               <div className="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden flex flex-col max-h-[250px]">
-                <div className="bg-gray-50 px-5 py-4 flex justify-between items-center text-gray-600 border-b border-gray-200">
+                <div className="bg-white px-5 py-4 flex justify-between items-center text-gray-500 border-b border-gray-100">
                   <div className="flex items-center gap-2 font-bold">
-                    <AlertTriangle className="w-5 h-5 opacity-70" /> Poin 1-3 (Kurang Tepat)
+                    <AlertTriangle className="w-5 h-5 opacity-50" /> Poin 1-3 (Kurang)
                   </div>
-                  <span className="bg-gray-200 text-gray-600 px-3 py-1 rounded-xl text-sm font-black">{currentStat.tkpPointOthers.length}</span>
+                  <span className="bg-gray-100 text-gray-500 px-3 py-1 rounded-xl text-sm font-black">{currentStat.tkpPointOthers.length}</span>
                 </div>
                 <div className="p-3 overflow-y-auto scrollbar-thin">
                   <div className="space-y-1.5">
                     {currentStat.tkpPointOthers.map((student, idx) => (
-                      <div key={idx} className="flex justify-between items-center px-4 py-3 hover:bg-gray-50 rounded-2xl transition-colors border border-transparent hover:border-gray-200">
+                      <div key={idx} className="flex justify-between items-center px-4 py-3 hover:bg-gray-50 rounded-2xl transition-colors border border-transparent hover:border-gray-100">
                         <span className="text-sm font-bold text-gray-500 truncate mr-3">{student.name}</span>
                         <div className="flex items-center gap-2 flex-shrink-0">
                           <span className="text-[10px] font-bold text-gray-400 uppercase">Jawab:</span>
-                          <span className={`text-xs font-black px-2 h-8 flex items-center justify-center rounded-xl shadow-sm
-                            ${student.points === 3 ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' :
-                              student.points === 2 ? 'bg-gray-50 text-gray-500 border border-gray-200' :
-                              'bg-white text-gray-400 border border-gray-100'
-                            }`}
-                          >
+                          <span className="text-xs font-black px-2 h-8 flex items-center justify-center rounded-xl bg-gray-50 text-gray-500 border border-gray-100">
                             {student.answer} (Poin {student.points})
                           </span>
                         </div>
                       </div>
                     ))}
-                    {currentStat.tkpPointOthers.length === 0 && <div className="text-center text-gray-400 text-sm font-medium py-6">Tidak ada peserta</div>}
+                    {currentStat.tkpPointOthers.length === 0 && <div className="text-center text-gray-300 text-sm font-medium py-6">Tidak ada peserta</div>}
                   </div>
                 </div>
               </div>
@@ -503,18 +489,18 @@ export default function ClassReviewMode() {
             // RENDER KHUSUS TIU & TWK
             <>
               <div className="bg-white rounded-3xl shadow-sm border border-emerald-100 overflow-hidden flex flex-col max-h-[350px]">
-                <div className="bg-gradient-to-r from-emerald-500 to-emerald-400 px-5 py-4 flex justify-between items-center text-white">
+                <div className="bg-emerald-500 px-5 py-4 flex justify-between items-center text-white">
                   <div className="flex items-center gap-2 font-bold">
                     <CheckCircle2 className="w-5 h-5 opacity-90" /> Menjawab Benar
                   </div>
-                  <span className="bg-white/20 text-white px-3 py-1 rounded-xl text-sm font-black backdrop-blur-sm">{currentStat.correctStudents.length}</span>
+                  <span className="bg-white/20 text-white px-3 py-1 rounded-xl text-sm font-black">{currentStat.correctStudents.length}</span>
                 </div>
                 <div className="p-3 overflow-y-auto scrollbar-thin">
                   <div className="space-y-1.5">
                     {currentStat.correctStudents.map((student, idx) => (
                       <div key={idx} className="flex justify-between items-center px-4 py-3 hover:bg-emerald-50 rounded-2xl transition-colors border border-transparent hover:border-emerald-100">
                         <span className="text-sm font-bold text-gray-700">{student.name}</span>
-                        <span className="text-xs font-black bg-emerald-100 text-emerald-700 w-8 h-8 flex items-center justify-center rounded-xl shadow-sm shadow-emerald-100/50">{student.answer}</span>
+                        <span className="text-xs font-black bg-emerald-100 text-emerald-700 w-8 h-8 flex items-center justify-center rounded-xl">{student.answer}</span>
                       </div>
                     ))}
                     {currentStat.correctStudents.length === 0 && <div className="text-center text-gray-400 text-sm font-medium py-8">Belum ada peserta yang benar</div>}
@@ -523,11 +509,11 @@ export default function ClassReviewMode() {
               </div>
 
               <div className="bg-white rounded-3xl shadow-sm border border-rose-100 overflow-hidden flex flex-col max-h-[350px]">
-                <div className="bg-gradient-to-r from-rose-500 to-rose-400 px-5 py-4 flex justify-between items-center text-white">
+                <div className="bg-rose-500 px-5 py-4 flex justify-between items-center text-white">
                   <div className="flex items-center gap-2 font-bold">
                     <XCircle className="w-5 h-5 opacity-90" /> Menjawab Salah
                   </div>
-                  <span className="bg-white/20 text-white px-3 py-1 rounded-xl text-sm font-black backdrop-blur-sm">{currentStat.wrongStudents.length}</span>
+                  <span className="bg-white/20 text-white px-3 py-1 rounded-xl text-sm font-black">{currentStat.wrongStudents.length}</span>
                 </div>
                 <div className="p-3 overflow-y-auto scrollbar-thin">
                   <div className="space-y-1.5">
@@ -536,7 +522,7 @@ export default function ClassReviewMode() {
                         <span className="text-sm font-bold text-gray-700 truncate mr-3">{student.name}</span>
                         <div className="flex items-center gap-2 flex-shrink-0">
                           <span className="text-[10px] font-bold text-rose-400 uppercase">Jawab:</span>
-                          <span className="text-xs font-black bg-rose-100 text-rose-700 w-8 h-8 flex items-center justify-center rounded-xl shadow-sm shadow-rose-100/50">{student.answer}</span>
+                          <span className="text-xs font-black bg-rose-100 text-rose-700 w-8 h-8 flex items-center justify-center rounded-xl">{student.answer}</span>
                         </div>
                       </div>
                     ))}
@@ -550,7 +536,7 @@ export default function ClassReviewMode() {
           {/* CARD KOSONG */}
           {currentStat.unansweredStudents.length > 0 && (
             <div className="bg-white rounded-3xl shadow-sm border border-amber-100 overflow-hidden">
-              <div className="bg-gradient-to-r from-amber-400 to-amber-300 px-5 py-3.5 flex justify-between items-center text-amber-900">
+              <div className="bg-amber-400 px-5 py-3.5 flex justify-between items-center text-amber-900">
                 <div className="flex items-center gap-2 font-bold text-sm">
                   <AlertCircle className="w-4 h-4 opacity-80" /> Kosong / Dilewati
                 </div>
