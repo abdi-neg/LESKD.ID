@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { 
   Shield, 
-  Users, 
+  Users,
+  USer,
   MessageCircle, 
   Instagram, 
   Facebook, 
