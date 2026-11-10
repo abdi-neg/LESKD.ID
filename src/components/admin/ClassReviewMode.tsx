@@ -219,7 +219,6 @@ export default function ClassReviewMode() {
     );
   }
 
-  // Pesan ini HANYA MUNCUL jika di database benar-benar tidak ada data sama sekali
   if (rawData.length === 0) {
     return (
       <div className="p-10 text-center">
@@ -303,7 +302,6 @@ export default function ClassReviewMode() {
         </div>
       </div>
 
-      {/* PENYESUAIAN LCD PROYEKTOR: Menggunakan md:grid-cols-3 agar tetap menyamping */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
         
         {/* BAGIAN KIRI: SOAL DAN PEMBAHASAN */}
@@ -336,30 +334,38 @@ export default function ClassReviewMode() {
                 let optionStyle = 'bg-gray-50/50 border-gray-100 hover:bg-gray-50';
                 let circleStyle = 'bg-white text-gray-500 border border-gray-200 shadow-sm';
                 let textStyle = 'text-gray-600 font-medium';
+                let badgeStyle = '';
 
                 if (isTKP) {
                   tkpPoints = Number(q[`points_${opt}`]) || 0;
                   
+                  // 🌟 PERUBAHAN: Tema Gradasi Hijau untuk TKP (5 -> 1)
                   if (tkpPoints === 5) {
-                    optionStyle = 'bg-emerald-50/70 border-emerald-200 shadow-sm';
-                    circleStyle = 'bg-emerald-500 text-white shadow-md shadow-emerald-200';
-                    textStyle = 'text-emerald-900 font-semibold';
+                    optionStyle = 'bg-emerald-50/90 border-emerald-200 shadow-sm';
+                    circleStyle = 'bg-emerald-600 text-white shadow-md shadow-emerald-200 border-none';
+                    textStyle = 'text-emerald-900 font-bold';
+                    badgeStyle  = 'bg-emerald-600 text-white shadow-sm';
                   } else if (tkpPoints === 4) {
-                    optionStyle = 'bg-blue-50/70 border-blue-200 shadow-sm';
-                    circleStyle = 'bg-blue-500 text-white shadow-md shadow-blue-200';
-                    textStyle = 'text-blue-900 font-semibold';
+                    optionStyle = 'bg-emerald-50/60 border-emerald-200 shadow-sm';
+                    circleStyle = 'bg-emerald-500 text-white shadow-md shadow-emerald-100 border-none';
+                    textStyle = 'text-emerald-800 font-semibold';
+                    badgeStyle  = 'bg-emerald-500 text-white shadow-sm';
                   } else if (tkpPoints === 3) {
-                    optionStyle = 'bg-amber-50/70 border-amber-200 shadow-sm';
-                    circleStyle = 'bg-amber-500 text-white shadow-md shadow-amber-200';
-                    textStyle = 'text-amber-900 font-semibold';
+                    optionStyle = 'bg-emerald-50/30 border-emerald-100 shadow-sm';
+                    circleStyle = 'bg-emerald-400 text-emerald-950 shadow-md shadow-emerald-50 border-none';
+                    textStyle = 'text-emerald-700 font-medium';
+                    badgeStyle  = 'bg-emerald-400 text-emerald-950 shadow-sm';
                   } else if (tkpPoints === 2) {
-                    optionStyle = 'bg-orange-50/70 border-orange-200 shadow-sm';
-                    circleStyle = 'bg-orange-500 text-white shadow-md shadow-orange-200';
-                    textStyle = 'text-orange-900 font-semibold';
+                    optionStyle = 'bg-gray-50 border-emerald-100/50 shadow-sm';
+                    circleStyle = 'bg-emerald-200 text-emerald-900 shadow-sm border-none';
+                    textStyle = 'text-emerald-700/80 font-medium';
+                    badgeStyle  = 'bg-emerald-200 text-emerald-900';
                   } else {
-                    optionStyle = 'bg-rose-50/70 border-rose-200 shadow-sm';
-                    circleStyle = 'bg-rose-500 text-white shadow-md shadow-rose-200';
-                    textStyle = 'text-rose-900 font-semibold';
+                    // Poin 1 atau 0
+                    optionStyle = 'bg-gray-50/50 border-emerald-50 shadow-sm';
+                    circleStyle = 'bg-emerald-50 text-emerald-700 shadow-sm border border-emerald-100';
+                    textStyle = 'text-emerald-600/70 font-medium';
+                    badgeStyle  = 'bg-emerald-50 text-emerald-700 border border-emerald-100';
                   }
                 } else {
                   isCorrect = extractLetter(q.correct_answer || q.correctAnswer) === opt;
@@ -382,14 +388,7 @@ export default function ClassReviewMode() {
                     </div>
                     {isTKP && (
                       <div className="flex-shrink-0 pl-4 border-l border-gray-200/50 ml-2">
-                        <div className={`px-3 py-1.5 rounded-lg text-xs font-black
-                          ${tkpPoints === 5 ? 'bg-emerald-100 text-emerald-700' :
-                            tkpPoints === 4 ? 'bg-blue-100 text-blue-700' :
-                            tkpPoints === 3 ? 'bg-amber-100 text-amber-700' :
-                            tkpPoints === 2 ? 'bg-orange-100 text-orange-700' :
-                            'bg-rose-100 text-rose-700' 
-                          }`}
-                        >
+                        <div className={`px-3 py-1.5 rounded-lg text-xs font-black ${badgeStyle}`}>
                           Poin {tkpPoints}
                         </div>
                       </div>
@@ -436,9 +435,9 @@ export default function ClassReviewMode() {
 
           {isTKP ? (
             <>
-              {/* Card Poin 5 */}
-              <div className="bg-white rounded-3xl shadow-sm border border-emerald-100 overflow-hidden flex flex-col max-h-[250px]">
-                <div className="bg-gradient-to-r from-emerald-500 to-emerald-400 px-5 py-4 flex justify-between items-center text-white">
+              {/* 🌟 Card Poin 5 */}
+              <div className="bg-white rounded-3xl shadow-sm border border-emerald-200 overflow-hidden flex flex-col max-h-[250px]">
+                <div className="bg-gradient-to-r from-emerald-600 to-emerald-500 px-5 py-4 flex justify-between items-center text-white">
                   <div className="flex items-center gap-2 font-bold">
                     <Target className="w-5 h-5 opacity-90" /> Poin 5 (Sangat Tepat)
                   </div>
@@ -447,9 +446,9 @@ export default function ClassReviewMode() {
                 <div className="p-3 overflow-y-auto scrollbar-thin">
                   <div className="space-y-1.5">
                     {currentStat.tkpPoint5.map((student, idx) => (
-                      <div key={idx} className="flex justify-between items-center px-4 py-3 hover:bg-emerald-50 rounded-2xl transition-colors border border-transparent hover:border-emerald-100">
+                      <div key={idx} className="flex justify-between items-center px-4 py-3 hover:bg-emerald-50/50 rounded-2xl transition-colors border border-transparent hover:border-emerald-100">
                         <span className="text-sm font-bold text-gray-700">{student.name}</span>
-                        <span className="text-xs font-black bg-emerald-100 text-emerald-700 w-8 h-8 flex items-center justify-center rounded-xl shadow-sm shadow-emerald-100/50">{student.answer}</span>
+                        <span className="text-xs font-black bg-emerald-600 text-white w-8 h-8 flex items-center justify-center rounded-xl shadow-sm shadow-emerald-200/50">{student.answer}</span>
                       </div>
                     ))}
                     {currentStat.tkpPoint5.length === 0 && <div className="text-center text-gray-400 text-sm font-medium py-6">Tidak ada peserta</div>}
@@ -457,20 +456,20 @@ export default function ClassReviewMode() {
                 </div>
               </div>
 
-              {/* Card Poin 4 */}
-              <div className="bg-white rounded-3xl shadow-sm border border-blue-100 overflow-hidden flex flex-col max-h-[250px]">
-                <div className="bg-gradient-to-r from-blue-500 to-blue-400 px-5 py-4 flex justify-between items-center text-white">
+              {/* 🌟 Card Poin 4 */}
+              <div className="bg-white rounded-3xl shadow-sm border border-emerald-100 overflow-hidden flex flex-col max-h-[250px]">
+                <div className="bg-emerald-400 px-5 py-4 flex justify-between items-center text-emerald-950">
                   <div className="flex items-center gap-2 font-bold">
-                    <CheckSquare className="w-5 h-5 opacity-90" /> Poin 4 (Tepat)
+                    <CheckSquare className="w-5 h-5 opacity-90 text-emerald-900" /> Poin 4 (Tepat)
                   </div>
-                  <span className="bg-white/20 text-white px-3 py-1 rounded-xl text-sm font-black backdrop-blur-sm">{currentStat.tkpPoint4.length}</span>
+                  <span className="bg-white/40 text-emerald-950 px-3 py-1 rounded-xl text-sm font-black backdrop-blur-sm">{currentStat.tkpPoint4.length}</span>
                 </div>
                 <div className="p-3 overflow-y-auto scrollbar-thin">
                   <div className="space-y-1.5">
                     {currentStat.tkpPoint4.map((student, idx) => (
-                      <div key={idx} className="flex justify-between items-center px-4 py-3 hover:bg-blue-50 rounded-2xl transition-colors border border-transparent hover:border-blue-100">
+                      <div key={idx} className="flex justify-between items-center px-4 py-3 hover:bg-emerald-50/30 rounded-2xl transition-colors border border-transparent hover:border-emerald-50">
                         <span className="text-sm font-bold text-gray-700">{student.name}</span>
-                        <span className="text-xs font-black bg-blue-100 text-blue-700 w-8 h-8 flex items-center justify-center rounded-xl shadow-sm shadow-blue-100/50">{student.answer}</span>
+                        <span className="text-xs font-black bg-emerald-400 text-emerald-950 w-8 h-8 flex items-center justify-center rounded-xl shadow-sm shadow-emerald-100/50">{student.answer}</span>
                       </div>
                     ))}
                     {currentStat.tkpPoint4.length === 0 && <div className="text-center text-gray-400 text-sm font-medium py-6">Tidak ada peserta</div>}
@@ -478,25 +477,25 @@ export default function ClassReviewMode() {
                 </div>
               </div>
 
-              {/* Card Poin 1,2,3 */}
-              <div className="bg-white rounded-3xl shadow-sm border border-orange-100 overflow-hidden flex flex-col max-h-[250px]">
-                <div className="bg-gradient-to-r from-orange-500 to-orange-400 px-5 py-4 flex justify-between items-center text-white">
+              {/* 🌟 Card Poin 1,2,3 (Gabungan) */}
+              <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden flex flex-col max-h-[250px]">
+                <div className="bg-gray-100 px-5 py-4 flex justify-between items-center text-gray-700">
                   <div className="flex items-center gap-2 font-bold">
-                    <AlertTriangle className="w-5 h-5 opacity-90" /> Poin 1-3 (Kurang Tepat)
+                    <AlertTriangle className="w-5 h-5 opacity-70 text-gray-500" /> Poin 1-3 (Kurang Tepat)
                   </div>
-                  <span className="bg-white/20 text-white px-3 py-1 rounded-xl text-sm font-black backdrop-blur-sm">{currentStat.tkpPointOthers.length}</span>
+                  <span className="bg-gray-200/70 text-gray-600 px-3 py-1 rounded-xl text-sm font-black backdrop-blur-sm">{currentStat.tkpPointOthers.length}</span>
                 </div>
                 <div className="p-3 overflow-y-auto scrollbar-thin">
                   <div className="space-y-1.5">
                     {currentStat.tkpPointOthers.map((student, idx) => (
-                      <div key={idx} className="flex justify-between items-center px-4 py-3 hover:bg-orange-50 rounded-2xl transition-colors border border-transparent hover:border-orange-100">
-                        <span className="text-sm font-bold text-gray-700 truncate mr-3">{student.name}</span>
+                      <div key={idx} className="flex justify-between items-center px-4 py-3 hover:bg-gray-50 rounded-2xl transition-colors border border-transparent hover:border-gray-200">
+                        <span className="text-sm font-bold text-gray-600 truncate mr-3">{student.name}</span>
                         <div className="flex items-center gap-2 flex-shrink-0">
-                          <span className="text-[10px] font-bold text-orange-400 uppercase">Jawab:</span>
+                          <span className="text-[10px] font-bold text-gray-400 uppercase">Jawab:</span>
                           <span className={`text-xs font-black px-2 h-8 flex items-center justify-center rounded-xl shadow-sm
-                            ${student.points === 3 ? 'bg-amber-100 text-amber-700 shadow-amber-100/50' :
-                              student.points === 2 ? 'bg-orange-100 text-orange-700 shadow-orange-100/50' :
-                              'bg-rose-100 text-rose-700 shadow-rose-100/50'
+                            ${student.points === 3 ? 'bg-emerald-200 text-emerald-900 border border-emerald-300/30' :
+                              student.points === 2 ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' :
+                              'bg-gray-50 text-gray-500 border border-gray-200'
                             }`}
                           >
                             {student.answer} (Poin {student.points})
