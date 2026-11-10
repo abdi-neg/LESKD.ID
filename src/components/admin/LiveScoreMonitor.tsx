@@ -55,12 +55,12 @@ export default function LiveScoreMonitor() {
   const syncRef = useRef<() => Promise<void>>(async () => {});
 
   const syncLiveMonitorData = useCallback(async () => {
-    // 🌟 PERBAIKAN 1: Hapus select('*') yang menarik JSON raksasa.
-    // Kita hanya menarik kolom esensial agar HP Admin tidak lag saat ada 200 data.
+    // 🌟 PERBAIKAN 1: Hapus select('*') agar hemat kuota.
+    // 🌟 PERBAIKAN 2: Gunakan order('started_at') agar data terbaru selalu muncul di limit 200 teratas.
     const { data: examData, error: examError } = await supabase
       .from('exam_results')
       .select('id, participant_id, user_name, package_type, package_name, score_tiu, score_twk, score_tkp, total_score, passed, status, started_at, completed_at, duration_seconds') 
-      .order('id', { ascending: false })
+      .order('started_at', { ascending: false })
       .limit(200);
 
     if (examError || !examData) {
@@ -118,8 +118,7 @@ export default function LiveScoreMonitor() {
       setCountdown((prev) => (prev > 1 ? prev - 1 : 5));
     }, 1000);
 
-    // 🌟 PERBAIKAN 2: Timer untuk memaksa HP Admin menghitung sendiri durasi sesi 'in_progress' setiap detik
-    // Ini mengobati penyakit timer peserta yang "beku" saat jaringan mereka terputus.
+    // 🌟 PERBAIKAN 3: Timer mandiri HP Admin (Anti-beku)
     const tickTimer = setInterval(() => {
       setNowTick(Date.now());
     }, 1000);
@@ -434,9 +433,7 @@ export default function LiveScoreMonitor() {
                   const sessionStatus = String(r.status || '').toLowerCase().trim();
                   const isCompleted = sessionStatus === 'completed' || sessionStatus === 'selesai';
                   
-                  // 🌟 PERBAIKAN 3: Kalkulasi durasi realtime mandiri (anti beku)
-                  // Jika masih in_progress, ambil durasi selisih antara Date.now() dan r.started_at
-                  // Jika sudah completed, tampilkan durasi final dari database (r.duration_seconds)
+                  // 🌟 PERBAIKAN 4: Kalkulasi durasi realtime mandiri (anti beku)
                   const displaySeconds = isCompleted 
                     ? (r.duration_seconds || 0) 
                     : (r.started_at ? Math.floor((nowTick - new Date(r.started_at).getTime()) / 1000) : 0);
