@@ -8,11 +8,12 @@ export default function LandingPage() {
   return (
     <div className="min-h-screen bg-slate-50 font-sans antialiased selection:bg-blue-200">
       
-      {/* ─── HEADER BARU (Clean & Premium) ─── */}
+      {/* ─── HEADER BARU (Clean & Premium dengan Logo Warna Biru Asli) ─── */}
       <nav className="bg-white/80 backdrop-blur-md border-b border-slate-200 py-4 px-6 md:px-12 flex items-center justify-between sticky top-0 z-50 shadow-sm">
-         {/* Logo Diperbesar */}
-         <div className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight cursor-pointer">
-            LESKD<span className="text-[#1e3a8a]">.ID</span>
+         {/* Logo dengan warna biru asli LESKD */}
+         <div className="text-2xl md:text-3xl font-black tracking-tight cursor-pointer">
+            <span className="text-[#1e3a8a]">LESKD</span>
+            <span className="text-slate-900">.ID</span>
          </div>
          
          <div className="flex items-center gap-4 md:gap-6">
@@ -21,7 +22,7 @@ export default function LandingPage() {
             </span>
             {/* Tombol Masuk Diperjelas & Dibuat Elegan */}
             <button 
-              onClick={() => navigate('/login')} // Sesuaikan dengan rute login Anda
+              onClick={() => navigate('/login')} 
               className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-[#1e3a8a] px-5 py-2.5 rounded-xl text-sm font-bold transition-all border border-slate-200"
             >
                <User className="w-4 h-4" />
