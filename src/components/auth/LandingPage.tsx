@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { 
   Shield, 
   Users,
-  USer,
+  User,
   MessageCircle, 
   Instagram, 
   Facebook, 
