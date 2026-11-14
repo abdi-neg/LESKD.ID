@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { 
   Shield, 
-  Users,
-  User,
+  Users, 
+  User, 
   MessageCircle, 
   Instagram, 
   Facebook, 
@@ -49,13 +49,13 @@ export default function LandingPage() {
               <span className="hidden md:block text-xs font-bold text-slate-400 uppercase tracking-widest">
                 Platform Tryout CAT ASN
               </span>
-              {/* Tombol Masuk Diperjelas & Dibuat Elegan */}
+              {/* Tombol Masuk / Buat Akun */}
               <button 
                 onClick={() => setModal('participant-login')} 
                 className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-[#1e3a8a] px-5 py-2.5 rounded-xl text-sm font-bold transition-all border border-slate-200"
               >
                  <User className="w-4 h-4" />
-                 <span className="hidden sm:inline">Masuk Siswa</span>
+                 <span className="hidden sm:inline">Masuk / Buat Akun</span>
               </button>
            </div>
         </nav>
