@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Upload, FileText, X, Check, AlertCircle, Download, Loader2, ChevronDown, ChevronUp, Eye, Package } from 'lucide-react';
 import mammoth from 'mammoth';
@@ -28,6 +28,7 @@ const PKG_CATEGORIES: Record<PackageType, Category[]> = {
   MINI_TIU: ['TIU'],
   MINI_TWK: ['TWK'],
   MINI_TKP: ['TKP'],
+  TO_SUBKATEGORI: ['TWK', 'TIU', 'TKP'], // 🌟 Bebaskan pilihan kategori untuk paket Drilling Sub-Kategori
   FULL: ['TIU', 'TWK', 'TKP'],
 };
 
@@ -172,7 +173,7 @@ function downloadTemplate(category: Category) {
 }
 
 export default function DocxImporter({ packageId, packageType, onImported }: Props) {
-  const allowedCategories = PKG_CATEGORIES[packageType];
+  const allowedCategories = PKG_CATEGORIES[packageType] ?? ['TWK', 'TIU', 'TKP'];
   const [category, setCategory] = useState<Category>(allowedCategories[0]);
   const [parsedQuestions, setParsedQuestions] = useState<ParsedQuestion[]>([]);
   const [parseErrors, setParseErrors] = useState<string[]>([]);
@@ -182,6 +183,14 @@ export default function DocxImporter({ packageId, packageType, onImported }: Pro
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
   const [parsing, setParsing] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // 🌟 Sinkronisasi kategori aktif saat berganti paket
+  useEffect(() => {
+    const nextAllowed = PKG_CATEGORIES[packageType] ?? ['TWK', 'TIU', 'TKP'];
+    if (!nextAllowed.includes(category)) {
+      setCategory(nextAllowed[0]);
+    }
+  }, [packageType, category]);
 
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -382,7 +391,6 @@ export default function DocxImporter({ packageId, packageType, onImported }: Pro
                               <span className={`font-bold w-4 flex-shrink-0 ${isCorrect ? 'text-[#10b981]' : 'text-gray-400'}`}>{opt}.</span>
                               <span className="flex-1">{val}</span>
                               {category === 'TKP' && poinVal !== undefined && (
-                                // 🌟 UBAH WARNA POIN TKP SAAT PREVIEW MENJADI AMBER
                                 <span className="bg-amber-50 text-amber-700 font-bold px-2 py-0.5 rounded border border-amber-200">
                                   {poinVal} Poin
                                 </span>
