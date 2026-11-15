@@ -1,32 +1,43 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Brain, Globe, Heart, Zap, Clock, BookOpen, ChevronRight, Key, RefreshCw } from 'lucide-react';
+import { 
+  Brain, 
+  Globe, 
+  Heart, 
+  Zap, 
+  Target, // ✅ Ikon khusus untuk TO_SUBKATEGORI
+  Clock, 
+  BookOpen, 
+  ChevronRight, 
+  Key, 
+  RefreshCw 
+} from 'lucide-react';
 import { useApp, packageTypeToExamType } from '../../context/AppContext';
 import { ExamPackage, PackageType } from '../../types';
 import { supabase } from '../../lib/supabase';
 import TokenGate from '../exam/TokenGate';
+import { EXAM_CONFIGS } from '../../data/mockData';
 
-// 🌟 PERUBAHAN WARNA TKP DI SINI 🌟
-const PKG_META: Record<PackageType, {
+// 🌟 KONFIGURASI VISUAL KARTU PAKET (Termasuk TO_SUBKATEGORI) 🌟
+const PKG_META: Record<string, {
   icon: React.ElementType;
   gradient: string;
   tagColor: string;
 }> = {
   MINI_TIU: { icon: Brain, gradient: 'from-blue-500 to-blue-700', tagColor: 'bg-blue-100 text-blue-700' },
   MINI_TWK: { icon: Globe, gradient: 'from-emerald-500 to-emerald-700', tagColor: 'bg-emerald-100 text-emerald-700' },
-  // Mengubah TKP menjadi warna Kuning Emas (Amber) yang premium
   MINI_TKP: { icon: Heart, gradient: 'from-amber-500 to-amber-600', tagColor: 'bg-amber-100 text-amber-700' },
+  TO_SUBKATEGORI: { icon: Target, gradient: 'from-purple-600 to-indigo-700', tagColor: 'bg-purple-100 text-purple-700' },
   FULL: { icon: Zap, gradient: 'from-[#1e3a8a] to-[#1e40af]', tagColor: 'bg-slate-100 text-slate-700' },
 };
 
-const TYPE_LABELS: Record<PackageType, string> = {
+const TYPE_LABELS: Record<string, string> = {
   MINI_TIU: 'Mini Tryout TIU',
   MINI_TWK: 'Mini Tryout TWK',
   MINI_TKP: 'Mini Tryout TKP',
+  TO_SUBKATEGORI: 'Drilling Sub-Kategori',
   FULL: 'Full CAT Simulation',
 };
-
-import { EXAM_CONFIGS } from '../../data/mockData';
 
 export default function ExamCards() {
   const { startExam } = useApp();
@@ -51,7 +62,7 @@ export default function ExamCards() {
   async function handleTokenSuccess() {
     if (!selectedPkg) return;
     setStarting(true);
-    const examType = packageTypeToExamType(selectedPkg.package_type);
+    const examType = packageTypeToExamType(selectedPkg.package_type as PackageType);
     await startExam(examType, selectedPkg);
     setStarting(false);
     setSelectedPkg(null);
@@ -81,16 +92,22 @@ export default function ExamCards() {
     <>
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-xl font-bold text-gray-800">Paket Ujian Tersedia</h2>
-        <button onClick={loadPackages} className="text-gray-400 hover:text-gray-600 transition-colors">
+        <button onClick={loadPackages} className="text-gray-400 hover:text-gray-600 transition-colors" title="Muat Ulang Paket">
           <RefreshCw className="w-4 h-4" />
         </button>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {packages.map((pkg, i) => {
-          const meta = PKG_META[pkg.package_type] ?? PKG_META.FULL;
-          const examType = packageTypeToExamType(pkg.package_type);
-          const config = EXAM_CONFIGS[examType];
+          const normalizedType = (pkg.package_type || 'FULL').toUpperCase();
+          const meta = PKG_META[normalizedType] ?? PKG_META.FULL;
+          const examType = packageTypeToExamType(pkg.package_type as PackageType);
+          
+          // 🌟 Fallback aman agar tidak crash (white screen) jika config belum terdaftar di mockData
+          const config = EXAM_CONFIGS[examType] || { questionCount: 20, timeMinutes: 20 };
+          const displayQuestions = (pkg as any).question_count || (pkg as any).total_questions || (normalizedType === 'TO_SUBKATEGORI' ? 20 : config.questionCount);
+          const displayMinutes = (pkg as any).duration_minutes || (pkg as any).time_minutes || (normalizedType === 'TO_SUBKATEGORI' ? 20 : config.timeMinutes);
+
           return (
             <motion.div
               key={pkg.id}
@@ -98,7 +115,7 @@ export default function ExamCards() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.08 }}
               whileHover={{ y: -6 }}
-              className="group bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden cursor-pointer"
+              className="group bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden cursor-pointer flex flex-col justify-between"
               onClick={() => setSelectedPkg(pkg)}
             >
               <div className={`bg-gradient-to-br ${meta.gradient} p-5`}>
@@ -113,18 +130,20 @@ export default function ExamCards() {
                 <h3 className="text-white font-bold text-sm mt-4 leading-tight">{pkg.name}</h3>
               </div>
 
-              <div className="p-4">
-                <p className="text-gray-500 text-xs leading-relaxed mb-3 line-clamp-2">
-                  {pkg.description || TYPE_LABELS[pkg.package_type]}
-                </p>
-                <div className="flex items-center gap-3 mb-4 text-xs text-gray-500">
-                  <div className="flex items-center gap-1">
-                    <BookOpen className="w-3.5 h-3.5" />
-                    <span>{config.questionCount} Soal</span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <Clock className="w-3.5 h-3.5" />
-                    <span>{config.timeMinutes} Menit</span>
+              <div className="p-4 flex-1 flex flex-col justify-between">
+                <div>
+                  <p className="text-gray-500 text-xs leading-relaxed mb-3 line-clamp-2">
+                    {pkg.description || TYPE_LABELS[normalizedType] || 'Simulasi CAT Terintegrasi'}
+                  </p>
+                  <div className="flex items-center gap-3 mb-4 text-xs text-gray-500">
+                    <div className="flex items-center gap-1">
+                      <BookOpen className="w-3.5 h-3.5" />
+                      <span>{displayQuestions} Soal</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Clock className="w-3.5 h-3.5" />
+                      <span>{displayMinutes} Menit</span>
+                    </div>
                   </div>
                 </div>
                 <motion.button
@@ -154,6 +173,7 @@ export default function ExamCards() {
         {starting && (
           <motion.div
             initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 bg-white/80 backdrop-blur-sm z-50 flex flex-col items-center justify-center gap-4"
