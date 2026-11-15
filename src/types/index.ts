@@ -1,6 +1,6 @@
 export type Category = 'TIU' | 'TWK' | 'TKP';
 export type ExamType = 'TIU' | 'TWK' | 'TKP' | 'FULL';
-export type PackageType = 'MINI_TIU' | 'MINI_TWK' | 'MINI_TKP' | 'FULL';
+export type PackageType = 'MINI_TIU' | 'MINI_TWK' | 'MINI_TKP' | 'TO_SUBKATEGORI' | 'FULL';
 export type AnswerOption = 'A' | 'B' | 'C' | 'D' | 'E';
 export type UserRole = 'participant' | 'admin' | 'super_admin';
 export type SessionStatus = 'in_progress' | 'completed';
@@ -24,7 +24,8 @@ export type OptionType = 'text' | 'image';
 export interface Question {
   id: string;
   category: Category;
-  sub_category: string; // 🌟 TAMBAHKAN BARIS INI: Penanda sub-materi (cth: Silogisme, Nasionalisme)
+  sub_category: string; // 🌟 Penanda sub-materi (cth: Silogisme, Nasionalisme)
+  sub_kategori?: string; // 🌟 Fallback normalisasi lintas komponen
   question_text: string;
   option_a: string;
   option_b: string;
@@ -33,7 +34,18 @@ export interface Question {
   option_e: string;
   correct_answer: AnswerOption;
   explanation: string;
+  points_a?: number;
+  points_b?: number;
+  points_c?: number;
+  points_d?: number;
+  points_e?: number;
   image_url?: string | null;
+  explanation_image_url?: string | null;
+  option_a_image?: string | null;
+  option_b_image?: string | null;
+  option_c_image?: string | null;
+  option_d_image?: string | null;
+  option_e_image?: string | null;
   option_type?: OptionType;
   package_id?: string | null;
   created_at?: string;
@@ -51,7 +63,8 @@ export interface ExamPackage {
   is_active: boolean;
   created_by?: string;
   created_at?: string;
-  duration_minutes?: number; // 🌟 TAMBAHAN BARU UNTUK FITUR TIMER
+  duration_minutes?: number; // 🌟 Durasi waktu kustom per paket
+  question_count?: number;
 }
 
 export interface QuestionAnswer {
@@ -62,14 +75,17 @@ export interface QuestionAnswer {
 
 export interface ExamSession {
   id: string;
-  resultId?: string; // 🚀 BERHASIL DITAMBAHKAN: Penghubung UUID hasil ujian dari database Supabase
+  resultId?: string; // 🚀 Penghubung UUID hasil ujian dari database Supabase
   packageId?: string;
   packageName?: string;
+  packageType?: PackageType | string; // 🌟 Penanda tipe paket asli (termasuk TO_SUBKATEGORI)
+  userName?: string;
   examType: ExamType;
   questions: Question[];
   answers: Record<string, QuestionAnswer>;
   currentQuestionIndex: number;
   timeRemaining: number;
+  initialTimeSeconds?: number; // 🌟 Penanda waktu awal di memori lokal
   status: SessionStatus;
   startedAt: Date;
   completedAt?: Date;
@@ -86,9 +102,10 @@ export interface ExamScores {
 export interface ExamResult {
   id: string;
   participant_id: string;
+  user_name?: string;
   package_id?: string | null;
   package_name: string;
-  package_type: PackageType;
+  package_type: PackageType | string;
   score_tiu: number;
   score_twk: number;
   score_tkp: number;
@@ -96,10 +113,13 @@ export interface ExamResult {
   questions_correct: number;
   questions_total: number;
   passed: boolean;
+  status?: SessionStatus | string | null;
+  started_at?: string;
   duration_seconds: number;
   completed_at: string;
   participant_name?: string;
-  // 🌟 TAMBAHKAN BARIS INI: Untuk menampung data objek diagnosis mikro dari database JSONB
+  review_snapshot?: any;
+  // 🌟 Data objek diagnosis mikro dari database JSONB
   diagnostic_breakdown?: Record<string, { correct: number; total: number; percentage: number }>;
 }
 
