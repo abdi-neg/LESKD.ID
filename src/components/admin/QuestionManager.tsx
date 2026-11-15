@@ -16,7 +16,7 @@ const PACKAGE_REQUIREMENTS: Record<PackageType, Partial<Record<Category, number>
   MINI_TIU: { TIU: 35 },
   MINI_TWK: { TWK: 30 },
   MINI_TKP: { TKP: 45 },
-  TO_SUBKATEGORI: {}, // 🌟 Fleksibel tanpa batas kuota kaku
+  TO_SUBKATEGORI: {},
   FULL: { TIU: 35, TWK: 30, TKP: 45 },
 };
 
@@ -24,13 +24,13 @@ const TYPE_LABELS: Record<PackageType, string> = {
   MINI_TIU: 'Mini Tryout TIU',
   MINI_TWK: 'Mini Tryout TWK',
   MINI_TKP: 'Mini Tryout TKP',
-  TO_SUBKATEGORI: 'Drilling Sub-Kategori', // 🌟 Label untuk TO_SUBKATEGORI
+  TO_SUBKATEGORI: 'Drilling Sub-Kategori',
   FULL: 'Full CAT Simulasi',
 };
 
 const emptyForm = {
   category: 'TIU' as Category,
-  sub_category: 'Umum', // 🌟 Nilai bawaan sub-materi
+  sub_category: 'Umum',
   question_text: '',
   option_a: '',
   option_b: '',
@@ -49,7 +49,6 @@ const emptyForm = {
   points_e: 0,
 };
 
-// 🌟 UBAH WARNA TKP MENJADI AMBER
 const catColors: Record<string, string> = {
   TIU: 'bg-blue-100 text-blue-700',
   TWK: 'bg-emerald-100 text-emerald-700',
@@ -69,9 +68,9 @@ function PackageCompletenessCard({ pkg, counts, requirements }: { pkg: ExamPacka
 
   return (
     <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100 text-xs text-gray-500 flex gap-4">
-      <div><b>TIU:</b> {counts.TIU} / {requirements?.TIU || 0}</div>
-      <div><b>TWK:</b> {counts.TWK} / {requirements?.TWK || 0}</div>
-      <div><b>TKP:</b> {counts.TKP} / {requirements?.TKP || 0}</div>
+      <div><b>TIU:</b> {counts.TIU} / {requirements?.TIU ?? 0}</div>
+      <div><b>TWK:</b> {counts.TWK} / {requirements?.TWK ?? 0}</div>
+      <div><b>TKP:</b> {counts.TKP} / {requirements?.TKP ?? 0}</div>
     </div>
   );
 }
@@ -92,7 +91,7 @@ export default function QuestionManager() {
   const [filterCat, setFilterCat] = useState<Category | 'ALL'>('ALL');
   const [search, setSearch] = useState('');
   const [deleteId, setDeleteId] = useState<string | null>(null);
-  
+
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -142,7 +141,7 @@ export default function QuestionManager() {
       setSearch('');
       setFilterCat('ALL');
       loadQuestions();
-      
+
       if (selectedPkg.package_type === 'MINI_TIU') {
         setForm(prev => ({ ...prev, category: 'TIU' }));
       } else if (selectedPkg.package_type === 'MINI_TWK') {
@@ -167,11 +166,13 @@ export default function QuestionManager() {
 
   const requirements = selectedPkg ? (PACKAGE_REQUIREMENTS[selectedPkg.package_type] ?? {}) : {};
   const isCategoryLocked = selectedPkg?.package_type !== 'FULL' && selectedPkg?.package_type !== 'TO_SUBKATEGORI';
+  const isBusy = saving ? true : uploadingImage;
 
   const filtered = questions.filter((q) => {
-    const matchCat = filterCat === 'ALL' || q.category === filterCat;
-    const matchSearch = q.question_text.toLowerCase().includes(search.toLowerCase()) || 
-                        (q.sub_category && q.sub_category.toLowerCase().includes(search.toLowerCase()));
+    const matchCat = filterCat === 'ALL' ? true : q.category === filterCat;
+    const qTextMatch = q.question_text.toLowerCase().includes(search.toLowerCase());
+    const subTextMatch = q.sub_category ? q.sub_category.toLowerCase().includes(search.toLowerCase()) : false;
+    const matchSearch = qTextMatch ? true : subTextMatch;
     return matchCat && matchSearch;
   });
 
@@ -235,7 +236,7 @@ export default function QuestionManager() {
 
     let imageUrl = form.image_url;
     let explanationImageUrl = form.explanation_image_url;
-    let finalOptions = {
+    const finalOptions = {
       option_a: form.option_a,
       option_b: form.option_b,
       option_c: form.option_c,
@@ -262,7 +263,7 @@ export default function QuestionManager() {
         if (fileObj) {
           const uploadedUrl = await uploadImage(fileObj);
           if (uploadedUrl) {
-            finalOptions[`option_${opt.toLowerCase()}` as keyof typeof finalOptions] = uploadedUrl; } } } setUploadingImage(false); }  const payload = { ...form, ...finalOptions, image_url: imageUrl, explanation_image_url: explanationImageUrl, package_id: selectedPkg.id };  if (editId) { await supabase.from('questions').update(payload).eq('id', editId); } else { await supabase.from('questions').insert(payload); }  setSaving(false); cancelForm(); loadQuestions(); }  function startEdit(q: any) { setForm({ category: q.category, sub_category: q.sub_category ?? 'Umum', // 🌟 Memuat data edit sub-materi question_text: q.question_text, option_a: q.option_a, option_b: q.option_b, option_c: q.option_c, option_d: q.option_d, option_e: q.option_e, correct_answer: q.correct_answer, explanation: q.explanation, image_url: q.image_url ?? null, explanation_image_url: q.explanation_image_url ?? null, option_type: q.option_type ?? 'text', points_a: q.points_a ?? 0, points_b: q.points_b ?? 0, points_c: q.points_c ?? 0, points_d: q.points_d ?? 0, points_e: q.points_e ?? 0, }); setImageFile(null); setImagePreview(q.image_url ?? null);  setExpImageFile(null); setExpImagePreview(q.explanation_image_url ?? null);  const initialPreviews: Record<string, string \vert{} null> = { A: null, B: null, C: null, D: null, E: null }; if (q.option_type === 'image') { OPTIONS.forEach(opt => { initialPreviews[opt] = q[`option_${opt.toLowerCase()}`] ?? null;
+            finalOptions[`option_${opt.toLowerCase()}` as keyof typeof finalOptions] = uploadedUrl; } } } setUploadingImage(false); }  const payload = { ...form, ...finalOptions, image_url: imageUrl, explanation_image_url: explanationImageUrl, package_id: selectedPkg.id };  if (editId) { await supabase.from('questions').update(payload).eq('id', editId); } else { await supabase.from('questions').insert(payload); }  setSaving(false); cancelForm(); loadQuestions(); }  function startEdit(q: any) { setForm({ category: q.category, sub_category: q.sub_category ?? 'Umum', question_text: q.question_text, option_a: q.option_a, option_b: q.option_b, option_c: q.option_c, option_d: q.option_d, option_e: q.option_e, correct_answer: q.correct_answer, explanation: q.explanation, image_url: q.image_url ?? null, explanation_image_url: q.explanation_image_url ?? null, option_type: q.option_type ?? 'text', points_a: q.points_a ?? 0, points_b: q.points_b ?? 0, points_c: q.points_c ?? 0, points_d: q.points_d ?? 0, points_e: q.points_e ?? 0, }); setImageFile(null); setImagePreview(q.image_url ?? null);  setExpImageFile(null); setExpImagePreview(q.explanation_image_url ?? null);  const initialPreviews: Record<string, string \vert{} null> = { A: null, B: null, C: null, D: null, E: null }; if (q.option_type === 'image') { OPTIONS.forEach(opt => { initialPreviews[opt] = q[`option_${opt.toLowerCase()}`] ?? null;
       });
     }
     setOptImageFiles({ A: null, B: null, C: null, D: null, E: null });
@@ -287,7 +288,7 @@ export default function QuestionManager() {
     setImageFile(null);
     setImagePreview(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
-    
+
     setExpImageFile(null);
     setExpImagePreview(null);
     if (expFileInputRef.current) expFileInputRef.current.value = '';
@@ -331,7 +332,6 @@ export default function QuestionManager() {
             >
               {selectedPkg ? (
                 <div className="flex items-center gap-2 flex-1 min-w-0">
-                  {/* 🌟 WARNA BADGE TERMASUK TO_SUBKATEGORI */}
                   <span className={`text-xs font-bold px-2 py-0.5 rounded-md flex-shrink-0 ${
                     selectedPkg.package_type === 'MINI_TIU' ? 'bg-blue-100 text-blue-700' :
                     selectedPkg.package_type === 'MINI_TWK' ? 'bg-emerald-100 text-emerald-700' :
@@ -361,7 +361,6 @@ export default function QuestionManager() {
                       className={`w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-gray-50 transition-colors border-b border-gray-50 last:border-0
                         ${selectedPkg?.id === pkg.id ? 'bg-blue-50' : ''}`}
                     >
-                      {/* 🌟 WARNA BADGE DROPDOWN TERMASUK TO_SUBKATEGORI */}
                       <span className={`text-xs font-bold px-2 py-0.5 rounded-md flex-shrink-0 ${
                         pkg.package_type === 'MINI_TIU' ? 'bg-blue-100 text-blue-700' :
                         pkg.package_type === 'MINI_TWK' ? 'bg-emerald-100 text-emerald-700' :
@@ -407,7 +406,7 @@ export default function QuestionManager() {
             <motion.button
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
-              onClick={() => { 
+              onClick={() => {
                 setForm(prev => ({ ...emptyForm, category: prev.category }));
                 setEditId(null);
                 setImageFile(null);
@@ -418,8 +417,8 @@ export default function QuestionManager() {
                 setOptImagePreviews({ A: null, B: null, C: null, D: null, E: null });
                 if (fileInputRef.current) fileInputRef.current.value = '';
                 if (expFileInputRef.current) expFileInputRef.current.value = '';
-                setShowForm(true); 
-                setShowImporter(false); 
+                setShowForm(true);
+                setShowImporter(false);
               }}
               className="flex items-center gap-2 bg-[#1e3a8a] hover:bg-[#1e40af] text-white font-semibold px-4 py-2.5 rounded-xl transition-colors text-sm"
             >
@@ -456,7 +455,6 @@ export default function QuestionManager() {
                     <span className="text-sm font-semibold text-[#1e3a8a]">{selectedPkg.name}</span>
                   </div>
 
-                  {/* 🌟 PERBAIKAN FORM META: Mengizinkan pemilihan Kategori pada FULL dan TO_SUBKATEGORI */}
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1.5">Kategori</label>
@@ -475,7 +473,6 @@ export default function QuestionManager() {
                       )}
                     </div>
 
-                    {/* 🌟 FORM INPUT BARU: Sub-Materi Spesifik */}
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1.5">Sub-Materi / Topik Bab</label>
                       <input
@@ -500,7 +497,7 @@ export default function QuestionManager() {
                         </select>
                       </div>
                     ) : (
-                      <div className="hidden md:block" /> /* Placeholder penyeimbang grid jika kategori TKP */
+                      <div className="hidden md:block" />
                     )}
                   </div>
 
@@ -560,7 +557,7 @@ export default function QuestionManager() {
                           <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
                             <div className="flex-1 w-full">
                               <label className="block text-xs font-medium text-gray-600 mb-1">Opsi {opt}</label>
-                              
+
                               {form.option_type === 'image' ? (
                                 <div className="space-y-2">
                                   {optImagePreviews[opt] ? (
@@ -595,7 +592,10 @@ export default function QuestionManager() {
                                   min="1"
                                   max="5"
                                   value={form[keyPts] as number}
-                                  onChange={(e) => setForm({ ...form, [keyPts]: parseInt(e.target.value) || 0 })}
+                                  onChange={(e) => {
+                                    const parsed = parseInt(e.target.value, 10);
+                                    setForm({ ...form, [keyPts]: Number.isNaN(parsed) ? 0 : parsed });
+                                  }}
                                   required
                                   className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm text-center font-bold bg-amber-50 text-amber-900 focus:ring-amber-500"
                                 />
@@ -638,8 +638,8 @@ export default function QuestionManager() {
 
                   <div className="flex gap-3 justify-end">
                     <button type="button" onClick={cancelForm} className="px-5 py-2.5 rounded-xl border border-gray-200 text-gray-600 font-medium text-sm">Batal</button>
-                    <button type="submit" disabled={saving || uploadingImage} className="px-5 py-2.5 rounded-xl bg-[#10b981] text-white font-semibold text-sm disabled:opacity-60 flex items-center gap-1.5">
-                      {(saving || uploadingImage) && <Loader2 className="w-4 h-4 animate-spin" />}
+                    <button type="submit" disabled={isBusy} className="px-5 py-2.5 rounded-xl bg-[#10b981] text-white font-semibold text-sm disabled:opacity-60 flex items-center gap-1.5">
+                      {isBusy && <Loader2 className="w-4 h-4 animate-spin" />}
                       {saving ? 'Menyimpan...' : editId ? 'Simpan Perubahan' : 'Tambah Soal'}
                     </button>
                   </div>
@@ -670,11 +670,11 @@ export default function QuestionManager() {
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-2 flex-wrap">
-                      <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${catColors[q.category]}`}>{q.category}</span>  {/* 🌟 EMBED BARU: Tampilkan Tag Sub-Materi Spesifik di Sebelah Kategori Soal */} <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-gray-100 text-gray-600 border border-gray-200/60 uppercase tracking-wide"> {q.sub_category \vert{}\vert{} 'Umum'} </span>  <span className="text-xs text-gray-400">#{q.id.slice(0, 8)}</span> </div> <p className="text-sm text-gray-700 font-medium line-clamp-2">{q.question_text}</p> <div className="mt-2 flex flex-wrap gap-1.5"> {OPTIONS.map((opt) => { const val = q[`option_${opt.toLowerCase()}` as keyof Question] as string;
+                      <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${catColors[q.category]}`}>{q.category}</span>  <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-gray-100 text-gray-600 border border-gray-200/60 uppercase tracking-wide"> {q.sub_category ? q.sub_category : 'Umum'} </span>  <span className="text-xs text-gray-400">#{q.id.slice(0, 8)}</span> </div> <p className="text-sm text-gray-700 font-medium line-clamp-2">{q.question_text}</p> <div className="mt-2 flex flex-wrap gap-1.5"> {OPTIONS.map((opt) => { const val = q[`option_${opt.toLowerCase()}` as keyof Question] as string;
                         const isCorrect = opt === q.correct_answer && q.category !== 'TKP';
                         const pts = q[`points_${opt.toLowerCase()}` as any]; return ( <span key={opt} className={`text-xs px-2 py-0.5 rounded-md ${isCorrect ? 'bg-[#10b981] text-white font-semibold' : 'bg-gray-100 text-gray-500'}`}>
-                            {opt}: {val?.slice(0, 15)}{val?.length > 15 ? '...' : ''} 
-                            {q.category === 'TKP' && <b className="ml-1 text-amber-700">({pts || 0}p)</b>}
+                            {opt}: {val?.slice(0, 15)}{val?.length > 15 ? '...' : ''}
+                            {q.category === 'TKP' && <b className="ml-1 text-amber-700">({pts ?? 0}p)</b>}
                           </span>
                         );
                       })}
@@ -682,7 +682,7 @@ export default function QuestionManager() {
                   </div>
                   <div className="flex items-center gap-1.5 flex-shrink-0">
                     <button onClick={() => startEdit(q)} className="w-8 h-8 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center"><Edit3 className="w-4 h-4" /></button>
-                    <button onClick={() => { if(confirm('Hapus soal ini?')) confirmDelete(q.id) }} className="w-8 h-8 bg-red-50 text-red-500 rounded-lg flex items-center justify-center"><Trash2 className="w-4 h-4" /></button>
+                    <button onClick={() => { if (confirm('Hapus soal ini?')) confirmDelete(q.id); }} className="w-8 h-8 bg-red-50 text-red-500 rounded-lg flex items-center justify-center"><Trash2 className="w-4 h-4" /></button>
                   </div>
                 </div>
               </motion.div>
