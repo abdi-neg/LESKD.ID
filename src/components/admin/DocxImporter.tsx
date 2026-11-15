@@ -7,7 +7,7 @@ import { supabase } from '../../lib/supabase';
 
 interface ParsedQuestion {
   category: Category;
-  sub_category: string; 
+  sub_category: string;
   question_text: string;
   option_a: string;
   option_b: string;
@@ -17,18 +17,18 @@ interface ParsedQuestion {
   correct_answer: AnswerOption;
   explanation: string;
   package_id: string;
-  points_a?: number | null;
-  points_b?: number | null;
-  points_c?: number | null;
-  points_d?: number | null;
-  points_e?: number | null;
+  points_a?: any;
+  points_b?: any;
+  points_c?: any;
+  points_d?: any;
+  points_e?: any;
 }
 
 const PKG_CATEGORIES: Record<PackageType, Category[]> = {
   MINI_TIU: ['TIU'],
   MINI_TWK: ['TWK'],
   MINI_TKP: ['TKP'],
-  TO_SUBKATEGORI: ['TWK', 'TIU', 'TKP'], // 🌟 Bebaskan pilihan kategori untuk paket Drilling Sub-Kategori
+  TO_SUBKATEGORI: ['TWK', 'TIU', 'TKP'],
   FULL: ['TIU', 'TWK', 'TKP'],
 };
 
@@ -44,12 +44,15 @@ const CATEGORY_LABELS: Record<Category, string> = {
   TKP: 'TKP',
 };
 
-// 🌟 UBAH WARNA TKP MENJADI AMBER
 const CAT_COLORS: Record<Category, string> = {
   TIU: 'bg-blue-100 text-blue-700',
   TWK: 'bg-emerald-100 text-emerald-700',
   TKP: 'bg-amber-100 text-amber-700',
 };
+
+// Karakter garis tegak (ASCII 124) dibuat via fungsi agar aman dari konversi teks LaTeX
+const PIPE_CHAR = String.fromCharCode(124);
+const MARKER_PATTERN = ['A', 'B', 'C', 'D', 'E', 'KUNCI', 'PEMBAHASAN', 'SOAL', 'SUB_KATEGORI'].join(PIPE_CHAR);
 
 function parseDocxText(rawText: string, category: Category): { questions: ParsedQuestion[]; errors: string[] } {
   const questions: ParsedQuestion[] = [];
@@ -73,13 +76,13 @@ function parseDocxText(rawText: string, category: Category): { questions: Parsed
     const lineNum = idx + 1;
     try {
       const extract = (marker: string): string => {
-        const regex = new RegExp(`\\[${marker}\\]([\\s\\S]*?)(?=\\[(?:A|B|C|D|E|KUNCI|PEMBAHASAN|SOAL|SUB_KATEGORI)\\]|$)`, 'i');
+        const regex = new RegExp(`\\[${marker}\\]([\\s\\S]*?)(?=\\[(?:${MARKER_PATTERN})\\]${PIPE_CHAR}$)`, 'i');
         const match = block.match(regex);
         return match ? match[1].trim() : '';
       };
 
-      // ─── 🌟 PERBAIKAN LOGIKA: Ambil hasil extract, lalu split berdasarkan enter dan kunci baris pertama saja ───
-      const rawSub = extract('SUB_KATEGORI') || 'Umum';
+      const extractedSub = extract('SUB_KATEGORI');
+      const rawSub = extractedSub ? extractedSub : 'Umum';
       const sub_category = rawSub.split('\n')[0].trim();
 
       let question_text = block.split(/\[A\]/i)[0].trim();
@@ -97,7 +100,9 @@ function parseDocxText(rawText: string, category: Category): { questions: Parsed
         errors.push(`Soal #${lineNum}: teks soal tidak ditemukan.`);
         return;
       }
-      if (!rawA || !rawB || !rawC || !rawD || !rawE) {
+
+      const allOptionsPresent = Boolean(rawA && rawB && rawC && rawD && rawE);
+      if (!allOptionsPresent) {
         errors.push(`Soal #${lineNum}: satu atau lebih pilihan jawaban (A-E) tidak lengkap.`);
         return;
       }
@@ -107,22 +112,22 @@ function parseDocxText(rawText: string, category: Category): { questions: Parsed
         return;
       }
 
-      let pA: number | null = null;
-      let pB: number | null = null;
-      let pC: number | null = null;
-      let pD: number | null = null;
-      let pE: number | null = null;
+      let pA: any = null;
+      let pB: any = null;
+      let pC: any = null;
+      let pD: any = null;
+      let pE: any = null;
 
       if (category === 'TKP') {
         const parseOpsiPoin = (rawOpsi: string, label: string) => {
-          if (rawOpsi.includes('|')) {
-            const parts = rawOpsi.split('|');
+          if (rawOpsi.includes(PIPE_CHAR)) {
+            const parts = rawOpsi.split(PIPE_CHAR);
             const teks = parts[0].trim();
             const matchPoin = parts[1].match(/\d+/);
             const poin = matchPoin ? parseInt(matchPoin[0], 10) : 0;
             return { teks, poin };
           }
-          errors.push(`Soal #${lineNum} (Opsi ${label}): Format poin "|" tidak ditemukan. Diatur otomatis ke 0 poin.`);
+          errors.push(`Soal #${lineNum} (Opsi ${label}): Format poin pemisah tidak ditemukan. Diatur otomatis ke 0 poin.`);
           return { teks: rawOpsi, poin: 0 };
         };
 
@@ -133,16 +138,18 @@ function parseDocxText(rawText: string, category: Category): { questions: Parsed
         const resE = parseOpsiPoin(rawE, 'E'); rawE = resE.teks; pE = resE.poin;
       }
 
+      const resolvedAnswer = category === 'TKP' ? (rawKunci ? rawKunci : 'A') : rawKunci;
+
       questions.push({
         category,
-        sub_category, 
+        sub_category,
         question_text,
         option_a: rawA,
         option_b: rawB,
         option_c: rawC,
         option_d: rawD,
         option_e: rawE,
-        correct_answer: (category === 'TKP' ? (rawKunci || 'A') : rawKunci) as AnswerOption,
+        correct_answer: resolvedAnswer as AnswerOption,
         explanation,
         package_id: '',
         points_a: pA,
@@ -159,14 +166,11 @@ function parseDocxText(rawText: string, category: Category): { questions: Parsed
   return { questions, errors };
 }
 
-// 🌟 FUNGSI DOWNLOAD BARU YANG ANTI-CORRUPT
 function downloadTemplate(category: Category) {
   const fileUrl = `/templates/Template_${category}.docx`;
-  
   const a = document.createElement('a');
   a.href = fileUrl;
-  a.download = `Template_${category}.docx`; // Nama file saat terdownload
-  
+  a.download = `Template_${category}.docx`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -179,12 +183,11 @@ export default function DocxImporter({ packageId, packageType, onImported }: Pro
   const [parseErrors, setParseErrors] = useState<string[]>([]);
   const [fileName, setFileName] = useState('');
   const [saving, setSaving] = useState(false);
-  const [savedCount, setSavedCount] = useState<number | null>(null);
-  const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
+  const [savedCount, setSavedCount] = useState<any>(null);
+  const [expandedIdx, setExpandedIdx] = useState<any>(null);
   const [parsing, setParsing] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  // 🌟 Sinkronisasi kategori aktif saat berganti paket
   useEffect(() => {
     const nextAllowed = PKG_CATEGORIES[packageType] ?? ['TWK', 'TIU', 'TKP'];
     if (!nextAllowed.includes(category)) {
@@ -205,7 +208,7 @@ export default function DocxImporter({ packageId, packageType, onImported }: Pro
       const arrayBuffer = await file.arrayBuffer();
       const result = await mammoth.extractRawText({ arrayBuffer });
       const { questions, errors } = parseDocxText(result.value, category);
-      
+
       const withPkg = questions.map((q) => ({ ...q, package_id: packageId }));
       setParsedQuestions(withPkg);
       setParseErrors(errors);
@@ -359,7 +362,7 @@ export default function DocxImporter({ packageId, packageType, onImported }: Pro
                     {i + 1}
                   </span>
                   <p className="text-sm text-gray-700 font-medium flex-1 line-clamp-1">{q.question_text}</p>
-                  
+
                   <span className="text-xs font-bold bg-gray-200 text-gray-600 px-2 py-0.5 rounded border border-gray-300 flex-shrink-0 uppercase tracking-wide">
                     {q.sub_category}
                   </span>
@@ -385,7 +388,7 @@ export default function DocxImporter({ packageId, packageType, onImported }: Pro
                           const val = q[`option_${opt.toLowerCase()}` as keyof ParsedQuestion] as string;
                           const poinVal = q[`points_${opt.toLowerCase()}` as keyof ParsedQuestion];
                           const isCorrect = category !== 'TKP' && opt === q.correct_answer;
-                          
+
                           return (
                             <div key={opt} className={`flex gap-2 text-xs p-2 rounded-lg ${isCorrect ? 'bg-emerald-50 text-emerald-800 font-semibold' : 'text-gray-600'}`}>
                               <span className={`font-bold w-4 flex-shrink-0 ${isCorrect ? 'text-[#10b981]' : 'text-gray-400'}`}>{opt}.</span>
