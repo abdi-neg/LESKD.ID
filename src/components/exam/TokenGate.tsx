@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Key, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
 import { ExamPackage } from '../../types';
-import { supabase } from '../../lib/supabase'; // 🌟 Pastikan import supabase sudah benar
+import { supabase } from '../../lib/supabase';
 
 interface Props {
   pkg: ExamPackage;
@@ -10,11 +10,16 @@ interface Props {
   onClose: () => void;
 }
 
+// 🌟 KAMUS WARNA KONSISTEN (Mendukung TO_SUBKATEGORI, Amber TKP & Case-Insensitive)
 const PKG_COLORS: Record<string, { bg: string; text: string; light: string }> = {
-  MINI_TIU: { bg: 'bg-blue-600', text: 'text-blue-700', light: 'bg-blue-50' },
-  MINI_TWK: { bg: 'bg-emerald-600', text: 'text-emerald-700', light: 'bg-emerald-50' },
-  MINI_TKP: { bg: 'bg-rose-600', text: 'text-rose-700', light: 'bg-rose-50' },
-  FULL: { bg: 'bg-[#1e3a8a]', text: 'text-[#1e3a8a]', light: 'bg-blue-50' },
+  MINI_TIU:       { bg: 'bg-blue-600',    text: 'text-blue-700',    light: 'bg-blue-50'    },
+  TIU:            { bg: 'bg-blue-600',    text: 'text-blue-700',    light: 'bg-blue-50'    },
+  MINI_TWK:       { bg: 'bg-emerald-600', text: 'text-emerald-700', light: 'bg-emerald-50' },
+  TWK:            { bg: 'bg-emerald-600', text: 'text-emerald-700', light: 'bg-emerald-50' },
+  MINI_TKP:       { bg: 'bg-amber-500',   text: 'text-amber-700',   light: 'bg-amber-50'   },
+  TKP:            { bg: 'bg-amber-500',   text: 'text-amber-700',   light: 'bg-amber-50'   },
+  TO_SUBKATEGORI: { bg: 'bg-purple-600',  text: 'text-purple-700',  light: 'bg-purple-50'  },
+  FULL:           { bg: 'bg-[#1e3a8a]',   text: 'text-[#1e3a8a]',   light: 'bg-blue-50'    },
 };
 
 export default function TokenGate({ pkg, onSuccess, onClose }: Props) {
@@ -23,7 +28,8 @@ export default function TokenGate({ pkg, onSuccess, onClose }: Props) {
   const [loading, setLoading] = useState(false);
   const [verified, setVerified] = useState(false);
 
-  const colors = PKG_COLORS[pkg.package_type] ?? PKG_COLORS.FULL;
+  const normType = (pkg.package_type || 'FULL').toUpperCase();
+  const colors = PKG_COLORS[normType] ?? PKG_COLORS.FULL;
 
   async function handleVerify(e: React.FormEvent) {
     e.preventDefault();
@@ -31,7 +37,7 @@ export default function TokenGate({ pkg, onSuccess, onClose }: Props) {
     setLoading(true);
 
     try {
-      // ─── 🌟 LANGKAH EMAS: Ambil token paling segar dari Supabase detik ini juga ───
+      // ─── 🌟 Ambil token paling segar dari Supabase detik ini juga ───
       const { data, error: dbError } = await supabase
         .from('exam_packages')
         .select('token')
@@ -49,10 +55,9 @@ export default function TokenGate({ pkg, onSuccess, onClose }: Props) {
 
       // ─── 🌟 ANTI-DROP ZERO: Jika token di DB berupa angka yang kehilangan '0' di depan ───
       if (dbTokenClean.length < 6 && /^\d+$/.test(dbTokenClean)) {
-        dbTokenClean = dbTokenClean.padStart(6, '0'); // Otomatis kembalikan 0 di depan (ex: "54321" menjadi "054321")
+        dbTokenClean = dbTokenClean.padStart(6, '0');
       }
 
-      // Jalankan pencocokan steril tingkat akhir
       if (inputTokenClean === dbTokenClean) {
         setVerified(true);
         setTimeout(onSuccess, 900);
@@ -124,6 +129,8 @@ export default function TokenGate({ pkg, onSuccess, onClose }: Props) {
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">Token Akses</label>
                   <input
                     type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
                     value={token}
                     onChange={(e) => setToken(e.target.value.replace(/\D/g, '').slice(0, 6))}
                     placeholder="000000"
