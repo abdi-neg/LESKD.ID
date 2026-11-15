@@ -13,8 +13,8 @@ import {
   Activity, 
   PieChart, 
   Award,
-  Calendar,    // ✅ Sudah ditambahkan
-  AlertCircle  // ✅ Sudah ditambahkan sekalian untuk mencegah error berikutnya
+  Calendar,
+  AlertCircle
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom'; 
@@ -95,9 +95,13 @@ export default function ParticipantDashboard() {
   }, [profile?.id]); 
 
   const totalExams = examHistory.length;
-  const avgScore = totalExams > 0
-    ? Math.round(examHistory.reduce((s, r) => s + (r.total_score || 0), 0) / totalExams)
+
+  // 🌟 Kecualikan TO_SUBKATEGORI dari hitungan Rerata agar skor tidak terdistorsi kuis pendek
+  const mainExams = examHistory.filter((r) => r.package_type !== 'TO_SUBKATEGORI');
+  const avgScore = mainExams.length > 0
+    ? Math.round(mainExams.reduce((s, r) => s + (r.total_score || 0), 0) / mainExams.length)
     : 0;
+
   const passedCount = examHistory.filter((r) => r.passed).length;
 
   const handleLoadGlobalDiagnostic = async () => {
@@ -106,17 +110,20 @@ export default function ParticipantDashboard() {
     try {
       const { data, error } = await supabase
         .from('exam_results')
-        .select('id, review_snapshot')
+        .select('id, review_snapshot, package_type')
         .eq('participant_id', profile.id)
+        .neq('package_type', 'TO_SUBKATEGORI') // 🌟 Otomatis abaikan TO_SUBKATEGORI di Peta Kekuatan Akumulatif
         .not('review_snapshot', 'is', null)
         .order('completed_at', { ascending: false })
         .limit(10); 
 
       if (error) throw error;
       
-      if (data) {
+      if (data && data.length > 0) {
         const snap = generateGlobalSnapshot(data);
         setGlobalSnapshot(snap);
+      } else {
+        setGlobalSnapshot({ questions: [], answers: {} });
       }
     } catch (err) {
       console.error("Gagal memuat data diagnostik global", err);
@@ -253,7 +260,7 @@ export default function ParticipantDashboard() {
                     
                     <h3 className="text-xl font-bold text-slate-800 mb-3">Analisis Progres Tryout</h3>
                     <p className="text-sm text-slate-500 mb-8 leading-relaxed">
-                      Klik tombol di bawah untuk menganalisis dan memuat grafik diagram kompetensi gabungan dari riwayat ujian terakhir Anda.
+                      Klik tombol di bawah untuk menganalisis dan memuat grafik diagram kompetensi gabungan dari riwayat tryout utama Anda.
                     </p>
                     
                     <button
@@ -264,6 +271,14 @@ export default function ParticipantDashboard() {
                       {loadingGlobal ? <Loader2 className="w-4 h-4 animate-spin" /> : <Activity className="w-4 h-4" />}
                       {loadingGlobal ? 'Menganalisis Data...' : 'Muat Peta Kekuatan'}
                     </button>
+                  </div>
+                ) : globalSnapshot.questions.length === 0 ? (
+                  <div className="text-center relative z-10 py-8 max-w-md mx-auto">
+                    <AlertCircle className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+                    <h3 className="font-bold text-slate-700 mb-1">Belum Ada Riwayat Tryout Utama</h3>
+                    <p className="text-sm text-slate-500 leading-relaxed">
+                      Peta Kekuatan Akumulatif hanya menganalisis paket Tryout Utama (tidak termasuk latihan per sub-kategori). Silakan selesaikan paket tryout utama terlebih dahulu.
+                    </p>
                   </div>
                 ) : (
                   <div className="animate-in fade-in zoom-in-95 duration-500 relative z-10">
