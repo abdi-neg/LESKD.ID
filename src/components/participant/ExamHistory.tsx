@@ -1,10 +1,22 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Clock, CheckCircle, Trophy, Eye, LayoutGrid, Brain, Shield, Heart, BookOpen } from 'lucide-react';
+import { 
+  Clock, 
+  CheckCircle, 
+  Trophy, 
+  Eye, 
+  LayoutGrid, 
+  Brain, 
+  Shield, 
+  Heart, 
+  BookOpen, 
+  Target // ✅ Ikon khusus untuk TO_SUBKATEGORI
+} from 'lucide-react';
+import { PackageType } from '../../types';
 
-interface ExamHistoryRecord {
+export interface ExamHistoryRecord {
   id: string;
-  package_type: 'MINI_TIU' | 'MINI_TWK' | 'MINI_TKP' | 'FULL';
+  package_type: PackageType | string;
   package_name: string;
   total_score: number;
   score_tiu?: number;
@@ -25,25 +37,37 @@ interface Props {
 
 const PACKAGE_LABEL: Record<string, string> = {
   MINI_TIU: 'Mini TIU',
+  TIU: 'Mini TIU',
   MINI_TWK: 'Mini TWK',
+  TWK: 'Mini TWK',
   MINI_TKP: 'Mini TKP',
-  FULL: 'FULL',
+  TKP: 'Mini TKP',
+  TO_SUBKATEGORI: 'Sub-Kategori',
+  FULL: 'FULL SKD',
 };
 
-// 🌟 1. UBAH WARNA BADGE TKP MENJADI AMBER
+// 🌟 WARNA BADGE KATEGORI (Mendukung TO_SUBKATEGORI & Case-Insensitive)
 const PACKAGE_COLOR: Record<string, string> = {
   MINI_TIU: 'bg-blue-100 text-blue-700',
+  TIU: 'bg-blue-100 text-blue-700',
   MINI_TWK: 'bg-emerald-100 text-emerald-700',
+  TWK: 'bg-emerald-100 text-emerald-700',
   MINI_TKP: 'bg-amber-100 text-amber-700',
+  TKP: 'bg-amber-100 text-amber-700',
+  TO_SUBKATEGORI: 'bg-purple-100 text-purple-700',
   FULL: 'bg-[#1e3a8a]/10 text-[#1e3a8a]',
 };
 
-// 🌟 2. UBAH WARNA ICON TKP MENJADI AMBER
+// 🌟 WARNA & IKON KATEGORI
 const PACKAGE_ICON: Record<string, { icon: React.ElementType; bg: string; color: string }> = {
-  MINI_TIU: { icon: Brain,      bg: 'bg-blue-100',    color: 'text-blue-500'    },
-  MINI_TWK: { icon: Shield,     bg: 'bg-emerald-100', color: 'text-emerald-500' },
-  MINI_TKP: { icon: Heart,      bg: 'bg-amber-100',   color: 'text-amber-500'   },
-  FULL:     { icon: LayoutGrid, bg: 'bg-[#1e3a8a]/10',  color: 'text-[#1e3a8a]'  },
+  MINI_TIU:       { icon: Brain,      bg: 'bg-blue-100',       color: 'text-blue-500'    },
+  TIU:            { icon: Brain,      bg: 'bg-blue-100',       color: 'text-blue-500'    },
+  MINI_TWK:       { icon: Shield,     bg: 'bg-emerald-100',    color: 'text-emerald-500' },
+  TWK:            { icon: Shield,     bg: 'bg-emerald-100',    color: 'text-emerald-500' },
+  MINI_TKP:       { icon: Heart,      bg: 'bg-amber-100',      color: 'text-amber-500'   },
+  TKP:            { icon: Heart,      bg: 'bg-amber-100',      color: 'text-amber-500'   },
+  TO_SUBKATEGORI: { icon: Target,     bg: 'bg-purple-100',     color: 'text-purple-600'  },
+  FULL:           { icon: LayoutGrid, bg: 'bg-[#1e3a8a]/10',   color: 'text-[#1e3a8a]'  },
 };
 
 export default function ExamHistory({ records, onViewDetails, onViewReview }: Props) {
@@ -78,6 +102,10 @@ export default function ExamHistory({ records, onViewDetails, onViewReview }: Pr
   return (
     <div className="space-y-3">
       {records.map((record, i) => {
+        const normType = (record.package_type || 'FULL').toUpperCase();
+        const pkg = PACKAGE_ICON[normType] ?? PACKAGE_ICON.FULL;
+        const Icon = pkg.icon;
+
         return (
           <motion.div
             key={record.id}
@@ -91,15 +119,9 @@ export default function ExamHistory({ records, onViewDetails, onViewReview }: Pr
               {/* SISI KIRI: INFORMASI HASIL UJIAN */}
               <div className="flex items-start gap-4 flex-1 min-w-0 w-full">
                 <div className="relative flex-shrink-0">
-                  {(() => {
-                    const pkg = PACKAGE_ICON[record.package_type] ?? PACKAGE_ICON.FULL;
-                    const Icon = pkg.icon;
-                    return (
-                      <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${pkg.bg}`}>
-                        <Icon className={`w-6 h-6 ${pkg.color}`} />
-                      </div>
-                    );
-                  })()}
+                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${pkg.bg}`}>
+                    <Icon className={`w-6 h-6 ${pkg.color}`} />
+                  </div>
                   <div className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full border-2 border-white flex items-center justify-center
                     ${record.passed ? 'bg-emerald-400' : 'bg-gray-300'}`}>
                     <CheckCircle className="w-3 h-3 text-white" />
@@ -108,10 +130,12 @@ export default function ExamHistory({ records, onViewDetails, onViewReview }: Pr
 
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1 flex-wrap">
-                    <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${PACKAGE_COLOR[record.package_type] ?? 'bg-gray-100 text-gray-700'}`}>
-                      {PACKAGE_LABEL[record.package_type] ?? record.package_type}
+                    <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${PACKAGE_COLOR[normType] ?? 'bg-gray-100 text-gray-700'}`}>
+                      {PACKAGE_LABEL[normType] ?? record.package_type}
                     </span>
-                    <span className="text-xs text-gray-500 truncate max-w-[160px]">{record.package_name}</span>
+                    <span className="text-xs text-gray-500 truncate max-w-[160px] sm:max-w-[260px] font-medium">
+                      {record.package_name}
+                    </span>
                     <span className={`text-xs font-semibold px-2 py-0.5 rounded-md
                       ${record.passed ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'}`}>
                       {record.passed ? 'Lulus' : 'Belum Lulus'}
@@ -140,7 +164,7 @@ export default function ExamHistory({ records, onViewDetails, onViewReview }: Pr
                     </div>
                   </div>
 
-                  {record.package_type === 'FULL' && record.score_tiu !== undefined && (
+                  {normType === 'FULL' && record.score_tiu !== undefined && (
                     <div className="flex gap-2 text-xs mb-2">
                       <div className="bg-blue-50 px-2.5 py-1 rounded-md">
                         <span className="text-gray-600">TIU:</span>
@@ -150,7 +174,6 @@ export default function ExamHistory({ records, onViewDetails, onViewReview }: Pr
                         <span className="text-gray-600">TWK:</span>
                         <span className="font-bold text-gray-800 ml-1">{record.score_twk}</span>
                       </div>
-                      {/* 🌟 3. UBAH KOTAK SKOR TKP MENJADI AMBER */}
                       <div className="bg-amber-50 px-2.5 py-1 rounded-md">
                         <span className="text-gray-600">TKP:</span>
                         <span className="font-bold text-gray-800 ml-1">{record.score_tkp}</span>
@@ -164,7 +187,6 @@ export default function ExamHistory({ records, onViewDetails, onViewReview }: Pr
 
               {/* SISI KANAN: DUA TOMBOL AKSI BERDAMPINGAN */}
               <div className="flex sm:flex-col items-center sm:items-stretch gap-2 w-full sm:w-auto justify-end flex-shrink-0 border-t sm:border-t-0 pt-3 sm:pt-0 border-gray-50">
-                {/* Tombol 1: Lihat Detail Skor */}
                 {onViewDetails && (
                   <button
                     onClick={() => onViewDetails(record)}
@@ -175,7 +197,6 @@ export default function ExamHistory({ records, onViewDetails, onViewReview }: Pr
                   </button>
                 )}
                 
-                {/* Tombol 2: Pembahasan Soal */}
                 {onViewReview && (
                   <button
                     onClick={() => onViewReview(record.id)}
