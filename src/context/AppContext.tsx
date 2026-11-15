@@ -37,14 +37,31 @@ const initialState: AppState = {
 let isStartingExam = false;
 
 export function packageTypeToExamType(pt: string): ExamType {
-  if (pt === 'MINI_TIU') return 'TIU';
-  if (pt === 'MINI_TWK') return 'TWK';
-  if (pt === 'MINI_TKP') return 'TKP';
+  const norm = (pt || '').toUpperCase();
+  if (norm === 'MINI_TIU' || norm === 'TIU') return 'TIU';
+  if (norm === 'MINI_TWK' || norm === 'TWK') return 'TWK';
+  if (norm === 'MINI_TKP' || norm === 'TKP') return 'TKP';
   return 'FULL';
 }
 
-async function fetchQuestionsForExam(examType: ExamType, packageId?: string): Promise<Question[]> {
-  const config = EXAM_CONFIGS[examType];
+// 🌟 Deteksi kategori otomatis untuk paket TO_SUBKATEGORI berdasarkan isi soalnya
+function resolveEffectiveExamType(defaultType: ExamType, questions: Question[], packageType?: string): ExamType {
+  if (packageType?.toUpperCase() !== 'TO_SUBKATEGORI' || questions.length === 0) {
+    return defaultType;
+  }
+  const categories = new Set(questions.map((q) => q.category?.toUpperCase()).filter(Boolean));
+  if (categories.size === 1) {
+    const singleCat = Array.from(categories)[0];
+    if (singleCat === 'TWK' || singleCat === 'TIU' || singleCat === 'TKP') {
+      return singleCat as ExamType;
+    }
+  }
+  return defaultType;
+}
+
+async function fetchQuestionsForExam(examType: ExamType, packageId?: string, packageType?: string): Promise<Question[]> {
+  const config = EXAM_CONFIGS[examType] || EXAM_CONFIGS.FULL;
+  const isSubKategori = packageType?.toUpperCase() === 'TO_SUBKATEGORI';
   
   const categoryWeight: Record<string, number> = {
     'TWK': 1,
@@ -82,10 +99,15 @@ async function fetchQuestionsForExam(examType: ExamType, packageId?: string): Pr
         };
       }) as Question[];
       
-      const filtered = examType === 'FULL' ? mappedData : mappedData.filter((q) => q.category === examType);
-      if (filtered.length > 0) {
-        return [...filtered.slice(0, config.questionCount)].sort(sortSKD);
-      }
+      // Untuk TO_SUBKATEGORI atau FULL, ambil semua soal di dalam paket tanpa memfilter kategori secara kaku
+      const filtered = (examType === 'FULL' || isSubKategori)
+        ? mappedData
+        : mappedData.filter((q) => q.category?.toUpperCase() === examType);
+
+      const finalQuestions = filtered.length > 0 ? filtered : mappedData;
+      const sliceLimit = isSubKategori ? finalQuestions.length : Math.max(config.questionCount, finalQuestions.length);
+
+      return [...finalQuestions.slice(0, sliceLimit)].sort(sortSKD);
     }
   }
 
@@ -113,11 +135,15 @@ async function fetchQuestionsForExam(examType: ExamType, packageId?: string): Pr
 }
 
 function buildSession(examType: ExamType, questions: Question[], pkg?: ExamPackage): ExamSession {
-  const config = EXAM_CONFIGS[examType];
-  
+  const effectiveExamType = resolveEffectiveExamType(examType, questions, pkg?.package_type);
+  const config = EXAM_CONFIGS[effectiveExamType] || EXAM_CONFIGS.FULL;
+  const isSubKategori = pkg?.package_type?.toUpperCase() === 'TO_SUBKATEGORI';
+
+  // 🌟 Jika TO_SUBKATEGORI tidak memiliki duration_minutes, set default 1 menit per soal (minimal 20 menit)
+  const fallbackMinutes = isSubKategori ? Math.max(20, questions.length) : config.timeMinutes;
   const activeTimeMinutes = pkg?.duration_minutes && pkg.duration_minutes > 0 
     ? pkg.duration_minutes 
-    : config.timeMinutes;
+    : fallbackMinutes;
 
   const initialSeconds = activeTimeMinutes * 60;
 
@@ -151,12 +177,12 @@ function buildSession(examType: ExamType, questions: Question[], pkg?: ExamPacka
     id: crypto.randomUUID(),
     packageId: pkg?.id,
     packageName: pkg?.name,
-    examType,
+    examType: effectiveExamType,
     questions: securedQuestions,
     answers,
     currentQuestionIndex: 0,
     timeRemaining: initialSeconds,
-    initialTimeSeconds: initialSeconds, // 🌟 Penanda waktu awal di memori lokal
+    initialTimeSeconds: initialSeconds,
     status: 'in_progress',
     startedAt: new Date(),
   } as ExamSession;
@@ -170,7 +196,6 @@ function calculateScores(session: ExamSession) {
     if (!answer?.selectedAnswer) return;
     
     if (q.category === 'TKP') {
-      // 🌟 PERBAIKAN: Kebal terhadap spasi/huruf kecil di TKP
       const selected = answer.selectedAnswer.toLowerCase().trim();
       let points = 0;
       if (selected === 'a') points = Number((q as any).points_a ?? 0);
@@ -181,7 +206,6 @@ function calculateScores(session: ExamSession) {
       tkp += points;
       if (points > 0) correctCount++;
     } else {
-      // 🌟 PERBAIKAN: Kebal terhadap spasi ekstra/huruf kecil di TIU & TWK
       const userAns = answer.selectedAnswer.toUpperCase().trim();
       const trueAns = (q.correct_answer || '').toUpperCase().trim();
       const pts = userAns === trueAns ? 5 : 0;
@@ -194,7 +218,31 @@ function calculateScores(session: ExamSession) {
   return { tiu, twk, tkp, total: tiu + twk + tkp, correctCount };
 }
 
-function checkPassedStatus(examType: ExamType, scores: { tiu: number; twk: number; tkp: number }) {
+// 🌟 Evaluasi Passing Grade yang mendukung Tryout Standar & Proporsional TO_SUBKATEGORI
+function checkPassedStatus(examType: ExamType, scores: { tiu: number; twk: number; tkp: number }, session?: ExamSession) {
+  const pkgType = (session as any)?.packageType?.toUpperCase();
+
+  if (pkgType === 'TO_SUBKATEGORI' && session?.questions && session.questions.length > 0) {
+    const twkCount = session.questions.filter((q) => q.category?.toUpperCase() === 'TWK').length;
+    const tiuCount = session.questions.filter((q) => q.category?.toUpperCase() === 'TIU').length;
+    const tkpCount = session.questions.filter((q) => q.category?.toUpperCase() === 'TKP').length;
+
+    let passed = true;
+    if (twkCount > 0) {
+      const minTwk = twkCount >= 20 ? 65 : Math.ceil(twkCount * 5 * 0.65);
+      if (scores.twk < minTwk) passed = false;
+    }
+    if (tiuCount > 0) {
+      const minTiu = tiuCount >= 25 ? 80 : Math.ceil(tiuCount * 5 * 0.65);
+      if (scores.tiu < minTiu) passed = false;
+    }
+    if (tkpCount > 0) {
+      const minTkp = tkpCount >= 45 ? 166 : Math.ceil(tkpCount * 5 * (166 / 225));
+      if (scores.tkp < minTkp) passed = false;
+    }
+    return passed;
+  }
+
   if (examType === 'FULL') {
     return scores.twk >= 65 && scores.tiu >= 80 && scores.tkp >= 166;
   }
@@ -420,7 +468,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [state.currentView, state.reviewResultId]);
 
-  // 🌟 SINKRONISASI REALTIME HEMAT KUOTA (Hanya tembak DB saat siswa klik jawaban, tanpa query SELECT berulang)
+  // 🌟 SINKRONISASI REALTIME HEMAT KUOTA
   useEffect(() => {
     const session = state.examSession;
     if (!session || session.status === 'completed' || isSyncLocked) return;
@@ -431,12 +479,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const dbResultId = (session as any).resultId || localStorage.getItem('active_db_result_id');
       if (dbResultId) {
         const liveScores = calculateScores(session);
-        const isPassed = checkPassedStatus(session.examType, liveScores);
+        const isPassed = checkPassedStatus(session.examType, liveScores, session);
 
-        // Hitung durasi akurat dari waktu mulai (startedAt) hingga detik ini
         const startedTimeMs = session.startedAt ? new Date(session.startedAt).getTime() : Date.now();
         const elapsedFromStart = Math.floor((Date.now() - startedTimeMs) / 1000);
-        const initialSec = (session as any).initialTimeSeconds || (EXAM_CONFIGS[session.examType].timeMinutes * 60);
+        const fallbackConfig = EXAM_CONFIGS[session.examType] || EXAM_CONFIGS.FULL;
+        const initialSec = (session as any).initialTimeSeconds || (fallbackConfig.timeMinutes * 60);
         const durationUsed = elapsedFromStart > 0 ? elapsedFromStart : Math.max(0, initialSec - session.timeRemaining);
 
         supabase
@@ -458,7 +506,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [state.examSession?.answers, state.examSession?.status, isSyncLocked]);
 
-  // 🌟 PERBAIKAN: Simpan ke LocalStorage HP SETIAP KALI peserta klik jawaban!
   useEffect(() => {
     const session = state.examSession;
     if (session && session.status === 'in_progress') {
@@ -474,13 +521,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(timer);
   }, [state.examSession?.status, state.examSession?.id]);
 
-  // 🌟 PERBAIKAN: Cegah Infinite Loop (Looping Submit yang bikin browser crash & logout)
   useEffect(() => {
     if (
       state.examSession && 
       state.examSession.status === 'in_progress' && 
       state.examSession.timeRemaining <= 0 &&
-      !isSyncLocked // <-- Kunci krusial: Jika sedang submit, jangan trigger lagi!
+      !isSyncLocked
     ) {
       submitExamSession();
     }
@@ -512,7 +558,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { alert("Sesi login tidak valid."); return; }
 
-      const questions = await fetchQuestionsForExam(examType, pkg?.id);
+      const questions = await fetchQuestionsForExam(examType, pkg?.id, pkg?.package_type);
       if (!questions || questions.length === 0) {
         alert("Gagal memuat kumpulan soal ujian.");
         return;
@@ -579,7 +625,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       setIsSyncLocked(true);
       const scores = calculateScores(session);
-      const isPassed = checkPassedStatus(session.examType, scores);
+      const isPassed = checkPassedStatus(session.examType, scores, session);
       
       const injectedQuestions = session.questions.map(q => {
         const finalSub = q.sub_category || (q as any).sub_kategori || (q as any).SUB_KATEGORI || 'Umum';
@@ -625,10 +671,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         finalDiagnostic = breakdown;
       }
       
-      // 🌟 Hitung durasi akhir secara instan & akurat dari selisih waktu mulai atau initialTimeSeconds
       const startedTimeMs = session.startedAt ? new Date(session.startedAt).getTime() : Date.now();
       const elapsedSeconds = Math.floor((Date.now() - startedTimeMs) / 1000);
-      const fallbackInitial = (session as any).initialTimeSeconds || (EXAM_CONFIGS[session.examType].timeMinutes * 60);
+      const fallbackConfig = EXAM_CONFIGS[session.examType] || EXAM_CONFIGS.FULL;
+      const fallbackInitial = (session as any).initialTimeSeconds || (fallbackConfig.timeMinutes * 60);
       const finalDurationSeconds = elapsedSeconds > 0 ? elapsedSeconds : Math.max(0, fallbackInitial - session.timeRemaining);
       
       const { error } = await supabase
@@ -650,7 +696,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       if (error) throw error;
 
-      // 🌟 PERBAIKAN: Bersihkan memori dan ganti halaman DULU agar peserta tidak merasa "Lag"
       clearExamProgress(session.id);
       
       localStorage.removeItem('exam_active_session_id');
@@ -665,7 +710,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       dispatch({ type: 'FINALIZE_EXAM_STORE', payload: completedSession });
 
-      // Load riwayat ujian (yang memakan waktu) ditaruh terakhir
       fetchUserExamHistory();
 
     } catch (err) {
@@ -700,7 +744,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           if (saved && (saved as any).status !== 'completed') {
             const backupResultId = localStorage.getItem('active_db_result_id') || undefined;
 
-            fetchQuestionsForExam(saved.examType, saved.packageId).then((questions) => {
+            fetchQuestionsForExam(saved.examType, saved.packageId, (saved as any).packageType).then((questions) => {
               dispatch({
                 type: 'RESUME_EXAM',
                 payload: {
@@ -708,7 +752,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
                   examType: saved.examType, questions, answers: saved.answers,
                   currentQuestionIndex: saved.currentQuestionIndex, timeRemaining: saved.timeRemaining,
                   status: 'in_progress', startedAt: new Date(saved.startedAt), 
-                  resultId: (saved as any).resultId || backupResultId || undefined 
+                  resultId: (saved as any).resultId || backupResultId || undefined,
+                  packageType: (saved as any).packageType
                 } as any
               });
             });
