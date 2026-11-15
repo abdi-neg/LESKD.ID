@@ -16,6 +16,7 @@ const PACKAGE_REQUIREMENTS: Record<PackageType, Partial<Record<Category, number>
   MINI_TIU: { TIU: 35 },
   MINI_TWK: { TWK: 30 },
   MINI_TKP: { TKP: 45 },
+  TO_SUBKATEGORI: {}, // 🌟 Fleksibel tanpa batas kuota kaku
   FULL: { TIU: 35, TWK: 30, TKP: 45 },
 };
 
@@ -23,12 +24,13 @@ const TYPE_LABELS: Record<PackageType, string> = {
   MINI_TIU: 'Mini Tryout TIU',
   MINI_TWK: 'Mini Tryout TWK',
   MINI_TKP: 'Mini Tryout TKP',
+  TO_SUBKATEGORI: 'Drilling Sub-Kategori', // 🌟 Label untuk TO_SUBKATEGORI
   FULL: 'Full CAT Simulasi',
 };
 
 const emptyForm = {
   category: 'TIU' as Category,
-  sub_category: 'Umum', // 🌟 TAMBAHKAN BARIS INI: Nilai bawaan sub-materi
+  sub_category: 'Umum', // 🌟 Nilai bawaan sub-materi
   question_text: '',
   option_a: '',
   option_b: '',
@@ -54,12 +56,22 @@ const catColors: Record<string, string> = {
   TKP: 'bg-amber-100 text-amber-700',
 };
 
-function PackageCompletenessCard({ counts, requirements }: { pkg: ExamPackage; counts: any; requirements: any }) {
+function PackageCompletenessCard({ pkg, counts, requirements }: { pkg: ExamPackage; counts: any; requirements: any }) {
+  if (pkg.package_type === 'TO_SUBKATEGORI') {
+    return (
+      <div className="bg-purple-50 rounded-2xl p-4 border border-purple-100 text-xs text-purple-700 flex gap-4">
+        <div><b>TIU:</b> {counts.TIU} soal</div>
+        <div><b>TWK:</b> {counts.TWK} soal</div>
+        <div><b>TKP:</b> {counts.TKP} soal</div>
+      </div>
+    );
+  }
+
   return (
     <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100 text-xs text-gray-500 flex gap-4">
-      <div><b>TIU:</b> {counts.TIU} / {requirements.TIU || 0}</div>
-      <div><b>TWK:</b> {counts.TWK} / {requirements.TWK || 0}</div>
-      <div><b>TKP:</b> {counts.TKP} / {requirements.TKP || 0}</div>
+      <div><b>TIU:</b> {counts.TIU} / {requirements?.TIU || 0}</div>
+      <div><b>TWK:</b> {counts.TWK} / {requirements?.TWK || 0}</div>
+      <div><b>TKP:</b> {counts.TKP} / {requirements?.TKP || 0}</div>
     </div>
   );
 }
@@ -137,6 +149,8 @@ export default function QuestionManager() {
         setForm(prev => ({ ...prev, category: 'TWK' }));
       } else if (selectedPkg.package_type === 'MINI_TKP') {
         setForm(prev => ({ ...prev, category: 'TKP' }));
+      } else if (selectedPkg.package_type === 'TO_SUBKATEGORI') {
+        setForm(prev => ({ ...prev, category: 'TWK' }));
       } else {
         setForm(prev => ({ ...prev, category: 'TIU' }));
       }
@@ -151,7 +165,8 @@ export default function QuestionManager() {
     TKP: questions.filter((q) => q.category === 'TKP').length,
   };
 
-  const requirements = selectedPkg ? PACKAGE_REQUIREMENTS[selectedPkg.package_type] : {};
+  const requirements = selectedPkg ? (PACKAGE_REQUIREMENTS[selectedPkg.package_type] ?? {}) : {};
+  const isCategoryLocked = selectedPkg?.package_type !== 'FULL' && selectedPkg?.package_type !== 'TO_SUBKATEGORI';
 
   const filtered = questions.filter((q) => {
     const matchCat = filterCat === 'ALL' || q.category === filterCat;
@@ -247,63 +262,7 @@ export default function QuestionManager() {
         if (fileObj) {
           const uploadedUrl = await uploadImage(fileObj);
           if (uploadedUrl) {
-            finalOptions[`option_${opt.toLowerCase()}` as keyof typeof finalOptions] = uploadedUrl;
-          }
-        }
-      }
-      setUploadingImage(false);
-    }
-
-    const payload = { 
-      ...form, 
-      ...finalOptions,
-      image_url: imageUrl, 
-      explanation_image_url: explanationImageUrl,
-      package_id: selectedPkg.id 
-    };
-
-    if (editId) {
-      await supabase.from('questions').update(payload).eq('id', editId);
-    } else {
-      await supabase.from('questions').insert(payload);
-    }
-
-    setSaving(false);
-    cancelForm();
-    loadQuestions();
-  }
-
-  function startEdit(q: any) {
-    setForm({
-      category: q.category,
-      sub_category: q.sub_category ?? 'Umum', // 🌟 TAMBAHKAN BARIS INI: Memuat data edit sub-materi
-      question_text: q.question_text,
-      option_a: q.option_a,
-      option_b: q.option_b,
-      option_c: q.option_c,
-      option_d: q.option_d,
-      option_e: q.option_e,
-      correct_answer: q.correct_answer,
-      explanation: q.explanation,
-      image_url: q.image_url ?? null,
-      explanation_image_url: q.explanation_image_url ?? null,
-      option_type: q.option_type ?? 'text',
-      points_a: q.points_a ?? 0,
-      points_b: q.points_b ?? 0,
-      points_c: q.points_c ?? 0,
-      points_d: q.points_d ?? 0,
-      points_e: q.points_e ?? 0,
-    });
-    setImageFile(null);
-    setImagePreview(q.image_url ?? null);
-    
-    setExpImageFile(null);
-    setExpImagePreview(q.explanation_image_url ?? null);
-
-    const initialPreviews: Record<string, string | null> = { A: null, B: null, C: null, D: null, E: null };
-    if (q.option_type === 'image') {
-      OPTIONS.forEach(opt => {
-        initialPreviews[opt] = q[`option_${opt.toLowerCase()}`] ?? null;
+            finalOptions[`option_${opt.toLowerCase()}` as keyof typeof finalOptions] = uploadedUrl; } } } setUploadingImage(false); }  const payload = { ...form, ...finalOptions, image_url: imageUrl, explanation_image_url: explanationImageUrl, package_id: selectedPkg.id };  if (editId) { await supabase.from('questions').update(payload).eq('id', editId); } else { await supabase.from('questions').insert(payload); }  setSaving(false); cancelForm(); loadQuestions(); }  function startEdit(q: any) { setForm({ category: q.category, sub_category: q.sub_category ?? 'Umum', // 🌟 Memuat data edit sub-materi question_text: q.question_text, option_a: q.option_a, option_b: q.option_b, option_c: q.option_c, option_d: q.option_d, option_e: q.option_e, correct_answer: q.correct_answer, explanation: q.explanation, image_url: q.image_url ?? null, explanation_image_url: q.explanation_image_url ?? null, option_type: q.option_type ?? 'text', points_a: q.points_a ?? 0, points_b: q.points_b ?? 0, points_c: q.points_c ?? 0, points_d: q.points_d ?? 0, points_e: q.points_e ?? 0, }); setImageFile(null); setImagePreview(q.image_url ?? null);  setExpImageFile(null); setExpImagePreview(q.explanation_image_url ?? null);  const initialPreviews: Record<string, string \vert{} null> = { A: null, B: null, C: null, D: null, E: null }; if (q.option_type === 'image') { OPTIONS.forEach(opt => { initialPreviews[opt] = q[`option_${opt.toLowerCase()}`] ?? null;
       });
     }
     setOptImageFiles({ A: null, B: null, C: null, D: null, E: null });
@@ -372,24 +331,18 @@ export default function QuestionManager() {
             >
               {selectedPkg ? (
                 <div className="flex items-center gap-2 flex-1 min-w-0">
-                  {/* 🌟 UBAH WARNA TKP MENJADI AMBER */}
+                  {/* 🌟 WARNA BADGE TERMASUK TO_SUBKATEGORI */}
                   <span className={`text-xs font-bold px-2 py-0.5 rounded-md flex-shrink-0 ${
                     selectedPkg.package_type === 'MINI_TIU' ? 'bg-blue-100 text-blue-700' :
                     selectedPkg.package_type === 'MINI_TWK' ? 'bg-emerald-100 text-emerald-700' :
                     selectedPkg.package_type === 'MINI_TKP' ? 'bg-amber-100 text-amber-700' :
+                    selectedPkg.package_type === 'TO_SUBKATEGORI' ? 'bg-purple-100 text-purple-700' :
                     'bg-[#1e3a8a]/10 text-[#1e3a8a]'
                   }`}>
-                    {TYPE_LABELS[selectedPkg.package_type]}
+                    {TYPE_LABELS[selectedPkg.package_type] ?? selectedPkg.package_type}
                   </span>
                   <span className="font-medium text-gray-800 truncate">{selectedPkg.name}</span>
-                  <span className={`text-xs px-2 py-0.5 rounded-full flex-shrink-0 ${selectedPkg.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
-                    {selectedPkg.is_active ? 'Aktif' : 'Nonaktif'}
-                  </span>
-                </div>
-              ) : (
-                <span className="text-gray-400">-- Pilih paket ujian --</span>
-              )}
-              <ChevronDown className={`w-4 h-4 text-gray-400 flex-shrink-0 transition-transform ${pkgDropdownOpen ? 'rotate-180' : ''}`} />
+                  <span className={`text-xs px-2 py-0.5 rounded-full flex-shrink-0 ${selectedPkg.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}> {selectedPkg.is_active ? 'Aktif' : 'Nonaktif'} </span> </div> ) : ( <span className="text-gray-400">-- Pilih paket ujian --</span> )} <ChevronDown className={`w-4 h-4 text-gray-400 flex-shrink-0 transition-transform ${pkgDropdownOpen ? 'rotate-180' : ''}`} />
             </button>
 
             <AnimatePresence>
@@ -408,14 +361,15 @@ export default function QuestionManager() {
                       className={`w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-gray-50 transition-colors border-b border-gray-50 last:border-0
                         ${selectedPkg?.id === pkg.id ? 'bg-blue-50' : ''}`}
                     >
-                      {/* 🌟 UBAH WARNA TKP MENJADI AMBER */}
+                      {/* 🌟 WARNA BADGE DROPDOWN TERMASUK TO_SUBKATEGORI */}
                       <span className={`text-xs font-bold px-2 py-0.5 rounded-md flex-shrink-0 ${
                         pkg.package_type === 'MINI_TIU' ? 'bg-blue-100 text-blue-700' :
                         pkg.package_type === 'MINI_TWK' ? 'bg-emerald-100 text-emerald-700' :
                         pkg.package_type === 'MINI_TKP' ? 'bg-amber-100 text-amber-700' :
+                        pkg.package_type === 'TO_SUBKATEGORI' ? 'bg-purple-100 text-purple-700' :
                         'bg-[#1e3a8a]/10 text-[#1e3a8a]'
                       }`}>
-                        {TYPE_LABELS[pkg.package_type]}
+                        {TYPE_LABELS[pkg.package_type] ?? pkg.package_type}
                       </span>
                       <span className="font-medium text-gray-800 flex-1 truncate text-sm">{pkg.name}</span>
                       {selectedPkg?.id === pkg.id && <Check className="w-4 h-4 text-[#1e3a8a] flex-shrink-0" />}
@@ -502,21 +456,21 @@ export default function QuestionManager() {
                     <span className="text-sm font-semibold text-[#1e3a8a]">{selectedPkg.name}</span>
                   </div>
 
-                  {/* 🌟 PERBAIKAN FORM META: Mengubah grid menjadi 3-Kolom untuk memasukkan kolom Sub-Materi */}
+                  {/* 🌟 PERBAIKAN FORM META: Mengizinkan pemilihan Kategori pada FULL dan TO_SUBKATEGORI */}
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1.5">Kategori</label>
                       <select
                         value={form.category}
                         onChange={(e) => setForm({ ...form, category: e.target.value as Category })}
-                        disabled={selectedPkg?.package_type !== 'FULL'}
+                        disabled={isCategoryLocked}
                         className={`w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/30 focus:border-[#1e3a8a] ${
-                          selectedPkg?.package_type !== 'FULL' ? 'bg-gray-100 text-gray-500 cursor-not-allowed font-semibold' : 'bg-white text-gray-800'
+                          isCategoryLocked ? 'bg-gray-100 text-gray-500 cursor-not-allowed font-semibold' : 'bg-white text-gray-800'
                         }`}
                       >
                         {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
                       </select>
-                      {selectedPkg?.package_type !== 'FULL' && (
+                      {isCategoryLocked && (
                         <p className="text-[11px] text-gray-400 mt-1">Kategori dikunci otomatis sesuai jenis paket.</p>
                       )}
                     </div>
@@ -598,8 +552,7 @@ export default function QuestionManager() {
                   {/* Options Input Block with TKP Points */}
                   <div className="space-y-3 mb-4">
                     {OPTIONS.map((opt) => {
-                      const keyTxt = `option_${opt.toLowerCase()}` as keyof typeof form;
-                      const keyPts = `points_${opt.toLowerCase()}` as keyof typeof form;
+                      const keyTxt = `option_${opt.toLowerCase()}` as keyof typeof form; const keyPts = `points_${opt.toLowerCase()}` as keyof typeof form;
                       const isCorrect = opt === form.correct_answer && form.category !== 'TKP';
 
                       return (
@@ -704,8 +657,7 @@ export default function QuestionManager() {
             <div className="flex items-center gap-2">
               <Filter className="w-4 h-4 text-gray-400" />
               {(['ALL', ...CATEGORIES] as const).map((cat) => (
-                <button key={cat} onClick={() => setFilterCat(cat)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${filterCat === cat ? 'bg-[#1e3a8a] text-white' : 'bg-gray-100 text-gray-600'}`}>
-                  {cat === 'ALL' ? 'Semua' : cat} {cat !== 'ALL' && `(${catCounts[cat]})`}
+                <button key={cat} onClick={() => setFilterCat(cat)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${filterCat === cat ? 'bg-[#1e3a8a] text-white' : 'bg-gray-100 text-gray-600'}`}> {cat === 'ALL' ? 'Semua' : cat} {cat !== 'ALL' && `(${catCounts[cat]})`}
                 </button>
               ))}
             </div>
@@ -718,23 +670,9 @@ export default function QuestionManager() {
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-2 flex-wrap">
-                      <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${catColors[q.category]}`}>{q.category}</span>
-                      
-                      {/* 🌟 EMBED BARU: Tampilkan Tag Sub-Materi Spesifik di Sebelah Kategori Soal */}
-                      <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-gray-100 text-gray-600 border border-gray-200/60 uppercase tracking-wide">
-                        {q.sub_category || 'Umum'}
-                      </span>
-
-                      <span className="text-xs text-gray-400">#{q.id.slice(0, 8)}</span>
-                    </div>
-                    <p className="text-sm text-gray-700 font-medium line-clamp-2">{q.question_text}</p>
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      {OPTIONS.map((opt) => {
-                        const val = q[`option_${opt.toLowerCase()}` as keyof Question] as string;
+                      <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${catColors[q.category]}`}>{q.category}</span>  {/* 🌟 EMBED BARU: Tampilkan Tag Sub-Materi Spesifik di Sebelah Kategori Soal */} <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-gray-100 text-gray-600 border border-gray-200/60 uppercase tracking-wide"> {q.sub_category \vert{}\vert{} 'Umum'} </span>  <span className="text-xs text-gray-400">#{q.id.slice(0, 8)}</span> </div> <p className="text-sm text-gray-700 font-medium line-clamp-2">{q.question_text}</p> <div className="mt-2 flex flex-wrap gap-1.5"> {OPTIONS.map((opt) => { const val = q[`option_${opt.toLowerCase()}` as keyof Question] as string;
                         const isCorrect = opt === q.correct_answer && q.category !== 'TKP';
-                        const pts = q[`points_${opt.toLowerCase()}` as any];
-                        return (
-                          <span key={opt} className={`text-xs px-2 py-0.5 rounded-md ${isCorrect ? 'bg-[#10b981] text-white font-semibold' : 'bg-gray-100 text-gray-500'}`}>
+                        const pts = q[`points_${opt.toLowerCase()}` as any]; return ( <span key={opt} className={`text-xs px-2 py-0.5 rounded-md ${isCorrect ? 'bg-[#10b981] text-white font-semibold' : 'bg-gray-100 text-gray-500'}`}>
                             {opt}: {val?.slice(0, 15)}{val?.length > 15 ? '...' : ''} 
                             {q.category === 'TKP' && <b className="ml-1 text-amber-700">({pts || 0}p)</b>}
                           </span>
