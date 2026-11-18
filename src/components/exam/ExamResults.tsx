@@ -1,11 +1,32 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Trophy, CheckCircle, XCircle, ArrowLeft, RotateCcw, TrendingUp, Target, BookOpen, KeyRound, X, Percent } from 'lucide-react';
+import {
+  Trophy,
+  CheckCircle,
+  XCircle,
+  ArrowLeft,
+  RotateCcw,
+  TrendingUp,
+  Target,
+  BookOpen,
+  KeyRound,
+  X,
+  Percent,
+  Clock,
+  Zap,
+  AlertTriangle,
+  Award
+} from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { EXAM_CONFIGS } from '../../data/mockData';
 import { supabase } from '../../lib/supabase';
 import { buildReviewSnapshot, saveReviewSnapshot } from '../../lib/examPersistence';
 import DiagnosticReport from './DiagnosticReport';
+
+interface MistakeBadge {
+  num: number;
+  detail: string;
+}
 
 export function ExamResults() {
   const { state, dispatch, startExam } = useApp();
@@ -76,7 +97,7 @@ export function ExamResults() {
         }
 
         const durationSeconds = completedAt
-          ? Math.floor((completedAt.getTime() - startedAt.getTime()) / 1000)
+          ? Math.floor((new Date(completedAt).getTime() - new Date(startedAt).getTime()) / 1000)
           : 0;
 
         let correctCount = 0;
@@ -124,7 +145,7 @@ export function ExamResults() {
 
   if (!session?.scores) return null;
 
-  const { scores, examType, questions, answers } = session;
+  const { scores, examType, questions, answers, startedAt, completedAt } = session;
   const config = EXAM_CONFIGS[examType] ?? EXAM_CONFIGS.FULL;
   const rawPkgType = ((session as any).packageType ?? '').toUpperCase();
   const isSubKategori = rawPkgType === 'TO_SUBKATEGORI';
@@ -137,6 +158,57 @@ export function ExamResults() {
   const accuracyPercentage = maxTotalScore > 0
     ? Math.min(100, Math.round((scores.total / maxTotalScore) * 100))
     : 0;
+
+  // Kalkulasi kecepatan pengerjaan (detik per soal)
+  const endTimestamp = completedAt ? new Date(completedAt).getTime() : Date.now();
+  const startTimestamp = startedAt ? new Date(startedAt).getTime() : endTimestamp;
+  const totalDurationSeconds = Math.max(1, Math.floor((endTimestamp - startTimestamp) / 1000));
+  const avgSecondsPerQuestion = questions.length > 0
+    ? Math.round(totalDurationSeconds / questions.length)
+    : 0;
+
+  const paceEvaluation = avgSecondsPerQuestion <= 54
+    ? {
+        label: 'Ideal (Standar CAT BKN)',
+        badgeClass: 'bg-emerald-100 text-emerald-800',
+        textClass: 'text-emerald-700',
+        note: 'Ritme pengerjaan sudah memenuhi batas aman 54 detik/soal.'
+      }
+    : avgSecondsPerQuestion <= 70
+      ? {
+          label: 'Cukup (Perlu Akselerasi)',
+          badgeClass: 'bg-amber-100 text-amber-800',
+          textClass: 'text-amber-700',
+          note: 'Sedikit di atas rata-rata CAT BKN (54 detik/soal). Latih pemindaian kata kunci.'
+        }
+      : {
+          label: 'Terlalu Lama',
+          badgeClass: 'bg-rose-100 text-rose-800',
+          textClass: 'text-rose-700',
+          note: 'Berisiko kehabisan waktu pada simulasi 110 soal. Biasakan lewati soal buntu.'
+        };
+
+  // Status penguasaan bab berdasarkan akurasi
+  const masteryEvaluation = accuracyPercentage >= 80
+    ? {
+        title: 'Menguasai Materi',
+        badgeClass: 'bg-emerald-100 text-emerald-800',
+        borderClass: 'border-emerald-200 bg-emerald-50/60',
+        advice: 'Pemahaman konsep sudah solid. Anda siap lanjut ke sub-materi berikutnya.'
+      }
+    : accuracyPercentage >= 60
+      ? {
+          title: 'Cukup Baik',
+          badgeClass: 'bg-amber-100 text-amber-800',
+          borderClass: 'border-amber-200 bg-amber-50/60',
+          advice: 'Bedah nomor yang meleset di bawah ini untuk menutup celah ketelitian.'
+        }
+      : {
+          title: 'Perlu Penguatan Konsep',
+          badgeClass: 'bg-rose-100 text-rose-800',
+          borderClass: 'border-rose-200 bg-rose-50/60',
+          advice: 'Tinjau kembali konsep dasar bab ini melalui pembahasan lalu ulangi sesi drilling.'
+        };
 
   const tiuMax = isSubKategori ? tiuCount * 5 : EXAM_CONFIGS.TIU.questionCount * 5;
   const twkMax = isSubKategori ? twkCount * 5 : EXAM_CONFIGS.TWK.questionCount * 5;
@@ -156,12 +228,31 @@ export function ExamResults() {
 
   let correctCount = 0;
   let wrongCount = 0;
-  questions.forEach((q) => {
+  const mistakeBadges: MistakeBadge[] = [];
+  const unansweredNumbers: number[] = [];
+
+  questions.forEach((q, idx) => {
+    const qNumber = idx + 1;
     const ans = answers[q.id];
-    if (!ans?.selectedAnswer) return;
-    if (q.category !== 'TKP') {
-      if (ans.selectedAnswer === q.correct_answer) correctCount++;
-      else wrongCount++;
+    const selected = ans?.selectedAnswer;
+
+    if (!selected) {
+      unansweredNumbers.push(qNumber);
+      return;
+    }
+
+    if (q.category === 'TKP') {
+      const pts = (q as any)[`points_${selected.toLowerCase()}`] ?? 0;
+      if (pts <= 3) {
+        mistakeBadges.push({ num: qNumber, detail: `${pts}p` });
+      }
+    } else {
+      if (selected === q.correct_answer) {
+        correctCount++;
+      } else {
+        wrongCount++;
+        mistakeBadges.push({ num: qNumber, detail: selected });
+      }
     }
   });
 
@@ -198,6 +289,9 @@ export function ExamResults() {
     return breakdown;
   })();
 
+  const subTopicCount = Object.keys(currentDiagnostic).length;
+  const showDiagnosticChart = isSubKategori ? subTopicCount > 1 : true;
+
   const allCategoryStats = [
     { key: 'TIU', count: tiuCount, score: scores.tiu, max: tiuMax, threshold: tiuThreshold, color: 'bg-blue-500', lightColor: 'bg-blue-100', textColor: 'text-blue-700' },
     { key: 'TWK', count: twkCount, score: scores.twk, max: twkMax, threshold: twkThreshold, color: 'bg-emerald-500', lightColor: 'bg-emerald-100', textColor: 'text-emerald-700' },
@@ -209,6 +303,8 @@ export function ExamResults() {
     : examType === 'FULL'
       ? allCategoryStats
       : allCategoryStats.filter((c) => c.key === examType);
+
+  const showCategorySummaryCard = isSubKategori ? categoryStats.length > 1 : true;
 
   const statGridClass =
     categoryStats.length === 1
@@ -278,13 +374,17 @@ export function ExamResults() {
           color: 'text-[#10b981]',
           bg: 'bg-emerald-50'
         },
-        { icon: Target, label: 'Kosong', value: totalUnanswered, color: 'text-gray-500', bg: 'bg-gray-50' },
+        { icon: Clock, label: 'Kecepatan', value: `${avgSecondsPerQuestion}d/soal`, color: 'text-[#1e3a8a]', bg: 'bg-blue-50' },
       ]
     : [
         { icon: CheckCircle, label: 'Benar', value: correctCount, color: 'text-[#10b981]', bg: 'bg-emerald-50' },
         { icon: XCircle, label: 'Salah', value: wrongCount, color: 'text-red-500', bg: 'bg-red-50' },
         { icon: Target, label: 'Kosong', value: totalUnanswered, color: 'text-gray-500', bg: 'bg-gray-50' },
       ];
+
+  const formattedTotalTime = totalDurationSeconds >= 60
+    ? `${Math.floor(totalDurationSeconds / 60)}m ${totalDurationSeconds % 60}d`
+    : `${totalDurationSeconds}d`;
 
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-4 relative">
@@ -341,87 +441,185 @@ export function ExamResults() {
           </motion.div>
         </motion.div>
 
-        {/* Per-Category Score Summary */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6"
-        >
-          <h2 className="font-bold text-gray-800 mb-5 flex items-center gap-2">
-            <TrendingUp className="w-5 h-5 text-[#1e3a8a]" />
-            Ringkasan Nilai Per Kategori
-          </h2>
-          <div className={`grid ${statGridClass} gap-4`}>
-            {categoryStats.map((cat) => {
-              const pct = cat.max > 0 ? Math.min((cat.score / cat.max) * 100, 100) : 0;
-              const roundedPct = Math.round(pct);
-              const catPassed = cat.score >= cat.threshold;
-              return (
-                <div key={cat.key} className={`${cat.lightColor} rounded-2xl p-4`}>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className={`text-sm font-bold ${cat.textColor}`}>{cat.key}</span>
-                    {isSubKategori ? (
-                      <span className="text-xs px-2.5 py-0.5 rounded-full font-semibold bg-purple-200/80 text-purple-800">
-                        Akurasi {roundedPct}%
-                      </span>
-                    ) : (
-                      <span
-                        className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
-                          catPassed ? 'bg-emerald-200 text-emerald-800' : 'bg-red-100 text-red-700'
-                        }`}
-                      >
-                        {catPassed ? 'Lulus' : 'Belum'}
-                      </span>
-                    )}
-                  </div>
-                  <p className={`text-3xl font-extrabold ${cat.textColor}`}>{cat.score}</p>
-                  <p className="text-xs text-gray-500 mt-0.5">dari {cat.max} poin</p>
-                  <div className="mt-3 w-full h-2 bg-white/60 rounded-full overflow-hidden">
-                    <motion.div
-                      initial={{ width: 0 }}
-                      animate={{ width: `${pct}%` }}
-                      transition={{ delay: 0.4, duration: 0.6 }}
-                      className={`h-full rounded-full ${cat.color}`}
-                    />
-                  </div>
-                  {isSubKategori ? (
-                    <p className="text-xs text-gray-500 mt-1.5">Ketepatan skor: {roundedPct}%</p>
-                  ) : (
-                    <p className="text-xs text-gray-500 mt-1.5">Ambang batas: {cat.threshold}</p>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </motion.div>
-
         {/* Stats Mini Cards */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="grid grid-cols-3 gap-4"
+          transition={{ delay: 0.1 }}
+          className="grid grid-cols-3 gap-3 sm:gap-4"
         >
           {miniStatsCards.map((s, i) => (
             <div key={i} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 text-center">
               <div className={`w-10 h-10 ${s.bg} rounded-xl flex items-center justify-center mx-auto mb-2`}>
                 <s.icon className={`w-5 h-5 ${s.color}`} />
               </div>
-              <p className="text-2xl font-bold text-gray-800">{s.value}</p>
+              <p className="text-xl sm:text-2xl font-bold text-gray-800">{s.value}</p>
               <p className="text-gray-500 text-xs mt-0.5">{s.label}</p>
             </div>
           ))}
         </motion.div>
 
-        {/* Grafik Diagnosis Evaluasi Materi */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.25 }}
-        >
-          <DiagnosticReport breakdown={currentDiagnostic} />
-        </motion.div>
+        {/* Evaluasi Taktis Khusus Drilling Sub-Kategori */}
+        {isSubKategori && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.15 }}
+            className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 space-y-5"
+          >
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <h2 className="font-bold text-gray-800 flex items-center gap-2">
+                <Zap className="w-5 h-5 text-purple-600" />
+                Evaluasi Taktis Drilling
+              </h2>
+              <span className="text-xs text-gray-400 font-medium">
+                Durasi total: {formattedTotalTime}
+              </span>
+            </div>
+
+            {/* Kartu Penguasaan Bab & Ritme Kecepatan */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+              <div className={`rounded-2xl border p-4 ${masteryEvaluation.borderClass}`}>
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <span className="text-xs font-bold uppercase tracking-wider text-gray-500 flex items-center gap-1.5">
+                    <Award className="w-4 h-4 text-purple-600" /> Penguasaan Bab
+                  </span>
+                  <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full ${masteryEvaluation.badgeClass}`}>
+                    {masteryEvaluation.title}
+                  </span>
+                </div>
+                <p className="text-xs text-gray-600 leading-relaxed">
+                  {masteryEvaluation.advice}
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-gray-200 bg-gray-50/70 p-4">
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <span className="text-xs font-bold uppercase tracking-wider text-gray-500 flex items-center gap-1.5">
+                    <Clock className="w-4 h-4 text-[#1e3a8a]" /> Ritme CAT BKN
+                  </span>
+                  <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full ${paceEvaluation.badgeClass}`}>
+                    {paceEvaluation.label}
+                  </span>
+                </div>
+                <p className="text-xs text-gray-600 leading-relaxed">
+                  Rata-rata <span className={`font-bold ${paceEvaluation.textClass}`}>{avgSecondsPerQuestion} detik/soal</span>. {paceEvaluation.note}
+                </p>
+              </div>
+            </div>
+
+            {/* Peta Nomor Meleset & Kosong */}
+            <div className="pt-2 border-t border-gray-100">
+              <div className="flex items-center justify-between mb-2.5">
+                <span className="text-xs font-bold uppercase tracking-wider text-gray-500 flex items-center gap-1.5">
+                  <AlertTriangle className="w-4 h-4 text-amber-500" />
+                  {isPureTkpDrilling ? 'Nomor Belum Optimal (Poin ≤ 3)' : 'Prioritas Nomor Perlu Dibahas'}
+                </span>
+                <span className="text-xs font-semibold text-gray-400">
+                  {mistakeBadges.length + unansweredNumbers.length} butir
+                </span>
+              </div>
+
+              {mistakeBadges.length === 0 && unansweredNumbers.length === 0 ? (
+                <div className="rounded-2xl bg-emerald-50 border border-emerald-200 px-4 py-3 text-xs font-semibold text-emerald-700 flex items-center gap-2">
+                  <CheckCircle className="w-4 h-4 flex-shrink-0" />
+                  Sempurna! Seluruh butir soal terjawab dengan hasil optimal.
+                </div>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {mistakeBadges.map((item) => (
+                    <span
+                      key={`m-${item.num}`}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200"
+                    >
+                      <span>No. {item.num}</span>
+                      <span className="text-[10px] font-semibold bg-rose-100 px-1.5 py-0.2 rounded">
+                        {isPureTkpDrilling ? item.detail : `Jawab ${item.detail}`}
+                      </span>
+                    </span>
+                  ))}
+                  {unansweredNumbers.map((num) => (
+                    <span
+                      key={`u-${num}`}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-bold bg-gray-100 text-gray-600 border border-gray-200"
+                    >
+                      <span>No. {num}</span>
+                      <span className="text-[10px] font-medium text-gray-400">(Kosong)</span>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+
+        {/* Per-Category Score Summary (Untuk Full SKD, Mini TO, atau Drilling Lintas Kategori) */}
+        {showCategorySummaryCard && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6"
+          >
+            <h2 className="font-bold text-gray-800 mb-5 flex items-center gap-2">
+              <TrendingUp className="w-5 h-5 text-[#1e3a8a]" />
+              Ringkasan Nilai Per Kategori
+            </h2>
+            <div className={`grid ${statGridClass} gap-4`}>
+              {categoryStats.map((cat) => {
+                const pct = cat.max > 0 ? Math.min((cat.score / cat.max) * 100, 100) : 0;
+                const roundedPct = Math.round(pct);
+                const catPassed = cat.score >= cat.threshold;
+                return (
+                  <div key={cat.key} className={`${cat.lightColor} rounded-2xl p-4`}>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className={`text-sm font-bold ${cat.textColor}`}>{cat.key}</span>
+                      {isSubKategori ? (
+                        <span className="text-xs px-2.5 py-0.5 rounded-full font-semibold bg-purple-200/80 text-purple-800">
+                          Akurasi {roundedPct}%
+                        </span>
+                      ) : (
+                        <span
+                          className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
+                            catPassed ? 'bg-emerald-200 text-emerald-800' : 'bg-red-100 text-red-700'
+                          }`}
+                        >
+                          {catPassed ? 'Lulus' : 'Belum'}
+                        </span>
+                      )}
+                    </div>
+                    <p className={`text-3xl font-extrabold ${cat.textColor}`}>{cat.score}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">dari {cat.max} poin</p>
+                    <div className="mt-3 w-full h-2 bg-white/60 rounded-full overflow-hidden">
+                      <motion.div
+                        initial={{ width: 0 }}
+                        animate={{ width: `${pct}%` }}
+                        transition={{ delay: 0.4, duration: 0.6 }}
+                        className={`h-full rounded-full ${cat.color}`}
+                      />
+                    </div>
+                    {isSubKategori ? (
+                      <p className="text-xs text-gray-500 mt-1.5">Ketepatan skor: {roundedPct}%</p>
+                    ) : (
+                      <p className="text-xs text-gray-500 mt-1.5">Ambang batas: {cat.threshold}</p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </motion.div>
+        )}
+
+        {/* Grafik Diagnosis Evaluasi Materi (Tampil jika multi-subkategori atau bukan drilling tunggal) */}
+        {showDiagnosticChart && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.25 }}
+          >
+            <DiagnosticReport breakdown={currentDiagnostic} />
+          </motion.div>
+        )}
 
         {/* Actions Menu */}
         <motion.div
