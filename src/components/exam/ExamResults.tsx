@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Trophy, CheckCircle, XCircle, ArrowLeft, RotateCcw, TrendingUp, Target, BookOpen, KeyRound, X } from 'lucide-react';
+import { Trophy, CheckCircle, XCircle, ArrowLeft, RotateCcw, TrendingUp, Target, BookOpen, KeyRound, X, Percent } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { EXAM_CONFIGS } from '../../data/mockData';
 import { supabase } from '../../lib/supabase';
@@ -12,7 +12,6 @@ export function ExamResults() {
   const [savedResultId, setSavedResultId] = useState<any>(null);
   const savedRef = useRef(false);
 
-  // State untuk manajemen Pop-up Token
   const [isTokenModalOpen, setIsTokenModalOpen] = useState(false);
   const [inputToken, setInputToken] = useState('');
   const [tokenError, setTokenError] = useState('');
@@ -134,36 +133,22 @@ export function ExamResults() {
   const tiuCount = questions.filter((q) => q.category === 'TIU').length;
   const tkpCount = questions.filter((q) => q.category === 'TKP').length;
 
-  // Hitung skor maksimal & ambang batas secara proporsional untuk TO_SUBKATEGORI
+  const maxTotalScore = questions.length * 5;
+  const accuracyPercentage = maxTotalScore > 0
+    ? Math.min(100, Math.round((scores.total / maxTotalScore) * 100))
+    : 0;
+
   const tiuMax = isSubKategori ? tiuCount * 5 : EXAM_CONFIGS.TIU.questionCount * 5;
   const twkMax = isSubKategori ? twkCount * 5 : EXAM_CONFIGS.TWK.questionCount * 5;
   const tkpMax = isSubKategori ? tkpCount * 5 : EXAM_CONFIGS.TKP.questionCount * 5;
 
-  const tiuThreshold = isSubKategori
-    ? (tiuCount >= 25 ? 80 : Math.ceil(tiuCount * 5 * 0.65))
-    : EXAM_CONFIGS.TIU.passingScore;
-  const twkThreshold = isSubKategori
-    ? (twkCount >= 20 ? 65 : Math.ceil(twkCount * 5 * 0.65))
-    : EXAM_CONFIGS.TWK.passingScore;
-  const tkpThreshold = isSubKategori
-    ? (tkpCount >= 45 ? 166 : Math.ceil(tkpCount * 5 * (166 / 225)))
-    : EXAM_CONFIGS.TKP.passingScore;
+  const tiuThreshold = EXAM_CONFIGS.TIU.passingScore;
+  const twkThreshold = EXAM_CONFIGS.TWK.passingScore;
+  const tkpThreshold = EXAM_CONFIGS.TKP.passingScore;
 
   let passed = scores.total >= config.passingScore;
-  let displayPassingScore = config.passingScore;
-
-  if (isSubKategori) {
-    const passTwk = twkCount === 0 ? true : scores.twk >= twkThreshold;
-    const passTiu = tiuCount === 0 ? true : scores.tiu >= tiuThreshold;
-    const passTkp = tkpCount === 0 ? true : scores.tkp >= tkpThreshold;
-    passed = passTwk && passTiu && passTkp;
-    displayPassingScore =
-      (twkCount > 0 ? twkThreshold : 0) +
-      (tiuCount > 0 ? tiuThreshold : 0) +
-      (tkpCount > 0 ? tkpThreshold : 0);
-  } else if (examType === 'FULL') {
+  if (examType === 'FULL' && !isSubKategori) {
     passed = scores.twk >= 65 && scores.tiu >= 80 && scores.tkp >= 166;
-    displayPassingScore = config.passingScore;
   }
 
   const totalAnswered = Object.values(answers).filter((a) => a.selectedAnswer).length;
@@ -179,6 +164,8 @@ export function ExamResults() {
       else wrongCount++;
     }
   });
+
+  const isPureTkpDrilling = isSubKategori && tkpCount > 0 && twkCount === 0 && tiuCount === 0;
 
   const currentDiagnostic = (() => {
     const breakdown: Record<string, { correct: number; total: number; percentage: number }> = {};
@@ -230,6 +217,12 @@ export function ExamResults() {
         ? 'grid-cols-1 sm:grid-cols-2'
         : 'grid-cols-1 sm:grid-cols-3';
 
+  const heroGradient = isSubKategori
+    ? 'bg-gradient-to-br from-purple-600 via-indigo-600 to-[#1e3a8a]'
+    : passed
+      ? 'bg-gradient-to-br from-[#10b981] to-emerald-600'
+      : 'bg-gradient-to-br from-[#1e3a8a] to-blue-700';
+
   const handleVerifyTokenAndRepeat = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputToken.trim()) {
@@ -275,6 +268,24 @@ export function ExamResults() {
     }
   };
 
+  const miniStatsCards = isSubKategori
+    ? [
+        { icon: Percent, label: 'Tingkat Akurasi', value: `${accuracyPercentage}%`, color: 'text-purple-600', bg: 'bg-purple-50' },
+        {
+          icon: CheckCircle,
+          label: isPureTkpDrilling ? 'Terjawab' : 'Benar',
+          value: isPureTkpDrilling ? `${totalAnswered}/${questions.length}` : `${correctCount}/${questions.length}`,
+          color: 'text-[#10b981]',
+          bg: 'bg-emerald-50'
+        },
+        { icon: Target, label: 'Kosong', value: totalUnanswered, color: 'text-gray-500', bg: 'bg-gray-50' },
+      ]
+    : [
+        { icon: CheckCircle, label: 'Benar', value: correctCount, color: 'text-[#10b981]', bg: 'bg-emerald-50' },
+        { icon: XCircle, label: 'Salah', value: wrongCount, color: 'text-red-500', bg: 'bg-red-50' },
+        { icon: Target, label: 'Kosong', value: totalUnanswered, color: 'text-gray-500', bg: 'bg-gray-50' },
+      ];
+
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-4 relative">
       <div className="max-w-2xl mx-auto space-y-6">
@@ -282,8 +293,7 @@ export function ExamResults() {
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
-          className={`rounded-3xl p-8 text-white text-center relative overflow-hidden
-            ${passed ? 'bg-gradient-to-br from-[#10b981] to-emerald-600' : 'bg-gradient-to-br from-[#1e3a8a] to-blue-700'}`}
+          className={`rounded-3xl p-8 text-white text-center relative overflow-hidden ${heroGradient}`}
         >
           <div className="absolute inset-0 bg-white/5 rounded-full scale-150" />
           <motion.div
@@ -302,15 +312,32 @@ export function ExamResults() {
             )}
             <h1 className="text-3xl font-bold mb-1">{scores.total}</h1>
             <p className="text-white/80 text-sm mb-3">Total Skor</p>
-            <span className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-semibold
-              ${passed ? 'bg-white text-emerald-700' : 'bg-white/20 text-white border border-white/30'}`}>
-              {passed ? (
-                <><CheckCircle className="w-4 h-4" /> LULUS</>
-              ) : (
-                <><XCircle className="w-4 h-4" /> BELUM LULUS</>
-              )}
-            </span>
-            <p className="text-white/70 text-xs mt-2">Nilai ambang batas: {displayPassingScore}</p>
+
+            {isSubKategori ? (
+              <>
+                <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-semibold bg-white text-purple-700 shadow-sm">
+                  <CheckCircle className="w-4 h-4" /> SELESAI DRILLING
+                </span>
+                <p className="text-white/85 text-xs mt-2.5 font-medium">
+                  Tingkat Akurasi: <span className="font-bold text-white">{accuracyPercentage}%</span> (dari {maxTotalScore} poin maksimal)
+                </p>
+              </>
+            ) : (
+              <>
+                <span
+                  className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-semibold ${
+                    passed ? 'bg-white text-emerald-700' : 'bg-white/20 text-white border border-white/30'
+                  }`}
+                >
+                  {passed ? (
+                    <><CheckCircle className="w-4 h-4" /> LULUS</>
+                  ) : (
+                    <><XCircle className="w-4 h-4" /> BELUM LULUS</>
+                  )}
+                </span>
+                <p className="text-white/70 text-xs mt-2">Nilai ambang batas: {config.passingScore}</p>
+              </>
+            )}
           </motion.div>
         </motion.div>
 
@@ -328,15 +355,25 @@ export function ExamResults() {
           <div className={`grid ${statGridClass} gap-4`}>
             {categoryStats.map((cat) => {
               const pct = cat.max > 0 ? Math.min((cat.score / cat.max) * 100, 100) : 0;
+              const roundedPct = Math.round(pct);
               const catPassed = cat.score >= cat.threshold;
               return (
                 <div key={cat.key} className={`${cat.lightColor} rounded-2xl p-4`}>
                   <div className="flex items-center justify-between mb-2">
                     <span className={`text-sm font-bold ${cat.textColor}`}>{cat.key}</span>
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-semibold
-                      ${catPassed ? 'bg-emerald-200 text-emerald-800' : 'bg-red-100 text-red-700'}`}>
-                      {catPassed ? 'Lulus' : 'Belum'}
-                    </span>
+                    {isSubKategori ? (
+                      <span className="text-xs px-2.5 py-0.5 rounded-full font-semibold bg-purple-200/80 text-purple-800">
+                        Akurasi {roundedPct}%
+                      </span>
+                    ) : (
+                      <span
+                        className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
+                          catPassed ? 'bg-emerald-200 text-emerald-800' : 'bg-red-100 text-red-700'
+                        }`}
+                      >
+                        {catPassed ? 'Lulus' : 'Belum'}
+                      </span>
+                    )}
                   </div>
                   <p className={`text-3xl font-extrabold ${cat.textColor}`}>{cat.score}</p>
                   <p className="text-xs text-gray-500 mt-0.5">dari {cat.max} poin</p>
@@ -348,7 +385,11 @@ export function ExamResults() {
                       className={`h-full rounded-full ${cat.color}`}
                     />
                   </div>
-                  <p className="text-xs text-gray-500 mt-1.5">Ambang batas: {cat.threshold}</p>
+                  {isSubKategori ? (
+                    <p className="text-xs text-gray-500 mt-1.5">Ketepatan skor: {roundedPct}%</p>
+                  ) : (
+                    <p className="text-xs text-gray-500 mt-1.5">Ambang batas: {cat.threshold}</p>
+                  )}
                 </div>
               );
             })}
@@ -362,11 +403,7 @@ export function ExamResults() {
           transition={{ delay: 0.2 }}
           className="grid grid-cols-3 gap-4"
         >
-          {[
-            { icon: CheckCircle, label: 'Benar', value: correctCount, color: 'text-[#10b981]', bg: 'bg-emerald-50' },
-            { icon: XCircle, label: 'Salah', value: wrongCount, color: 'text-red-500', bg: 'bg-red-50' },
-            { icon: Target, label: 'Kosong', value: totalUnanswered, color: 'text-gray-500', bg: 'bg-gray-50' },
-          ].map((s, i) => (
+          {miniStatsCards.map((s, i) => (
             <div key={i} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 text-center">
               <div className={`w-10 h-10 ${s.bg} rounded-xl flex items-center justify-center mx-auto mb-2`}>
                 <s.icon className={`w-5 h-5 ${s.color}`} />
