@@ -1,22 +1,21 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { 
-  Clock, 
-  CheckCircle, 
-  Trophy, 
-  Eye, 
-  LayoutGrid, 
-  Brain, 
-  Shield, 
-  Heart, 
-  BookOpen, 
-  Target // ✅ Ikon khusus untuk TO_SUBKATEGORI
+import {
+  Clock,
+  CheckCircle,
+  Trophy,
+  Eye,
+  LayoutGrid,
+  Brain,
+  Shield,
+  Heart,
+  BookOpen,
+  Target
 } from 'lucide-react';
-import { PackageType } from '../../types';
 
 export interface ExamHistoryRecord {
   id: string;
-  package_type: PackageType | string;
+  package_type: string;
   package_name: string;
   total_score: number;
   score_tiu?: number;
@@ -46,7 +45,6 @@ const PACKAGE_LABEL: Record<string, string> = {
   FULL: 'FULL SKD',
 };
 
-// 🌟 WARNA BADGE KATEGORI (Mendukung TO_SUBKATEGORI & Case-Insensitive)
 const PACKAGE_COLOR: Record<string, string> = {
   MINI_TIU: 'bg-blue-100 text-blue-700',
   TIU: 'bg-blue-100 text-blue-700',
@@ -58,7 +56,6 @@ const PACKAGE_COLOR: Record<string, string> = {
   FULL: 'bg-[#1e3a8a]/10 text-[#1e3a8a]',
 };
 
-// 🌟 WARNA & IKON KATEGORI
 const PACKAGE_ICON: Record<string, { icon: React.ElementType; bg: string; color: string }> = {
   MINI_TIU:       { icon: Brain,      bg: 'bg-blue-100',       color: 'text-blue-500'    },
   TIU:            { icon: Brain,      bg: 'bg-blue-100',       color: 'text-blue-500'    },
@@ -69,6 +66,14 @@ const PACKAGE_ICON: Record<string, { icon: React.ElementType; bg: string; color:
   TO_SUBKATEGORI: { icon: Target,     bg: 'bg-purple-100',     color: 'text-purple-600'  },
   FULL:           { icon: LayoutGrid, bg: 'bg-[#1e3a8a]/10',   color: 'text-[#1e3a8a]'  },
 };
+
+function calculateAccuracy(record: ExamHistoryRecord): number {
+  const maxScore = record.questions_total > 0 ? record.questions_total * 5 : 0;
+  if (maxScore > 0) {
+    return Math.min(100, Math.round((record.total_score / maxScore) * 100));
+  }
+  return 0;
+}
 
 export default function ExamHistory({ records, onViewDetails, onViewReview }: Props) {
   const formatDate = (dateString: string) => {
@@ -102,9 +107,11 @@ export default function ExamHistory({ records, onViewDetails, onViewReview }: Pr
   return (
     <div className="space-y-3">
       {records.map((record, i) => {
-        const normType = (record.package_type || 'FULL').toUpperCase();
+        const normType = (record.package_type ? record.package_type : 'FULL').toUpperCase();
+        const isDrilling = normType === 'TO_SUBKATEGORI';
         const pkg = PACKAGE_ICON[normType] ?? PACKAGE_ICON.FULL;
         const Icon = pkg.icon;
+        const accuracyPct = calculateAccuracy(record);
 
         return (
           <motion.div
@@ -115,15 +122,18 @@ export default function ExamHistory({ records, onViewDetails, onViewReview }: Pr
             className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 hover:shadow-md transition-shadow"
           >
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              
+
               {/* SISI KIRI: INFORMASI HASIL UJIAN */}
               <div className="flex items-start gap-4 flex-1 min-w-0 w-full">
                 <div className="relative flex-shrink-0">
                   <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${pkg.bg}`}>
                     <Icon className={`w-6 h-6 ${pkg.color}`} />
                   </div>
-                  <div className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full border-2 border-white flex items-center justify-center
-                    ${record.passed ? 'bg-emerald-400' : 'bg-gray-300'}`}>
+                  <div
+                    className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full border-2 border-white flex items-center justify-center ${
+                      isDrilling ? 'bg-purple-500' : record.passed ? 'bg-emerald-400' : 'bg-gray-300'
+                    }`}
+                  >
                     <CheckCircle className="w-3 h-3 text-white" />
                   </div>
                 </div>
@@ -136,10 +146,19 @@ export default function ExamHistory({ records, onViewDetails, onViewReview }: Pr
                     <span className="text-xs text-gray-500 truncate max-w-[160px] sm:max-w-[260px] font-medium">
                       {record.package_name}
                     </span>
-                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-md
-                      ${record.passed ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'}`}>
-                      {record.passed ? 'Lulus' : 'Belum Lulus'}
-                    </span>
+                    {isDrilling ? (
+                      <span className="text-xs font-semibold px-2.5 py-0.5 rounded-md bg-purple-100 text-purple-700">
+                        Selesai Drilling · Akurasi {accuracyPct}%
+                      </span>
+                    ) : (
+                      <span
+                        className={`text-xs font-semibold px-2 py-0.5 rounded-md ${
+                          record.passed ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'
+                        }`}
+                      >
+                        {record.passed ? 'Lulus' : 'Belum Lulus'}
+                      </span>
+                    )}
                   </div>
 
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2">
@@ -147,10 +166,19 @@ export default function ExamHistory({ records, onViewDetails, onViewReview }: Pr
                       <p className="text-gray-500 text-xs">Skor</p>
                       <p className="font-bold text-gray-800">{record.total_score}</p>
                     </div>
-                    <div className="text-sm">
-                      <p className="text-gray-500 text-xs">Benar</p>
-                      <p className="font-bold text-gray-800">{record.questions_correct}/{record.questions_total}</p>
-                    </div>
+                    {isDrilling ? (
+                      <div className="text-sm">
+                        <p className="text-gray-500 text-xs">Akurasi</p>
+                        <p className="font-bold text-purple-700">
+                          {accuracyPct}% <span className="text-xs font-medium text-gray-400">({record.questions_correct}/{record.questions_total})</span>
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="text-sm">
+                        <p className="text-gray-500 text-xs">Benar</p>
+                        <p className="font-bold text-gray-800">{record.questions_correct}/{record.questions_total}</p>
+                      </div>
+                    )}
                     <div className="text-sm">
                       <p className="text-gray-500 text-xs">Waktu</p>
                       <p className="font-bold text-gray-800 flex items-center gap-1">
@@ -196,7 +224,7 @@ export default function ExamHistory({ records, onViewDetails, onViewReview }: Pr
                     <span>Lihat Skor</span>
                   </button>
                 )}
-                
+
                 {onViewReview && (
                   <button
                     onClick={() => onViewReview(record.id)}
