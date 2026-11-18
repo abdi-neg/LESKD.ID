@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Users, CheckCircle, Clock, Trophy, RefreshCw, BarChart3, Award, TrendingUp, Filter, Trash2, ChevronDown, Calendar, Search } from 'lucide-react';
+import { Users, CheckCircle, Clock, Trophy, RefreshCw, BarChart3, Award, TrendingUp, Filter, Trash2, ChevronDown, Calendar, Search, Target } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { ExamResult } from '../../types';
 
@@ -63,7 +63,6 @@ export default function LiveScoreMonitor() {
   const [filter, setFilter] = useState<string>('ALL');
   const [isFilterOpen, setIsFilterOpen] = useState(false);
 
-  // State khusus untuk trigger re-render agar timer peserta yang in_progress berjalan di UI
   const [nowTick, setNowTick] = useState<number>(Date.now());
 
   const syncRef = useRef<() => Promise<void>>(async () => {});
@@ -140,7 +139,6 @@ export default function LiveScoreMonitor() {
     };
   }, [isRealtime]);
 
-  // ─── FILTER ENGINE BERBASIS KOLOM STATUS RESMI ───
   const filteredResults = results.filter((r) => {
     const normPkgType = String(r.package_type ?? '').toUpperCase().trim();
     const matchesPackage = filter === 'ALL' ? true : normPkgType === filter;
@@ -226,7 +224,6 @@ export default function LiveScoreMonitor() {
     return b.score_twk - a.score_twk;
   });
 
-  // METRIK KARTU RINGKASAN DATA
   const totalCount = filteredResults.length;
   const submittedRecords = filteredResults.filter((r) => isCompletedStatus(r.status));
   const submittedCount = submittedRecords.length;
@@ -263,7 +260,7 @@ export default function LiveScoreMonitor() {
             <Trophy className="w-7 h-7 text-amber-500" /> LIVE MONITORING SKD
           </h2>
           <p className="text-slate-400 text-xs mt-1">
-            Aturan Perangkingan: Total Skor → TKP → TIU → TWK • Sinkronisasi: {lastUpdated.toLocaleTimeString('id-ID')}
+            Aturan Perangkingan: Total Skor &rarr; TKP &rarr; TIU &rarr; TWK &bull; Sinkronisasi: {lastUpdated.toLocaleTimeString('id-ID')}
           </p>
         </div>
 
@@ -436,7 +433,7 @@ export default function LiveScoreMonitor() {
                 <th className="px-5 py-3.5 text-center bg-emerald-950/20 text-emerald-400 w-20">TWK</th>
                 <th className="px-5 py-3.5 text-center text-amber-400 font-black w-28">TOTAL</th>
                 <th className="px-5 py-3.5 text-center">Durasi</th>
-                <th className="px-5 py-3.5 text-right">Status Submisi & Hasil</th>
+                <th className="px-5 py-3.5 text-right">Status Submisi &amp; Hasil</th>
               </tr>
             </thead>
 
@@ -452,6 +449,7 @@ export default function LiveScoreMonitor() {
 
                   const isCompleted = isCompletedStatus(r.status);
                   const normPkgType = String(r.package_type ?? 'FULL').toUpperCase().trim();
+                  const isDrillingPkg = normPkgType === 'TO_SUBKATEGORI';
 
                   const displaySeconds = isCompleted
                     ? (r.duration_seconds ?? 0)
@@ -486,7 +484,7 @@ export default function LiveScoreMonitor() {
                           <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-md whitespace-nowrap ${PKG_COLORS[normPkgType] ?? 'bg-slate-800 text-slate-400'}`}>
                             {PKG_LABELS[normPkgType] ?? r.package_name}
                           </span>
-                          {normPkgType === 'TO_SUBKATEGORI' && r.package_name && (
+                          {isDrillingPkg && r.package_name && (
                             <span className="text-[10px] text-slate-400 truncate max-w-[170px]">
                               {r.package_name}
                             </span>
@@ -517,13 +515,20 @@ export default function LiveScoreMonitor() {
                             <span className="text-[9px] font-black tracking-widest text-emerald-400 uppercase bg-emerald-500/5 px-2 py-0.5 rounded border border-emerald-500/10">
                               ✓ Sudah Submit
                             </span>
-                            <span className={`inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-md border
-                              ${r.passed
-                                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                                : 'bg-rose-500/10 text-rose-400 border-rose-500/20'}`}>
-                              <Award className="w-3.5 h-3.5" />
-                              {r.passed ? 'MEMENUHI SYARAT' : 'TIDAK LULUS PG'}
-                            </span>
+                            {isDrillingPkg ? (
+                              <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-md border bg-purple-500/10 text-purple-400 border-purple-500/20">
+                                <Target className="w-3.5 h-3.5" />
+                                SELESAI DRILLING
+                              </span>
+                            ) : (
+                              <span className={`inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-md border
+                                ${r.passed
+                                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                                  : 'bg-rose-500/10 text-rose-400 border-rose-500/20'}`}>
+                                <Award className="w-3.5 h-3.5" />
+                                {r.passed ? 'MEMENUHI SYARAT' : 'TIDAK LULUS PG'}
+                              </span>
+                            )}
                           </div>
                         ) : (
                           <div className="flex flex-col items-end gap-1">
