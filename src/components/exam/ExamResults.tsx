@@ -9,7 +9,7 @@ import DiagnosticReport from './DiagnosticReport';
 
 export function ExamResults() {
   const { state, dispatch, startExam } = useApp();
-  const [savedResultId, setSavedResultId] = useState<string | null>(null);
+  const [savedResultId, setSavedResultId] = useState<any>(null);
   const savedRef = useRef(false);
 
   // State untuk manajemen Pop-up Token
@@ -22,11 +22,15 @@ export function ExamResults() {
   const profile = state.profile;
 
   useEffect(() => {
-    if (!session?.scores || !profile || savedRef.current) return;
+    if (!session?.scores) return;
+    if (!profile) return;
+    if (savedRef.current) return;
     savedRef.current = true;
 
     const { scores, examType, questions, answers, startedAt, completedAt, packageId, packageName } = session;
     const dbResultId = (session as any).resultId;
+    const rawPkgType = ((session as any).packageType ?? '').toUpperCase();
+    const isSubKategori = rawPkgType === 'TO_SUBKATEGORI';
 
     (async () => {
       const snapshot = buildReviewSnapshot(session);
@@ -47,15 +51,31 @@ export function ExamResults() {
         saveReviewSnapshot(dbResultId, snapshot);
         setSavedResultId(dbResultId);
 
-        if (session.tokenUsed) {
+        if ((session as any).tokenUsed) {
           await supabase
             .from('exam_tokens')
             .update({ is_active: false })
-            .eq('token', session.tokenUsed.trim().toUpperCase());
+            .eq('token', String((session as any).tokenUsed).trim().toUpperCase());
         }
       } else {
-        const config = EXAM_CONFIGS[examType];
-        const passed = scores.total >= config.passingScore;
+        const config = EXAM_CONFIGS[examType] ?? EXAM_CONFIGS.FULL;
+        const twkCount = questions.filter((q) => q.category === 'TWK').length;
+        const tiuCount = questions.filter((q) => q.category === 'TIU').length;
+        const tkpCount = questions.filter((q) => q.category === 'TKP').length;
+
+        let passed = scores.total >= config.passingScore;
+        if (isSubKategori) {
+          const minTwk = twkCount >= 20 ? 65 : Math.ceil(twkCount * 5 * 0.65);
+          const minTiu = tiuCount >= 25 ? 80 : Math.ceil(tiuCount * 5 * 0.65);
+          const minTkp = tkpCount >= 45 ? 166 : Math.ceil(tkpCount * 5 * (166 / 225));
+          const passTwk = twkCount === 0 ? true : scores.twk >= minTwk;
+          const passTiu = tiuCount === 0 ? true : scores.tiu >= minTiu;
+          const passTkp = tkpCount === 0 ? true : scores.tkp >= minTkp;
+          passed = passTwk && passTiu && passTkp;
+        } else if (examType === 'FULL') {
+          passed = scores.twk >= 65 && scores.tiu >= 80 && scores.tkp >= 166;
+        }
+
         const durationSeconds = completedAt
           ? Math.floor((completedAt.getTime() - startedAt.getTime()) / 1000)
           : 0;
@@ -75,11 +95,13 @@ export function ExamResults() {
           FULL: 'FULL',
         };
 
-        const { data, error } = await supabase.from('exam_results').insert({
+        const resolvedPackageType = rawPkgType ? rawPkgType : (pkgTypeMap[examType] ?? 'FULL');
+
+        const { data } = await supabase.from('exam_results').insert({
           participant_id: profile.id,
           package_id: packageId ?? null,
           package_name: packageName ?? examType,
-          package_type: pkgTypeMap[examType] ?? 'FULL',
+          package_type: resolvedPackageType,
           score_tiu: scores.tiu,
           score_twk: scores.twk,
           score_tkp: scores.tkp,
@@ -104,8 +126,45 @@ export function ExamResults() {
   if (!session?.scores) return null;
 
   const { scores, examType, questions, answers } = session;
-  const config = EXAM_CONFIGS[examType];
-  const passed = scores.total >= config.passingScore;
+  const config = EXAM_CONFIGS[examType] ?? EXAM_CONFIGS.FULL;
+  const rawPkgType = ((session as any).packageType ?? '').toUpperCase();
+  const isSubKategori = rawPkgType === 'TO_SUBKATEGORI';
+
+  const twkCount = questions.filter((q) => q.category === 'TWK').length;
+  const tiuCount = questions.filter((q) => q.category === 'TIU').length;
+  const tkpCount = questions.filter((q) => q.category === 'TKP').length;
+
+  // Hitung skor maksimal & ambang batas secara proporsional untuk TO_SUBKATEGORI
+  const tiuMax = isSubKategori ? tiuCount * 5 : EXAM_CONFIGS.TIU.questionCount * 5;
+  const twkMax = isSubKategori ? twkCount * 5 : EXAM_CONFIGS.TWK.questionCount * 5;
+  const tkpMax = isSubKategori ? tkpCount * 5 : EXAM_CONFIGS.TKP.questionCount * 5;
+
+  const tiuThreshold = isSubKategori
+    ? (tiuCount >= 25 ? 80 : Math.ceil(tiuCount * 5 * 0.65))
+    : EXAM_CONFIGS.TIU.passingScore;
+  const twkThreshold = isSubKategori
+    ? (twkCount >= 20 ? 65 : Math.ceil(twkCount * 5 * 0.65))
+    : EXAM_CONFIGS.TWK.passingScore;
+  const tkpThreshold = isSubKategori
+    ? (tkpCount >= 45 ? 166 : Math.ceil(tkpCount * 5 * (166 / 225)))
+    : EXAM_CONFIGS.TKP.passingScore;
+
+  let passed = scores.total >= config.passingScore;
+  let displayPassingScore = config.passingScore;
+
+  if (isSubKategori) {
+    const passTwk = twkCount === 0 ? true : scores.twk >= twkThreshold;
+    const passTiu = tiuCount === 0 ? true : scores.tiu >= tiuThreshold;
+    const passTkp = tkpCount === 0 ? true : scores.tkp >= tkpThreshold;
+    passed = passTwk && passTiu && passTkp;
+    displayPassingScore =
+      (twkCount > 0 ? twkThreshold : 0) +
+      (tiuCount > 0 ? tiuThreshold : 0) +
+      (tkpCount > 0 ? tkpThreshold : 0);
+  } else if (examType === 'FULL') {
+    passed = scores.twk >= 65 && scores.tiu >= 80 && scores.tkp >= 166;
+    displayPassingScore = config.passingScore;
+  }
 
   const totalAnswered = Object.values(answers).filter((a) => a.selectedAnswer).length;
   const totalUnanswered = questions.length - totalAnswered;
@@ -123,18 +182,18 @@ export function ExamResults() {
 
   const currentDiagnostic = (() => {
     const breakdown: Record<string, { correct: number; total: number; percentage: number }> = {};
-    
+
     questions.forEach((q) => {
-      const subCat = q.sub_category || 'Umum';
+      const subCat = q.sub_category ? q.sub_category : 'Umum';
       const ans = answers[q.id];
       const selected = ans?.selectedAnswer;
-      
+
       if (!breakdown[subCat]) {
         breakdown[subCat] = { correct: 0, total: 0, percentage: 0 };
       }
-      
+
       if (q.category === 'TKP') {
-        const points = selected ? (q as any)[`points_${selected.toLowerCase()}`] || 0 : 0;
+        const points = selected ? ((q as any)[`points_${selected.toLowerCase()}`] ?? 0) : 0;
         breakdown[subCat].correct += points;
         breakdown[subCat].total += 5;
       } else {
@@ -143,25 +202,33 @@ export function ExamResults() {
         breakdown[subCat].total += 1;
       }
     });
-    
+
     Object.keys(breakdown).forEach((key) => {
       const item = breakdown[key];
       item.percentage = item.total > 0 ? Math.round((item.correct / item.total) * 100) : 0;
     });
-    
+
     return breakdown;
   })();
 
-  // 🌟 UBAH WARNA TKP MENJADI AMBER DI SINI
   const allCategoryStats = [
-    { key: 'TIU', score: scores.tiu, max: EXAM_CONFIGS.TIU.questionCount * 5, threshold: EXAM_CONFIGS.TIU.passingScore, color: 'bg-blue-500', lightColor: 'bg-blue-100', textColor: 'text-blue-700' },
-    { key: 'TWK', score: scores.twk, max: EXAM_CONFIGS.TWK.questionCount * 5, threshold: EXAM_CONFIGS.TWK.passingScore, color: 'bg-emerald-500', lightColor: 'bg-emerald-100', textColor: 'text-emerald-700' },
-    { key: 'TKP', score: scores.tkp, max: EXAM_CONFIGS.TKP.questionCount * 5, threshold: EXAM_CONFIGS.TKP.passingScore, color: 'bg-amber-500', lightColor: 'bg-amber-100', textColor: 'text-amber-700' },
+    { key: 'TIU', count: tiuCount, score: scores.tiu, max: tiuMax, threshold: tiuThreshold, color: 'bg-blue-500', lightColor: 'bg-blue-100', textColor: 'text-blue-700' },
+    { key: 'TWK', count: twkCount, score: scores.twk, max: twkMax, threshold: twkThreshold, color: 'bg-emerald-500', lightColor: 'bg-emerald-100', textColor: 'text-emerald-700' },
+    { key: 'TKP', count: tkpCount, score: scores.tkp, max: tkpMax, threshold: tkpThreshold, color: 'bg-amber-500', lightColor: 'bg-amber-100', textColor: 'text-amber-700' },
   ];
 
-  const categoryStats = examType === 'FULL'
-    ? allCategoryStats
-    : allCategoryStats.filter((c) => c.key === examType);
+  const categoryStats = isSubKategori
+    ? allCategoryStats.filter((c) => c.count > 0)
+    : examType === 'FULL'
+      ? allCategoryStats
+      : allCategoryStats.filter((c) => c.key === examType);
+
+  const statGridClass =
+    categoryStats.length === 1
+      ? 'grid-cols-1'
+      : categoryStats.length === 2
+        ? 'grid-cols-1 sm:grid-cols-2'
+        : 'grid-cols-1 sm:grid-cols-3';
 
   const handleVerifyTokenAndRepeat = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -181,7 +248,8 @@ export function ExamResults() {
         .eq('is_active', true)
         .maybeSingle();
 
-      if (error || !data) {
+      const hasTokenError = Boolean(error);
+      if (hasTokenError ? true : !data) {
         setTokenError('Token tidak valid atau sudah digunakan!');
         setIsValidating(false);
         return;
@@ -190,14 +258,20 @@ export function ExamResults() {
       setIsTokenModalOpen(false);
       setInputToken('');
       startExam(
-        examType, 
-        session.packageId ? { id: session.packageId, name: session.packageName ?? examType } as import('../../types').ExamPackage : undefined
+        examType,
+        session.packageId
+          ? ({
+              id: session.packageId,
+              name: session.packageName ?? examType,
+              package_type: (session as any).packageType,
+            } as any)
+          : undefined
       );
     } catch (err) {
       console.error(err);
       setTokenError('Terjadi kesalahan sistem. Coba lagi.');
     } finally {
-      isValidating(false);
+      setIsValidating(false);
     }
   };
 
@@ -221,6 +295,11 @@ export function ExamResults() {
             <div className="w-20 h-20 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4">
               <Trophy className="w-10 h-10 text-white" />
             </div>
+            {isSubKategori && (
+              <span className="inline-block bg-white/20 text-white text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-full mb-2">
+                Drilling Sub-Kategori
+              </span>
+            )}
             <h1 className="text-3xl font-bold mb-1">{scores.total}</h1>
             <p className="text-white/80 text-sm mb-3">Total Skor</p>
             <span className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-semibold
@@ -231,7 +310,7 @@ export function ExamResults() {
                 <><XCircle className="w-4 h-4" /> BELUM LULUS</>
               )}
             </span>
-            <p className="text-white/70 text-xs mt-2">Nilai ambang batas: {config.passingScore}</p>
+            <p className="text-white/70 text-xs mt-2">Nilai ambang batas: {displayPassingScore}</p>
           </motion.div>
         </motion.div>
 
@@ -246,9 +325,9 @@ export function ExamResults() {
             <TrendingUp className="w-5 h-5 text-[#1e3a8a]" />
             Ringkasan Nilai Per Kategori
           </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className={`grid ${statGridClass} gap-4`}>
             {categoryStats.map((cat) => {
-              const pct = Math.min((cat.score / cat.max) * 100, 100);
+              const pct = cat.max > 0 ? Math.min((cat.score / cat.max) * 100, 100) : 0;
               const catPassed = cat.score >= cat.threshold;
               return (
                 <div key={cat.key} className={`${cat.lightColor} rounded-2xl p-4`}>
@@ -298,7 +377,7 @@ export function ExamResults() {
           ))}
         </motion.div>
 
-        {/* 🌟 SEBARKAN GRAFIK DIAGNOSIS EVALUASI MATERI SEKETIKA DI SINI */}
+        {/* Grafik Diagnosis Evaluasi Materi */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -328,7 +407,7 @@ export function ExamResults() {
               <div className="text-sm">Menyiapkan Pembahasan...</div>
             </div>
           )}
-          
+
           <div className="flex gap-3">
             <button
               onClick={() => dispatch({ type: 'CLEAR_EXAM' })}
@@ -352,7 +431,7 @@ export function ExamResults() {
         </motion.div>
       </div>
 
-      {/* 📥 MODAL POP-UP TOKEN */}
+      {/* MODAL POP-UP TOKEN */}
       <AnimatePresence>
         {isTokenModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
