@@ -1,29 +1,38 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Activity, Users, CheckCircle, Clock, Trophy, RefreshCw, BarChart3, Award, TrendingUp, Filter, Trash2, ChevronDown, Calendar, Search } from 'lucide-react';
+import { Users, CheckCircle, Clock, Trophy, RefreshCw, BarChart3, Award, TrendingUp, Filter, Trash2, ChevronDown, Calendar, Search } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { ExamResult, PackageType } from '../../types';
+import { ExamResult } from '../../types';
 
-const PKG_COLORS: Record<PackageType, string> = {
+const PKG_COLORS: Record<string, string> = {
   MINI_TIU: 'bg-blue-500/10 text-blue-400 border border-blue-500/20',
+  TIU: 'bg-blue-500/10 text-blue-400 border border-blue-500/20',
   MINI_TWK: 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20',
-  MINI_TKP: 'bg-rose-500/10 text-rose-400 border border-rose-500/20',
-  FULL: 'bg-amber-500/10 text-amber-400 border border-amber-500/20',
+  TWK: 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20',
+  MINI_TKP: 'bg-amber-500/10 text-amber-400 border border-amber-500/20',
+  TKP: 'bg-amber-500/10 text-amber-400 border border-amber-500/20',
+  TO_SUBKATEGORI: 'bg-purple-500/10 text-purple-400 border border-purple-500/20',
+  FULL: 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20',
 };
 
-const PKG_LABELS: Record<PackageType, string> = {
+const PKG_LABELS: Record<string, string> = {
   MINI_TIU: 'Mini TIU',
+  TIU: 'Mini TIU',
   MINI_TWK: 'Mini TWK',
+  TWK: 'Mini TWK',
   MINI_TKP: 'Mini TKP',
+  TKP: 'Mini TKP',
+  TO_SUBKATEGORI: 'Drilling Sub-Kategori',
   FULL: 'Full CAT',
 };
 
-const FILTER_OPTIONS: { value: 'ALL' | PackageType; label: string }[] = [
+const FILTER_OPTIONS: { value: string; label: string }[] = [
   { value: 'ALL', label: 'Semua Paket Ujian' },
-  { value: 'MINI_TIU', label: 'Mini TIU' },
-  { value: 'MINI_TWK', label: 'Mini TWK' },
-  { value: 'MINI_TKP', label: 'Mini TKP' },
   { value: 'FULL', label: 'Full CAT (110 Soal)' },
+  { value: 'MINI_TWK', label: 'Mini TWK' },
+  { value: 'MINI_TIU', label: 'Mini TIU' },
+  { value: 'MINI_TKP', label: 'Mini TKP' },
+  { value: 'TO_SUBKATEGORI', label: 'Drilling Sub-Kategori' },
 ];
 
 type ResultWithName = ExamResult & { participant_name: string };
@@ -35,51 +44,55 @@ function formatDuration(seconds: number) {
   return `${m}m ${s}s`;
 }
 
+function isCompletedStatus(status: unknown): boolean {
+  const normalized = String(status ?? '').toLowerCase().trim();
+  return normalized === 'completed' ? true : normalized === 'selesai';
+}
+
 export default function LiveScoreMonitor() {
   const [results, setResults] = useState<ResultWithName[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(new Date());
-  const [isRealtime, setIsRealtime] = useState(true); 
-  const [countdown, setCountdown] = useState<number>(5); 
+  const [isRealtime, setIsRealtime] = useState(true);
+  const [countdown, setCountdown] = useState<number>(5);
   const [searchQuery, setSearchQuery] = useState('');
-  
+
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toLocaleDateString('en-CA'));
-  const [statusFilter, setStatusFilter] = useState<'ALL' | 'ONGOING' | 'SUBMITTED'>('ALL');
-  
-  const [filter, setFilter] = useState<'ALL' | PackageType>('ALL');
-  const [isFilterOpen, setIsFilterOpen] = useState(false); 
-  
-  // State dummy khusus untuk trigger re-render agar timer peserta yang in_progress berjalan di UI
+  const [statusFilter, setStatusFilter] = useState<string>('ALL');
+
+  const [filter, setFilter] = useState<string>('ALL');
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+
+  // State khusus untuk trigger re-render agar timer peserta yang in_progress berjalan di UI
   const [nowTick, setNowTick] = useState<number>(Date.now());
 
   const syncRef = useRef<() => Promise<void>>(async () => {});
 
   const syncLiveMonitorData = useCallback(async () => {
-    // 🌟 PERBAIKAN 1: Hapus select('*') agar hemat kuota.
-    // 🌟 PERBAIKAN 2: Gunakan order('started_at') agar data terbaru selalu muncul di limit 200 teratas.
     const { data: examData, error: examError } = await supabase
       .from('exam_results')
-      .select('id, participant_id, user_name, package_type, package_name, score_tiu, score_twk, score_tkp, total_score, passed, status, started_at, completed_at, duration_seconds') 
+      .select('id, participant_id, user_name, package_type, package_name, score_tiu, score_twk, score_tkp, total_score, passed, status, started_at, completed_at, duration_seconds')
       .order('started_at', { ascending: false })
       .limit(200);
 
-    if (examError || !examData) {
-      console.error("Supabase Fetch Error:", examError);
+    const hasFetchError = Boolean(examError);
+    if (hasFetchError ? true : !examData) {
+      console.error('Supabase Fetch Error:', examError);
       setLoading(false);
       return;
     }
 
-    const participantIds = Array.from(new Set(examData.map(r => r.participant_id).filter(Boolean)));
-    
-    let nameMap: Record<string, string> = {};
+    const participantIds = Array.from(new Set(examData.map((r) => r.participant_id).filter(Boolean)));
+
+    const nameMap: Record<string, string> = {};
     if (participantIds.length > 0) {
       const { data: profileData } = await supabase
         .from('profiles')
         .select('id, full_name')
         .in('id', participantIds);
-      
+
       if (profileData) {
-        profileData.forEach(p => {
+        profileData.forEach((p) => {
           nameMap[p.id] = p.full_name;
         });
       }
@@ -87,10 +100,10 @@ export default function LiveScoreMonitor() {
 
     const mapped = examData.map((r) => ({
       ...r,
-      participant_name: r.user_name || nameMap[r.participant_id] || 'Peserta SKD',
+      participant_name: r.user_name ? r.user_name : (nameMap[r.participant_id] ?? 'Peserta SKD'),
     }));
 
-    setResults(mapped as any); // Type assertion untuk keamanan Typescript
+    setResults(mapped as any);
     setLastUpdated(new Date());
     setLoading(false);
   }, []);
@@ -107,18 +120,15 @@ export default function LiveScoreMonitor() {
   useEffect(() => {
     if (!isRealtime) return;
 
-    // Timer untuk fetch data dari Supabase (Setiap 5 detik)
     const pollingTimer = setInterval(() => {
       syncRef.current();
-      setCountdown(5); 
+      setCountdown(5);
     }, 5000);
 
-    // Timer untuk UI visual countdown (Setiap 1 detik)
     const visualTimer = setInterval(() => {
       setCountdown((prev) => (prev > 1 ? prev - 1 : 5));
     }, 1000);
 
-    // 🌟 PERBAIKAN 3: Timer mandiri HP Admin (Anti-beku)
     const tickTimer = setInterval(() => {
       setNowTick(Date.now());
     }, 1000);
@@ -130,22 +140,26 @@ export default function LiveScoreMonitor() {
     };
   }, [isRealtime]);
 
-  // ─── 🌟 FILTER ENGINE BERBASIS KOLOM STATUS RESMI ───
+  // ─── FILTER ENGINE BERBASIS KOLOM STATUS RESMI ───
   const filteredResults = results.filter((r) => {
-    const matchesPackage = filter === 'ALL' || r.package_type === filter;
+    const normPkgType = String(r.package_type ?? '').toUpperCase().trim();
+    const matchesPackage = filter === 'ALL' ? true : normPkgType === filter;
 
-    const currentStatus = String(r.status || '').toLowerCase().trim();
+    const currentStatus = String(r.status ?? '').toLowerCase().trim();
     const isOngoingSession = currentStatus === 'in_progress';
-    const isSubmittedSession = currentStatus === 'completed' || currentStatus === 'selesai';
+    const isSubmittedSession = isCompletedStatus(r.status);
 
-    const matchesStatus = 
-      statusFilter === 'ALL' ? true :
-      statusFilter === 'ONGOING' ? isOngoingSession : isSubmittedSession;
+    const matchesStatus =
+      statusFilter === 'ALL'
+        ? true
+        : statusFilter === 'ONGOING'
+          ? isOngoingSession
+          : isSubmittedSession;
 
     const todayStr = new Date().toLocaleDateString('en-CA');
-    const rawDate = r.started_at || (r as any).created_at;
+    const rawDate = r.started_at ? r.started_at : (r as any).created_at;
     let examDate = '';
-    
+
     if (rawDate) {
       const parsedDate = new Date(rawDate);
       if (!isNaN(parsedDate.getTime())) {
@@ -153,45 +167,46 @@ export default function LiveScoreMonitor() {
       }
     }
 
-    const matchesDate = selectedDate 
-      ? (examDate === selectedDate || (isOngoingSession && selectedDate === todayStr))
+    const matchesDate = selectedDate
+      ? (examDate === selectedDate ? true : (isOngoingSession && selectedDate === todayStr))
       : true;
 
-    const matchesSearch = searchQuery 
-      ? r.participant_name?.toLowerCase().includes(searchQuery.toLowerCase())
+    const matchesSearch = searchQuery
+      ? Boolean(r.participant_name?.toLowerCase().includes(searchQuery.toLowerCase()))
       : true;
 
     return matchesPackage && matchesDate && matchesStatus && matchesSearch;
   });
 
   const handleClearData = async () => {
-    const idsToDelete = filteredResults.map(r => r.id);
+    const idsToDelete = filteredResults.map((r) => r.id);
 
     if (idsToDelete.length === 0) {
-      alert("Tabel sudah kosong, tidak ada data yang bisa dihapus pada filter aktif saat ini.");
+      alert('Tabel sudah kosong, tidak ada data yang bisa dihapus pada filter aktif saat ini.');
       return;
     }
 
-    const confirmMsg = filter === 'ALL' 
-      ? `PERINGATAN BAHAYA: Anda akan menghapus ${idsToDelete.length} data riwayat yang tampil di layar sesuai filter aktif saat ini! Lanjutkan?`
-      : `Anda akan menghapus ${idsToDelete.length} data riwayat khusus untuk paket ${PKG_LABELS[filter]} pada filter aktif. Lanjutkan?`;
-      
+    const activeLabel = PKG_LABELS[filter] ?? filter;
+    const confirmMsg =
+      filter === 'ALL'
+        ? `PERINGATAN BAHAYA: Anda akan menghapus ${idsToDelete.length} data riwayat yang tampil di layar sesuai filter aktif saat ini! Lanjutkan?`
+        : `Anda akan menghapus ${idsToDelete.length} data riwayat khusus untuk paket ${activeLabel} pada filter aktif. Lanjutkan?`;
+
     if (!window.confirm(confirmMsg)) return;
-    
+
     setLoading(true);
     try {
       const { error } = await supabase
         .from('exam_results')
         .delete()
         .in('id', idsToDelete);
-      
+
       if (error) throw error;
-      
-      setResults(prev => prev.filter(r => !idsToDelete.includes(r.id)));
-      
+
+      setResults((prev) => prev.filter((r) => !idsToDelete.includes(r.id)));
       alert('Berhasil! Data sesi pilihan telah dibersihkan.');
     } catch (err) {
-      console.error("Gagal menghapus data:", err);
+      console.error('Gagal menghapus data:', err);
       alert('Terjadi kesalahan saat menghapus data. Pastikan jaringan stabil.');
     } finally {
       setLoading(false);
@@ -213,29 +228,34 @@ export default function LiveScoreMonitor() {
 
   // METRIK KARTU RINGKASAN DATA
   const totalCount = filteredResults.length;
-  const submittedCount = filteredResults.filter((r) => String(r.status).toLowerCase().trim() === 'completed' || String(r.status).toLowerCase().trim() === 'selesai').length;
-  const ongoingCount = filteredResults.filter((r) => String(r.status).toLowerCase().trim() === 'in_progress').length;
-  
-  const avgScore = submittedCount > 0
-    ? Math.round(filteredResults.filter(r => String(r.status).toLowerCase().trim() === 'completed' || String(r.status).toLowerCase().trim() === 'selesai').reduce((s, r) => s + r.total_score, 0) / submittedCount)
-    : 0;
+  const submittedRecords = filteredResults.filter((r) => isCompletedStatus(r.status));
+  const submittedCount = submittedRecords.length;
+  const ongoingCount = filteredResults.filter((r) => String(r.status ?? '').toLowerCase().trim() === 'in_progress').length;
 
-  const baseListForCounters = results.filter(r => filter === 'ALL' || r.package_type === filter);
+  const avgScore =
+    submittedCount > 0
+      ? Math.round(submittedRecords.reduce((s, r) => s + r.total_score, 0) / submittedCount)
+      : 0;
+
+  const baseListForCounters = results.filter((r) => {
+    const normPkgType = String(r.package_type ?? '').toUpperCase().trim();
+    return filter === 'ALL' ? true : normPkgType === filter;
+  });
   const todayStr = new Date().toLocaleDateString('en-CA');
-  
-  const totalSesiHariIni = baseListForCounters.filter(r => {
-    const rawDate = r.started_at || (r as any).created_at;
+
+  const totalSesiHariIni = baseListForCounters.filter((r) => {
+    const rawDate = r.started_at ? r.started_at : (r as any).created_at;
     const examDate = rawDate ? new Date(rawDate).toLocaleDateString('en-CA') : '';
-    const isOngoing = String(r.status).toLowerCase().trim() === 'in_progress';
-    return selectedDate ? (examDate === selectedDate || (isOngoing && selectedDate === todayStr)) : true;
+    const isOngoing = String(r.status ?? '').toLowerCase().trim() === 'in_progress';
+    return selectedDate ? (examDate === selectedDate ? true : (isOngoing && selectedDate === todayStr)) : true;
   });
 
-  const ongoingHariIniCount = totalSesiHariIni.filter(r => String(r.status).toLowerCase().trim() === 'in_progress').length;
-  const submittedHariIniCount = totalSesiHariIni.filter(r => String(r.status).toLowerCase().trim() === 'completed' || String(r.status).toLowerCase().trim() === 'selesai').length;
+  const ongoingHariIniCount = totalSesiHariIni.filter((r) => String(r.status ?? '').toLowerCase().trim() === 'in_progress').length;
+  const submittedHariIniCount = totalSesiHariIni.filter((r) => isCompletedStatus(r.status)).length;
 
   return (
     <div className="space-y-6 p-6 bg-slate-950 text-slate-100 rounded-3xl border border-slate-900 shadow-2xl font-sans">
-      
+
       {/* HEADER MONITOR */}
       <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between border-b border-slate-900 pb-5 gap-4">
         <div>
@@ -243,10 +263,10 @@ export default function LiveScoreMonitor() {
             <Trophy className="w-7 h-7 text-amber-500" /> LIVE MONITORING SKD
           </h2>
           <p className="text-slate-400 text-xs mt-1">
-            Aturan Perangkingan: Total Skor &rarr; TKP &rarr; TIU &rarr; TWK &bull; Sinkronisasi: {lastUpdated.toLocaleTimeString('id-ID')}
+            Aturan Perangkingan: Total Skor → TKP → TIU → TWK • Sinkronisasi: {lastUpdated.toLocaleTimeString('id-ID')}
           </p>
         </div>
-        
+
         <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
           {/* Dropdown Filter Paket */}
           <div className="relative flex-grow lg:flex-grow-0 z-20">
@@ -256,7 +276,7 @@ export default function LiveScoreMonitor() {
             >
               <div className="flex items-center gap-2 text-sm font-semibold text-slate-300">
                 <Filter className="w-4 h-4 text-slate-400" />
-                <span className="truncate">{FILTER_OPTIONS.find(opt => opt.value === filter)?.label}</span>
+                <span className="truncate">{FILTER_OPTIONS.find((opt) => opt.value === filter)?.label}</span>
               </div>
               <ChevronDown className={`w-4 h-4 text-slate-500 transition-transform duration-300 ${isFilterOpen ? 'rotate-180' : ''}`} />
             </button>
@@ -269,7 +289,7 @@ export default function LiveScoreMonitor() {
                     initial={{ opacity: 0, y: 8, scale: 0.95 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: 8, scale: 0.95 }}
-                    transition={{ duration: 0.15, ease: "easeOut" }}
+                    transition={{ duration: 0.15, ease: 'easeOut' }}
                     className="absolute left-0 right-0 lg:right-auto top-full mt-2 w-full lg:w-56 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl overflow-hidden z-20"
                   >
                     <div className="py-1 flex flex-col">
@@ -312,7 +332,7 @@ export default function LiveScoreMonitor() {
             <span className={`w-2 h-2 rounded-full flex-shrink-0 ${isRealtime ? 'bg-slate-950 animate-pulse' : 'bg-slate-500'}`} />
             <span className="whitespace-nowrap">{isRealtime ? `AUTO (${countdown}s)` : 'PAUSED'}</span>
           </button>
-          
+
           <button
             onClick={() => { setLoading(true); syncLiveMonitorData(); }}
             className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-semibold bg-slate-900 border border-slate-800 text-slate-300 hover:bg-slate-800 transition-colors"
@@ -322,23 +342,23 @@ export default function LiveScoreMonitor() {
         </div>
       </div>
 
-      {/* 🛠️ CONTROL BOARD FILTER ADVANCED */}
+      {/* CONTROL BOARD FILTER ADVANCED */}
       <div className="bg-slate-900/50 p-4 rounded-2xl border border-slate-900/80 space-y-4">
         <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
-          
+
           {/* Kalender Pemilih Tanggal */}
           <div className="flex items-center gap-2 border border-slate-800 rounded-xl px-3 py-2 bg-slate-950 text-xs font-bold">
             <Calendar className="w-4 h-4 text-slate-400 flex-shrink-0" />
             <span className="text-slate-400">Tanggal:</span>
-            <input 
-              type="date" 
+            <input
+              type="date"
               value={selectedDate}
               onChange={(e) => setSelectedDate(e.target.value)}
               className="bg-transparent text-slate-200 outline-none cursor-pointer focus:text-indigo-400 font-mono"
             />
             {selectedDate && (
-              <button 
-                onClick={() => setSelectedDate('')} 
+              <button
+                onClick={() => setSelectedDate('')}
                 className="text-[10px] text-rose-400 font-black tracking-wider uppercase bg-rose-500/10 px-1.5 py-0.5 rounded border border-rose-500/10 hover:bg-rose-500 hover:text-white ml-2"
               >
                 Semua Hari
@@ -368,10 +388,10 @@ export default function LiveScoreMonitor() {
           ].map((tab) => (
             <button
               key={tab.id}
-              onClick={() => setStatusFilter(tab.id as any)}
+              onClick={() => setStatusFilter(tab.id)}
               className={`px-3 py-2 rounded-xl transition-all border flex items-center gap-2 ${
-                statusFilter === tab.id 
-                  ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-600/10' 
+                statusFilter === tab.id
+                  ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-600/10'
                   : 'bg-slate-950 border-slate-900 text-slate-400 hover:bg-slate-900'
               }`}
             >
@@ -393,7 +413,7 @@ export default function LiveScoreMonitor() {
           { icon: TrendingUp, label: 'Rerata Skor (Submit)', value: avgScore, color: 'text-indigo-400', bg: 'bg-indigo-500/5 border border-indigo-500/10' },
         ].map((stat, i) => (
           <div key={i} className={`rounded-2xl p-4 ${stat.bg}`}>
-            <div className={`w-9 h-9 rounded-xl flex items-center justify-center mb-2 bg-slate-900`}>
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center mb-2 bg-slate-900">
               <stat.icon className={`w-5 h-5 ${stat.color}`} />
             </div>
             <p className="text-2xl font-black font-mono text-slate-100">{stat.value}</p>
@@ -419,7 +439,7 @@ export default function LiveScoreMonitor() {
                 <th className="px-5 py-3.5 text-right">Status Submisi & Hasil</th>
               </tr>
             </thead>
-            
+
             <tbody className="divide-y divide-slate-900/60 font-medium text-sm">
               <AnimatePresence initial={false}>
                 {sortedResults.map((r, index) => {
@@ -430,12 +450,11 @@ export default function LiveScoreMonitor() {
                     'bg-amber-700 text-white ring-4 ring-amber-800/20'
                   ];
 
-                  const sessionStatus = String(r.status || '').toLowerCase().trim();
-                  const isCompleted = sessionStatus === 'completed' || sessionStatus === 'selesai';
-                  
-                  // 🌟 PERBAIKAN 4: Kalkulasi durasi realtime mandiri (anti beku)
-                  const displaySeconds = isCompleted 
-                    ? (r.duration_seconds || 0) 
+                  const isCompleted = isCompletedStatus(r.status);
+                  const normPkgType = String(r.package_type ?? 'FULL').toUpperCase().trim();
+
+                  const displaySeconds = isCompleted
+                    ? (r.duration_seconds ?? 0)
                     : (r.started_at ? Math.floor((nowTick - new Date(r.started_at).getTime()) / 1000) : 0);
 
                   return (
@@ -463,9 +482,16 @@ export default function LiveScoreMonitor() {
                       </td>
 
                       <td className="px-5 py-3.5">
-                        <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-md whitespace-nowrap ${PKG_COLORS[r.package_type] ?? 'bg-slate-800 text-slate-400'}`}>
-                          {PKG_LABELS[r.package_type] ?? r.package_name}
-                        </span>
+                        <div className="flex flex-col items-start gap-1">
+                          <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-md whitespace-nowrap ${PKG_COLORS[normPkgType] ?? 'bg-slate-800 text-slate-400'}`}>
+                            {PKG_LABELS[normPkgType] ?? r.package_name}
+                          </span>
+                          {normPkgType === 'TO_SUBKATEGORI' && r.package_name && (
+                            <span className="text-[10px] text-slate-400 truncate max-w-[170px]">
+                              {r.package_name}
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       <td className="px-5 py-3.5 text-center font-mono font-bold text-slate-300 bg-rose-950/5">{r.score_tkp}</td>
@@ -481,7 +507,6 @@ export default function LiveScoreMonitor() {
                       <td className="px-5 py-3.5 text-center">
                         <span className="inline-flex items-center gap-1 text-xs text-slate-400 bg-slate-900 px-2 py-1 rounded-md font-mono">
                           <Clock className="w-3 h-3 text-slate-500" />
-                          {/* Format durasi yang sudah diperbaiki */}
                           {formatDuration(displaySeconds)}
                         </span>
                       </td>
@@ -493,8 +518,8 @@ export default function LiveScoreMonitor() {
                               ✓ Sudah Submit
                             </span>
                             <span className={`inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-md border
-                              ${r.passed 
-                                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' 
+                              ${r.passed
+                                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
                                 : 'bg-rose-500/10 text-rose-400 border-rose-500/20'}`}>
                               <Award className="w-3.5 h-3.5" />
                               {r.passed ? 'MEMENUHI SYARAT' : 'TIDAK LULUS PG'}
@@ -518,7 +543,7 @@ export default function LiveScoreMonitor() {
               </AnimatePresence>
             </tbody>
           </table>
-          
+
           {sortedResults.length === 0 && (
             <div className="text-center py-20 bg-slate-950/40">
               <BarChart3 className="w-12 h-12 text-slate-800 mx-auto mb-3 animate-pulse" />
