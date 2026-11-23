@@ -70,13 +70,6 @@ export function ExamResults() {
 
         saveReviewSnapshot(dbResultId, snapshot);
         setSavedResultId(dbResultId);
-
-        if ((session as any).tokenUsed) {
-          await supabase
-            .from('exam_tokens')
-            .update({ is_active: false })
-            .eq('token', String((session as any).tokenUsed).trim().toUpperCase());
-        }
       } else {
         const config = EXAM_CONFIGS[examType] ?? EXAM_CONFIGS.FULL;
         const twkCount = questions.filter((q) => q.category === 'TWK').length;
@@ -319,10 +312,18 @@ export function ExamResults() {
       ? 'bg-gradient-to-br from-[#10b981] to-emerald-600'
       : 'bg-gradient-to-br from-[#1e3a8a] to-blue-700';
 
+  // Validasi Token Ulangi Ujian — Terhubung langsung ke exam_packages (sinkron dengan TokenGate.tsx)
   const handleVerifyTokenAndRepeat = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputToken.trim()) {
-      setTokenError('Token tidak boleh kosong!');
+    const inputTokenClean = inputToken.trim();
+
+    if (inputTokenClean.length !== 6) {
+      setTokenError('Masukkan 6 digit angka token dengan benar.');
+      return;
+    }
+
+    if (!session.packageId) {
+      setTokenError('Data paket tidak ditemukan. Silakan kembali ke Dashboard.');
       return;
     }
 
@@ -331,34 +332,41 @@ export function ExamResults() {
 
     try {
       const { data, error } = await supabase
-        .from('exam_tokens')
+        .from('exam_packages')
         .select('*')
-        .eq('token', inputToken.trim().toUpperCase())
-        .eq('is_active', true)
-        .maybeSingle();
+        .eq('id', session.packageId)
+        .single();
 
-      const hasTokenError = Boolean(error);
-      if (hasTokenError ? true : !data) {
-        setTokenError('Token tidak valid atau sudah digunakan!');
+      const hasDbError = Boolean(error);
+      if (hasDbError ? true : !data) {
+        setTokenError('Gagal terhubung ke server untuk verifikasi token.');
+        setIsValidating(false);
+        return;
+      }
+
+      if (!data.is_active) {
+        setTokenError('Paket ujian ini sedang dinonaktifkan oleh Admin.');
+        setIsValidating(false);
+        return;
+      }
+
+      let dbTokenClean = String(data.token ?? '').trim();
+      if (dbTokenClean.length < 6 && /^\d+$/.test(dbTokenClean)) {
+        dbTokenClean = dbTokenClean.padStart(6, '0');
+      }
+
+      if (inputTokenClean !== dbTokenClean) {
+        setTokenError('Token tidak valid. Pastikan token 6-digit sesuai dengan yang dibagikan Admin.');
         setIsValidating(false);
         return;
       }
 
       setIsTokenModalOpen(false);
       setInputToken('');
-      startExam(
-        examType,
-        session.packageId
-          ? ({
-              id: session.packageId,
-              name: session.packageName ?? examType,
-              package_type: (session as any).packageType,
-            } as any)
-          : undefined
-      );
+      await startExam(examType, data as any);
     } catch (err) {
       console.error(err);
-      setTokenError('Terjadi kesalahan sistem. Coba lagi.');
+      setTokenError('Terjadi kendala sistem saat memproses token.');
     } finally {
       setIsValidating(false);
     }
@@ -385,6 +393,8 @@ export function ExamResults() {
   const formattedTotalTime = totalDurationSeconds >= 60
     ? `${Math.floor(totalDurationSeconds / 60)}m ${totalDurationSeconds % 60}d`
     : `${totalDurationSeconds}d`;
+
+  const isSubmitDisabled = isValidating ? true : inputToken.length !== 6;
 
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-4 relative">
@@ -513,7 +523,7 @@ export function ExamResults() {
               <div className="flex items-center justify-between mb-2.5">
                 <span className="text-xs font-bold uppercase tracking-wider text-gray-500 flex items-center gap-1.5">
                   <AlertTriangle className="w-4 h-4 text-amber-500" />
-                  {isPureTkpDrilling ? 'Nomor Belum Optimal (Poin ≤ 3)' : 'Prioritas Nomor Perlu Dibahas'}
+                  {isPureTkpDrilling ? 'Nomor Belum Optimal (Poin <= 3)' : 'Prioritas Nomor Perlu Dibahas'}
                 </span>
                 <span className="text-xs font-semibold text-gray-400">
                   {mistakeBadges.length + unansweredNumbers.length} butir
@@ -610,7 +620,7 @@ export function ExamResults() {
           </motion.div>
         )}
 
-        {/* Grafik Diagnosis Evaluasi Materi (Tampil jika multi-subkategori atau bukan drilling tunggal) */}
+        {/* Grafik Diagnosis Evaluasi Materi */}
         {showDiagnosticChart && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -666,7 +676,7 @@ export function ExamResults() {
         </motion.div>
       </div>
 
-      {/* MODAL POP-UP TOKEN */}
+      {/* MODAL POP-UP TOKEN (SINKRON DENGAN EXAM_PACKAGES) */}
       <AnimatePresence>
         {isTokenModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -687,7 +697,7 @@ export function ExamResults() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-[#1e3a8a]">
                   <KeyRound className="w-5 h-5" />
-                  <h3 className="font-bold text-gray-800 text-lg">Konfirmasi Token</h3>
+                  <h3 className="font-bold text-gray-800 text-lg">Verifikasi Token Ulang</h3>
                 </div>
                 <button
                   onClick={() => setIsTokenModalOpen(false)}
@@ -698,18 +708,22 @@ export function ExamResults() {
               </div>
 
               <p className="text-gray-500 text-sm leading-relaxed">
-                Token sebelumnya sudah kedaluwarsa karena Anda telah menyelesaikan ujian. Silakan masukkan Token Baru dari pengawas untuk memulai ulang.
+                Masukkan token 6-digit aktif dari Admin untuk memulai ulang paket <span className="font-semibold text-gray-700">{session.packageName ?? examType}</span>.
               </p>
 
               <form onSubmit={handleVerifyTokenAndRepeat} className="space-y-3">
                 <div>
                   <input
                     type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={6}
+                    autoFocus
                     value={inputToken}
-                    onChange={(e) => setInputToken(e.target.value)}
-                    placeholder="Masukkan Token Baru"
+                    onChange={(e) => setInputToken(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    placeholder="000000"
                     disabled={isValidating}
-                    className={`w-full px-4 py-3 rounded-xl border font-mono font-bold text-center tracking-widest text-lg uppercase focus:outline-none focus:ring-2 transition-all
+                    className={`w-full px-4 py-3 rounded-xl border font-mono font-bold text-center tracking-[0.45em] text-2xl focus:outline-none focus:ring-2 transition-all
                       ${tokenError ? 'border-red-300 focus:ring-red-200' : 'border-gray-200 focus:ring-blue-100 focus:border-[#1e3a8a]'}`}
                   />
                   {tokenError && (
@@ -718,7 +732,7 @@ export function ExamResults() {
                       animate={{ opacity: 1, y: 0 }}
                       className="text-red-500 text-xs mt-1.5 font-medium flex items-center gap-1"
                     >
-                      <XCircle className="w-3.5 h-3.5" /> {tokenError}
+                      <XCircle className="w-3.5 h-3.5 flex-shrink-0" /> {tokenError}
                     </motion.p>
                   )}
                 </div>
@@ -734,8 +748,8 @@ export function ExamResults() {
                   </button>
                   <button
                     type="submit"
-                    disabled={isValidating}
-                    className="flex-1 py-2.5 rounded-xl bg-[#1e3a8a] hover:bg-[#1e40af] text-white font-bold text-sm transition-colors flex items-center justify-center gap-1.5 shadow-sm"
+                    disabled={isSubmitDisabled}
+                    className="flex-1 py-2.5 rounded-xl bg-[#1e3a8a] hover:bg-[#1e40af] text-white font-bold text-sm transition-colors flex items-center justify-center gap-1.5 shadow-sm disabled:opacity-50"
                   >
                     {isValidating ? (
                       <>
@@ -743,7 +757,7 @@ export function ExamResults() {
                         <span>Validasi...</span>
                       </>
                     ) : (
-                      'Mulai Ujian'
+                      'Mulai Ulang'
                     )}
                   </button>
                 </div>
