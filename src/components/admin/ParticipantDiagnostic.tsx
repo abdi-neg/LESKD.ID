@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Users, Search, ChevronRight, ArrowLeft, Loader2,
@@ -19,8 +20,8 @@ interface ExamResultRow {
   total_score: number;
   passed: boolean;
   completed_at: string;
-  review_snapshot: any | null;
-  diagnostic_breakdown: any | null;
+  review_snapshot: any;
+  diagnostic_breakdown: any;
 }
 
 interface SubStat {
@@ -31,7 +32,7 @@ interface SubStat {
 }
 
 interface CategoryDiag {
-  id: 'TWK' | 'TIU' | 'TKP';
+  id: string;
   name: string;
   overallPct: number;
   gained: number;
@@ -43,73 +44,86 @@ interface CategoryDiag {
 const CIRCUMFERENCE = 100.53;
 
 const categoryMeta = [
-  { id: 'TWK' as const, name: 'Tes Wawasan Kebangsaan', strokeClass: 'stroke-emerald-500', textClass: 'text-emerald-600', badgeBg: 'bg-emerald-50' },
-  { id: 'TIU' as const, name: 'Tes Inteligensia Umum', strokeClass: 'stroke-blue-500', textClass: 'text-blue-600', badgeBg: 'bg-blue-50' },
-  { id: 'TKP' as const, name: 'Tes Karakteristik Pribadi', strokeClass: 'stroke-amber-500', textClass: 'text-amber-600', badgeBg: 'bg-amber-50' },
+  { id: 'TWK', name: 'Tes Wawasan Kebangsaan', strokeClass: 'stroke-emerald-500', textClass: 'text-emerald-600', badgeBg: 'bg-emerald-50' },
+  { id: 'TIU', name: 'Tes Inteligensia Umum', strokeClass: 'stroke-blue-500', textClass: 'text-blue-600', badgeBg: 'bg-blue-50' },
+  { id: 'TKP', name: 'Tes Karakteristik Pribadi', strokeClass: 'stroke-amber-500', textClass: 'text-amber-600', badgeBg: 'bg-amber-50' },
 ];
+
+function isDrillingPackage(packageType: unknown): boolean {
+  return String(packageType ?? '').toUpperCase().trim() === 'TO_SUBKATEGORI';
+}
+
+function safePercent(num: number, den: number): number {
+  if (den <= 0) return 0;
+  const pct = Math.round((num / den) * 100);
+  return Number.isNaN(pct) ? 0 : pct;
+}
 
 // ─── Per-exam diagnostics ────────────────────────────────────────────────────
 
 function computeDiagnostics(questions: any[], answers: any): CategoryDiag[] {
-  const getAnswer = (qId: string): string | null => {
+  const getAnswer = (qId: string): any => {
     if (!answers) return null;
     if (Array.isArray(answers)) {
-      const a = answers.find((x: any) => x?.question_id === qId || x?.questionId === qId);
-      return a?.selectedAnswer || a?.answer || null;
+      const a = answers.find((x: any) => (x?.question_id === qId ? true : x?.questionId === qId));
+      return a?.selectedAnswer ?? a?.answer ?? null;
     }
     const a = answers[qId];
     if (!a) return null;
-    return typeof a === 'string' ? a : a?.selectedAnswer || a?.answer || null;
+    return typeof a === 'string' ? a : (a?.selectedAnswer ?? a?.answer ?? null);
   };
 
-  return categoryMeta.map((cat) => {
-    const catQs = questions.filter((q: any) => q?.category === cat.id);
-    if (catQs.length === 0) return null;
+  return categoryMeta
+    .map((cat) => {
+      const catQs = questions.filter((q: any) => q?.category === cat.id);
+      if (catQs.length === 0) return null;
 
-    let gained = 0;
-    const subMap: Record<string, { correctPoints: number; totalMax: number }> = {};
+      let gained = 0;
+      const subMap: Record<string, { correctPoints: number; totalMax: number }> = {};
 
-    catQs.forEach((q: any) => {
-      const sub = q?.sub_category || q?.sub_kategori || q?.SUB_CATEGORY || 'Umum';
-      const sel = getAnswer(q.id);
-      if (!subMap[sub]) subMap[sub] = { correctPoints: 0, totalMax: 0 };
-      subMap[sub].totalMax += 5;
+      catQs.forEach((q: any) => {
+        const sub = q?.sub_category ?? q?.sub_kategori ?? q?.SUB_KATEGORI ?? q?.SUB_CATEGORY ?? 'Umum';
+        const sel = getAnswer(q.id);
+        if (!subMap[sub]) subMap[sub] = { correctPoints: 0, totalMax: 0 };
+        subMap[sub].totalMax += 5;
 
-      if (cat.id === 'TKP') {
-        const pts = sel ? Number(q[`points_${String(sel).toLowerCase()}`] || 0) : 0;
-        gained += pts;
-        subMap[sub].correctPoints += pts;
-      } else {
-        const correct = sel && String(sel).toUpperCase() === String(q?.correct_answer).toUpperCase();
-        const pts = correct ? 5 : 0;
-        gained += pts;
-        subMap[sub].correctPoints += pts;
-      }
-    });
+        if (cat.id === 'TKP') {
+          const rawPts = sel ? Number(q[`points_${String(sel).toLowerCase()}`] ?? 0) : 0;
+          const pts = Number.isNaN(rawPts) ? 0 : rawPts;
+          gained += pts;
+          subMap[sub].correctPoints += pts;
+        } else {
+          const correct = Boolean(sel) && String(sel).toUpperCase() === String(q?.correct_answer).toUpperCase();
+          const pts = correct ? 5 : 0;
+          gained += pts;
+          subMap[sub].correctPoints += pts;
+        }
+      });
 
-    const maxPts = catQs.length * 5;
-    const overallPct = Math.round((gained / maxPts) * 100) || 0;
-    const subList: SubStat[] = Object.keys(subMap).map((name) => {
-      const s = subMap[name];
-      return { name, percentage: Math.round((s.correctPoints / s.totalMax) * 100) || 0, ...s };
-    });
+      const maxPts = catQs.length * 5;
+      const overallPct = safePercent(gained, maxPts);
+      const subList: SubStat[] = Object.keys(subMap).map((name) => {
+        const s = subMap[name];
+        return { name, percentage: safePercent(s.correctPoints, s.totalMax), ...s };
+      });
 
-    return {
-      id: cat.id,
-      name: cat.name,
-      overallPct,
-      gained,
-      maxPts,
-      strengths: subList.filter((s) => s.percentage >= 70),
-      weaknesses: subList.filter((s) => s.percentage < 70),
-    };
-  }).filter(Boolean) as CategoryDiag[];
+      return {
+        id: cat.id,
+        name: cat.name,
+        overallPct,
+        gained,
+        maxPts,
+        strengths: subList.filter((s) => s.percentage >= 70),
+        weaknesses: subList.filter((s) => s.percentage < 70),
+      };
+    })
+    .filter(Boolean) as CategoryDiag[];
 }
 
-// ─── Aggregate diagnostics (all exams combined) ───────────────────────────────
+// ─── Aggregate diagnostics (all main exams combined) ─────────────────────────
 
 function computeAggregateDiagnostics(results: ExamResultRow[]): CategoryDiag[] {
-  type Pair = { question: any; answer: string | null };
+  type Pair = { question: any; answer: any };
   const allPairs: Pair[] = [];
 
   for (const result of results) {
@@ -117,62 +131,68 @@ function computeAggregateDiagnostics(results: ExamResultRow[]): CategoryDiag[] {
     if (typeof snap === 'string') {
       try {
         snap = JSON.parse(snap);
+        if (typeof snap === 'string') {
+          snap = JSON.parse(snap);
+        }
       } catch (e) {
-        console.error("Gagal memecah JSON:", e);
+        console.error('Gagal memecah JSON:', e);
       }
     }
 
     if (!snap?.questions) continue;
-    
+
     for (const q of snap.questions) {
       const ans = snap.answers?.[q.id];
-      const selectedAnswer = typeof ans === 'string' ? ans : ans?.selectedAnswer || null;
+      const selectedAnswer = typeof ans === 'string' ? ans : (ans?.selectedAnswer ?? ans?.answer ?? null);
       allPairs.push({ question: q, answer: selectedAnswer });
     }
   }
 
   if (allPairs.length === 0) return [];
 
-  return categoryMeta.map((cat) => {
-    const catPairs = allPairs.filter((p) => p.question?.category === cat.id);
-    if (catPairs.length === 0) return null;
+  return categoryMeta
+    .map((cat) => {
+      const catPairs = allPairs.filter((p) => p.question?.category === cat.id);
+      if (catPairs.length === 0) return null;
 
-    let gained = 0;
-    const subMap: Record<string, { correctPoints: number; totalMax: number }> = {};
+      let gained = 0;
+      const subMap: Record<string, { correctPoints: number; totalMax: number }> = {};
 
-    for (const { question: q, answer: sel } of catPairs) {
-      const sub = q?.sub_category || q?.sub_kategori || q?.SUB_CATEGORY || 'Umum';
-      if (!subMap[sub]) subMap[sub] = { correctPoints: 0, totalMax: 0 };
-      subMap[sub].totalMax += 5;
+      for (const { question: q, answer: sel } of catPairs) {
+        const sub = q?.sub_category ?? q?.sub_kategori ?? q?.SUB_KATEGORI ?? q?.SUB_CATEGORY ?? 'Umum';
+        if (!subMap[sub]) subMap[sub] = { correctPoints: 0, totalMax: 0 };
+        subMap[sub].totalMax += 5;
 
-      if (cat.id === 'TKP') {
-        const pts = sel ? Number(q[`points_${String(sel).toLowerCase()}`] || 0) : 0;
-        gained += pts;
-        subMap[sub].correctPoints += pts;
-      } else {
-        const correct = sel && String(sel).toUpperCase() === String(q?.correct_answer).toUpperCase();
-        gained += correct ? 5 : 0;
-        subMap[sub].correctPoints += correct ? 5 : 0;
+        if (cat.id === 'TKP') {
+          const rawPts = sel ? Number(q[`points_${String(sel).toLowerCase()}`] ?? 0) : 0;
+          const pts = Number.isNaN(rawPts) ? 0 : rawPts;
+          gained += pts;
+          subMap[sub].correctPoints += pts;
+        } else {
+          const correct = Boolean(sel) && String(sel).toUpperCase() === String(q?.correct_answer).toUpperCase();
+          gained += correct ? 5 : 0;
+          subMap[sub].correctPoints += correct ? 5 : 0;
+        }
       }
-    }
 
-    const maxPts = catPairs.length * 5;
-    const overallPct = Math.round((gained / maxPts) * 100) || 0;
-    const subList: SubStat[] = Object.keys(subMap).map((name) => {
-      const s = subMap[name];
-      return { name, percentage: Math.round((s.correctPoints / s.totalMax) * 100) || 0, ...s };
-    });
+      const maxPts = catPairs.length * 5;
+      const overallPct = safePercent(gained, maxPts);
+      const subList: SubStat[] = Object.keys(subMap).map((name) => {
+        const s = subMap[name];
+        return { name, percentage: safePercent(s.correctPoints, s.totalMax), ...s };
+      });
 
-    return {
-      id: cat.id,
-      name: cat.name,
-      overallPct,
-      gained,
-      maxPts,
-      strengths: subList.filter((s) => s.percentage >= 70),
-      weaknesses: subList.filter((s) => s.percentage < 70),
-    };
-  }).filter(Boolean) as CategoryDiag[];
+      return {
+        id: cat.id,
+        name: cat.name,
+        overallPct,
+        gained,
+        maxPts,
+        strengths: subList.filter((s) => s.percentage >= 70),
+        weaknesses: subList.filter((s) => s.percentage < 70),
+      };
+    })
+    .filter(Boolean) as CategoryDiag[];
 }
 
 // ─── Shared donut chart ───────────────────────────────────────────────────────
@@ -208,7 +228,7 @@ function DonutChart({ pct, strokeClass }: { pct: number; strokeClass: string }) 
 // ─── Shared category card (donut + sub-list) ──────────────────────────────────
 
 function CategoryCard({ diag }: { diag: CategoryDiag }) {
-  const meta = categoryMeta.find((m) => m.id === diag.id)!;
+  const meta = categoryMeta.find((m) => m.id === diag.id) ?? categoryMeta[0];
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
@@ -233,7 +253,7 @@ function CategoryCard({ diag }: { diag: CategoryDiag }) {
           {diag.strengths.length > 0 ? (
             diag.strengths.map((s, i) => (
               <div key={i} className="flex justify-between text-gray-700">
-                <span className="truncate max-w-[110px]">&bull; {s.name}</span>
+                <span className="truncate max-w-[110px]">• {s.name}</span>
                 <span className="text-emerald-600 font-bold">{s.percentage}%</span>
               </div>
             ))
@@ -248,7 +268,7 @@ function CategoryCard({ diag }: { diag: CategoryDiag }) {
           {diag.weaknesses.length > 0 ? (
             diag.weaknesses.map((w, i) => (
               <div key={i} className="flex justify-between text-gray-700">
-                <span className="truncate max-w-[110px]">&bull; {w.name}</span>
+                <span className="truncate max-w-[110px]">• {w.name}</span>
                 <span className="text-rose-500 font-bold">{w.percentage}%</span>
               </div>
             ))
@@ -263,7 +283,7 @@ function CategoryCard({ diag }: { diag: CategoryDiag }) {
   );
 }
 
-// ─── Score trend charts (redesigned) ─────────────────────────────────────────
+// ─── Score trend charts ───────────────────────────────────────────────────────
 
 const SUB_CATS = [
   { id: 'TIU', key: 'score_tiu' as const, label: 'Tes Inteligensia Umum', color: '#3b82f6', max: 175 },
@@ -292,7 +312,7 @@ function ScoreTrendChart({ results }: { results: ExamResultRow[] }) {
   const sorted = useMemo(
     () =>
       [...results]
-        .filter((r) => typeof r.total_score === 'number') 
+        .filter((r) => typeof r.total_score === 'number')
         .sort((a, b) => new Date(a.completed_at).getTime() - new Date(b.completed_at).getTime()),
     [results]
   );
@@ -304,17 +324,21 @@ function ScoreTrendChart({ results }: { results: ExamResultRow[] }) {
     return `${d.getDate()}/${d.getMonth() + 1}`;
   };
 
-  const VW = 500, VH = 155;
-  const PL = 38, PR = 16, PT = 26, PB = 28;
+  const VW = 500;
+  const VH = 155;
+  const PL = 38;
+  const PR = 16;
+  const PT = 26;
+  const PB = 28;
   const plotW = VW - PL - PR;
   const plotH = VH - PT - PB;
-  const MAX = 500;
+  const MAX = 550;
   const n = sorted.length;
-  const barGap = Math.max(4, Math.min(10, plotW / n * 0.2));
+  const barGap = Math.max(4, Math.min(10, (plotW / n) * 0.2));
   const barW = Math.max(10, plotW / n - barGap);
   const getBarX = (i: number) => PL + i * (plotW / n) + barGap / 2;
-  const getBarH = (score: number) => Math.max(4, (score / MAX) * plotH);
-  const yLabels = [0, 125, 250, 375, 500];
+  const getBarH = (score: number) => Math.max(4, (Math.min(score, MAX) / MAX) * plotH);
+  const yLabels = [0, 150, 300, 450, 550];
 
   return (
     <div className="space-y-3">
@@ -322,7 +346,7 @@ function ScoreTrendChart({ results }: { results: ExamResultRow[] }) {
         <div className="flex items-center justify-between mb-4">
           <h4 className="text-sm font-bold text-gray-700 flex items-center gap-1.5">
             <TrendingUp className="w-4 h-4 text-[#1e3a8a]" />
-            Tren Total Skor
+            Tren Total Skor Tryout Utama
           </h4>
           <div className="flex items-center gap-3 text-[11px] text-gray-400 font-medium">
             <span className="flex items-center gap-1.5">
@@ -336,7 +360,7 @@ function ScoreTrendChart({ results }: { results: ExamResultRow[] }) {
 
         {sorted.length < 2 ? (
           <p className="text-center text-xs text-gray-400 py-4 bg-gray-50 rounded-xl">
-            Butuh minimal 2 riwayat ujian untuk menampilkan grafik perkembangan.
+            Butuh minimal 2 riwayat tryout utama untuk menampilkan grafik perkembangan.
           </p>
         ) : (
           <svg viewBox={`0 0 ${VW} ${VH}`} className="w-full" preserveAspectRatio="xMidYMid meet">
@@ -344,9 +368,17 @@ function ScoreTrendChart({ results }: { results: ExamResultRow[] }) {
               const y = PT + (1 - val / MAX) * plotH;
               return (
                 <g key={val}>
-                  <line x1={PL} y1={y} x2={VW - PR} y2={y}
-                    stroke={val === 0 ? '#d1d5db' : '#f3f4f6'} strokeWidth="1" />
-                  <text x={PL - 5} y={y + 3.5} textAnchor="end" fontSize="8.5" fill="#9ca3af">{val}</text>
+                  <line
+                    x1={PL}
+                    y1={y}
+                    x2={VW - PR}
+                    y2={y}
+                    stroke={val === 0 ? '#d1d5db' : '#f3f4f6'}
+                    strokeWidth="1"
+                  />
+                  <text x={PL - 5} y={y + 3.5} textAnchor="end" fontSize="8.5" fill="#9ca3af">
+                    {val}
+                  </text>
                 </g>
               );
             })}
@@ -360,10 +392,25 @@ function ScoreTrendChart({ results }: { results: ExamResultRow[] }) {
                 <g key={r.id}>
                   <rect x={bX} y={PT} width={barW} height={plotH} fill={fillBg} rx="4" />
                   <rect x={bX} y={bY} width={barW} height={bH} fill={fill} rx="4" />
-                  <text x={bX + barW / 2} y={bY - 5} textAnchor="middle"
-                    fontSize="9" fill="#374151" fontWeight="700">{r.total_score}</text>
-                  <text x={bX + barW / 2} y={VH - 2} textAnchor="middle"
-                    fontSize="8" fill="#9ca3af">{formatDate(r.completed_at)}</text>
+                  <text
+                    x={bX + barW / 2}
+                    y={bY - 5}
+                    textAnchor="middle"
+                    fontSize="9"
+                    fill="#374151"
+                    fontWeight="700"
+                  >
+                    {r.total_score}
+                  </text>
+                  <text
+                    x={bX + barW / 2}
+                    y={VH - 2}
+                    textAnchor="middle"
+                    fontSize="8"
+                    fill="#9ca3af"
+                  >
+                    {formatDate(r.completed_at)}
+                  </text>
                 </g>
               );
             })}
@@ -375,27 +422,30 @@ function ScoreTrendChart({ results }: { results: ExamResultRow[] }) {
         {SUB_CATS.map((cat) => {
           const values = sorted
             .map((r) => r[cat.key])
-            .filter((v) => typeof v === 'number'); 
+            .filter((v) => typeof v === 'number');
 
           const latest = values.length > 0 ? values[values.length - 1] : null;
-          const avg = values.length > 0
-            ? Math.round(values.reduce((s, v) => s + v, 0) / values.length)
-            : null;
+          const avg =
+            values.length > 0
+              ? Math.round(values.reduce((s, v) => s + v, 0) / values.length)
+              : null;
           const trend =
             values.length >= 2
               ? values[values.length - 1] > values[0]
                 ? 'up'
                 : values[values.length - 1] < values[0]
-                ? 'down'
-                : 'stable'
+                  ? 'down'
+                  : 'stable'
               : 'stable';
 
-          const SW = 200, SH = 52;
+          const SW = 200;
+          const SH = 52;
           const line = sparkPath(values, cat.max, SW, SH);
           const area = sparkArea(values, cat.max, SW, SH);
-          const lastDotY = values.length > 0
-            ? SH - (Math.min(values[values.length - 1], cat.max) / cat.max) * SH
-            : SH / 2;
+          const lastDotY =
+            values.length > 0
+              ? SH - (Math.min(values[values.length - 1], cat.max) / cat.max) * SH
+              : SH / 2;
 
           return (
             <div key={cat.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
@@ -420,8 +470,14 @@ function ScoreTrendChart({ results }: { results: ExamResultRow[] }) {
               {values.length >= 2 ? (
                 <svg viewBox={`0 0 ${SW} ${SH}`} className="w-full" preserveAspectRatio="none">
                   <path d={area} fill={cat.color} fillOpacity="0.08" />
-                  <path d={line} fill="none" stroke={cat.color} strokeWidth="2"
-                    strokeLinejoin="round" strokeLinecap="round" />
+                  <path
+                    d={line}
+                    fill="none"
+                    stroke={cat.color}
+                    strokeWidth="2"
+                    strokeLinejoin="round"
+                    strokeLinecap="round"
+                  />
                   <circle cx={SW} cy={lastDotY} r="3.5" fill={cat.color} stroke="white" strokeWidth="1.5" />
                 </svg>
               ) : (
@@ -441,8 +497,8 @@ function ScoreTrendChart({ results }: { results: ExamResultRow[] }) {
                       trend === 'up'
                         ? 'text-emerald-600'
                         : trend === 'down'
-                        ? 'text-rose-500'
-                        : 'text-gray-400'
+                          ? 'text-rose-500'
+                          : 'text-gray-400'
                     }`}
                   >
                     {trend === 'up' ? '▲ Meningkat' : trend === 'down' ? '▼ Menurun' : '─ Stabil'}
@@ -457,53 +513,128 @@ function ScoreTrendChart({ results }: { results: ExamResultRow[] }) {
   );
 }
 
-// ─── Overall / aggregate view (OTOMATIS LOAD SEMUA KHUSUS ADMIN) ────────────
+// ─── Overall / aggregate view (HEMAT EGRESS DENGAN CACHE SESSIONSTORAGE) ─────
 
-function OverallView({ results, participantId }: { results: ExamResultRow[], participantId: string }) {
-  const completed = results.filter((r) => typeof r.total_score === 'number');
-  const passed = completed.filter((r) => r.passed).length;
-  const avgScore = completed.length > 0
-    ? Math.round(completed.reduce((s, r) => s + r.total_score, 0) / completed.length)
-    : 0;
-  const bestScore = completed.length > 0 ? Math.max(...completed.map((r) => r.total_score)) : 0;
-  const passRate = completed.length > 0 ? Math.round((passed / completed.length) * 100) : 0;
+function OverallView({
+  results,
+  participantId,
+  onSwitchPerExam
+}: {
+  results: ExamResultRow[];
+  participantId: string;
+  onSwitchPerExam: () => void;
+}) {
+  const mainCompleted = results.filter(
+    (r) => typeof r.total_score === 'number' && !isDrillingPackage(r.package_type)
+  );
+  const drillingCount = results.filter((r) => isDrillingPackage(r.package_type)).length;
 
-  // 🌟 STATE UNTUK OTOMATIS LOAD SEMUA DIAGNOSTIK
+  const passed = mainCompleted.filter((r) => r.passed).length;
+  const avgScore =
+    mainCompleted.length > 0
+      ? Math.round(mainCompleted.reduce((s, r) => s + r.total_score, 0) / mainCompleted.length)
+      : 0;
+  const bestScore =
+    mainCompleted.length > 0 ? Math.max(...mainCompleted.map((r) => r.total_score)) : 0;
+  const passRate =
+    mainCompleted.length > 0 ? Math.round((passed / mainCompleted.length) * 100) : 0;
+
   const [globalDiags, setGlobalDiags] = useState<CategoryDiag[]>([]);
   const [loadingGlobal, setLoadingGlobal] = useState(true);
 
+  const cacheSignature = `${mainCompleted.length}_${mainCompleted[0]?.id ?? 'none'}`;
+
   useEffect(() => {
+    let isCancelled = false;
+
     async function loadAllDiagnostics() {
+      if (mainCompleted.length === 0) {
+        setGlobalDiags([]);
+        setLoadingGlobal(false);
+        return;
+      }
+
+      const cacheKey = `leskd_diag_overall_${participantId}_${cacheSignature}`;
+
+      // 1. Cek cache sessionStorage dulu (0 Byte egress Supabase saat Admin refresh halaman)
+      try {
+        const cachedRaw = sessionStorage.getItem(cacheKey);
+        if (cachedRaw) {
+          const parsed = JSON.parse(cachedRaw);
+          if (Array.isArray(parsed)) {
+            setGlobalDiags(parsed);
+            setLoadingGlobal(false);
+            return;
+          }
+        }
+      } catch {
+        sessionStorage.removeItem(cacheKey);
+      }
+
+      // 2. Tarik maksimal 20 tryout utama terbaru (tidak termasuk Drilling Sub-Kategori)
       setLoadingGlobal(true);
       try {
-        // 🌟 MENARIK SELURUH JSON MILIK 1 PESERTA INI (TANPA LIMIT)
         const { data } = await supabase
           .from('exam_results')
           .select('id, review_snapshot')
           .eq('participant_id', participantId)
+          .neq('package_type', 'TO_SUBKATEGORI')
           .not('review_snapshot', 'is', null)
           .not('is_deleted', 'eq', true)
-          .order('completed_at', { ascending: false });
+          .order('completed_at', { ascending: false })
+          .limit(20);
 
-        if (data) {
-          setGlobalDiags(computeAggregateDiagnostics(data as any));
+        if (!isCancelled && data) {
+          const computed = computeAggregateDiagnostics(data as any);
+          setGlobalDiags(computed);
+          try {
+            sessionStorage.setItem(cacheKey, JSON.stringify(computed));
+          } catch {
+            // Abaikan jika kapasitas sessionStorage penuh
+          }
         }
       } catch (err) {
-        console.error("Gagal menarik data diagnostik keseluruhan peserta:", err);
+        console.error('Gagal menarik data diagnostik keseluruhan peserta:', err);
       } finally {
-        setLoadingGlobal(false);
+        if (!isCancelled) setLoadingGlobal(false);
       }
     }
+
     loadAllDiagnostics();
-  }, [participantId]);
+    return () => {
+      isCancelled = true;
+    };
+  }, [participantId, cacheSignature]);
+
+  if (mainCompleted.length === 0 && drillingCount > 0) {
+    return (
+      <div className="bg-purple-50/60 border border-purple-200 rounded-2xl p-8 text-center space-y-3">
+        <Target className="w-9 h-9 text-purple-600 mx-auto" />
+        <h4 className="text-base font-bold text-gray-800">
+          Peserta Baru Memiliki {drillingCount} Sesi Drilling Sub-Kategori
+        </h4>
+        <p className="text-xs text-gray-500 max-w-md mx-auto leading-relaxed">
+          Ringkasan Keseluruhan dan Tren Skor hanya menghitung paket Tryout Utama agar rata-rata tidak terdistorsi kuis singkat. Anda tetap dapat melihat diagram tiap sesi Drilling di tab Per Ujian.
+        </p>
+        <button
+          type="button"
+          onClick={onSwitchPerExam}
+          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold transition-colors shadow-sm"
+        >
+          <LayoutGrid className="w-4 h-4" />
+          Buka Tab Per Ujian
+        </button>
+      </div>
+    );
+  }
 
   const statsCards = [
-    { label: 'Total Ujian', value: completed.length, color: 'text-[#1e3a8a]', bg: 'bg-blue-50' },
+    { label: 'Tryout Utama', value: mainCompleted.length, color: 'text-[#1e3a8a]', bg: 'bg-blue-50' },
     { label: 'Rata-rata Skor', value: avgScore, color: 'text-amber-600', bg: 'bg-amber-50' },
     { label: 'Skor Terbaik', value: bestScore, color: 'text-[#10b981]', bg: 'bg-emerald-50' },
     {
       label: 'Tingkat Kelulusan',
-      value: completed.length > 0 ? `${passRate}%` : '-',
+      value: mainCompleted.length > 0 ? `${passRate}%` : '-',
       color: passRate >= 50 ? 'text-emerald-600' : 'text-rose-500',
       bg: passRate >= 50 ? 'bg-emerald-50' : 'bg-rose-50',
     },
@@ -527,31 +658,33 @@ function OverallView({ results, participantId }: { results: ExamResultRow[], par
         ))}
       </div>
 
-      <ScoreTrendChart results={completed} />
+      <ScoreTrendChart results={mainCompleted} />
 
-      {/* Aggregate competency donuts (AUTO-LOAD ALL) */}
+      {/* Aggregate competency donuts */}
       <div>
-        <h4 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-1.5">
+        <h4 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-1.5 flex-wrap">
           <Target className="w-4 h-4 text-[#1e3a8a]" />
           Diagram Kompetensi Kumulatif
           <span className="ml-1 text-[10px] font-normal text-gray-400">
-            (Keseluruhan {completed.length} ujian)
+            (Dari {mainCompleted.length} tryout utama{drillingCount > 0 ? `, ${drillingCount} sesi drilling di tab Per Ujian` : ''})
           </span>
         </h4>
-        
+
         {loadingGlobal ? (
           <div className="flex flex-col items-center justify-center py-10 gap-3 text-[#1e3a8a] bg-blue-50 rounded-2xl border border-dashed border-blue-200">
             <Loader2 className="w-8 h-8 animate-spin" />
-            <p className="text-sm font-semibold">Menganalisis seluruh data ujian peserta...</p>
+            <p className="text-sm font-semibold">Menganalisis data tryout utama peserta...</p>
           </div>
         ) : globalDiags.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            {globalDiags.map((diag) => <CategoryCard key={diag.id} diag={diag} />)}
+            {globalDiags.map((diag) => (
+              <CategoryCard key={diag.id} diag={diag} />
+            ))}
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center py-10 gap-2 text-gray-400 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
             <AlertCircle className="w-6 h-6 opacity-50" />
-            <p className="text-sm">Belum ada data snapshot ujian untuk dihitung.</p>
+            <p className="text-sm">Belum ada data snapshot tryout utama untuk dihitung.</p>
           </div>
         )}
       </div>
@@ -559,66 +692,147 @@ function OverallView({ results, participantId }: { results: ExamResultRow[], par
   );
 }
 
-// ─── Per-participant detail view ──────────────────────────────────────────────
-
-type DetailTab = 'overall' | 'per-exam';
+// ─── Per-participant detail view (SINKRON URL ?tab=&exam=) ───────────────────
 
 function ParticipantDetail({ participant, onBack }: { participant: Profile; onBack: () => void }) {
   const { fetchExamSnapshot } = useApp();
-  
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const rawTab = searchParams.get('tab');
+  const activeTab = rawTab === 'per-exam' ? 'per-exam' : 'overall';
+  const examIdFromUrl = searchParams.get('exam');
+
   const [results, setResults] = useState<ExamResultRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<DetailTab>('overall');
-  const [selectedResult, setSelectedResult] = useState<ExamResultRow | null>(null);
+  const [selectedResult, setSelectedResult] = useState<any>(null);
   const [diags, setDiags] = useState<CategoryDiag[]>([]);
   const [diagLoading, setDiagLoading] = useState(false);
 
+  const restoredExamRef = useRef<string>('');
+
   useEffect(() => {
+    let isCancelled = false;
+    restoredExamRef.current = '';
+    setSelectedResult(null);
+    setDiags([]);
+
     async function load() {
       setLoading(true);
       const { data } = await supabase
         .from('exam_results')
-        // 🌟 HANYA TARIK DATA RINGAN UNTUK LIST
         .select('id, package_name, package_type, score_tiu, score_twk, score_tkp, total_score, passed, completed_at, diagnostic_breakdown')
         .eq('participant_id', participant.id)
         .not('is_deleted', 'eq', true)
         .order('completed_at', { ascending: false });
-      if (data) setResults(data as ExamResultRow[]);
-      setLoading(false);
+
+      if (!isCancelled) {
+        if (data) setResults(data as ExamResultRow[]);
+        setLoading(false);
+      }
     }
     load();
+    return () => {
+      isCancelled = true;
+    };
   }, [participant.id]);
 
-  async function handleSelectResult(row: ExamResultRow) {
+  async function loadExamDiagnostics(row: ExamResultRow, syncUrl = true) {
     setSelectedResult(row);
     setDiags([]);
+
+    if (syncUrl) {
+      restoredExamRef.current = row.id;
+      setSearchParams(
+        { participant: String(participant.id), tab: 'per-exam', exam: String(row.id) },
+        { replace: true }
+      );
+    }
+
+    const cacheKey = `leskd_diag_exam_${row.id}`;
+
+    // 1. Cek cache sessionStorage dulu (0 Byte egress Supabase saat di-refresh)
+    try {
+      const cachedRaw = sessionStorage.getItem(cacheKey);
+      if (cachedRaw) {
+        const parsed = JSON.parse(cachedRaw);
+        if (Array.isArray(parsed)) {
+          setDiags(parsed);
+          return;
+        }
+      }
+    } catch {
+      sessionStorage.removeItem(cacheKey);
+    }
+
+    // 2. Lazy load dari Supabase 1x jika belum ada di cache tab
     setDiagLoading(true);
-    
-    // 🌟 LAZY LOAD SNAPSHOT SAAT ADMIN MENGKLIK UJIAN SPESIFIK
     const data = await fetchExamSnapshot(row.id);
-    
+
     if (data && data.review_snapshot) {
       let snap = data.review_snapshot;
       if (typeof snap === 'string') {
         try {
           snap = JSON.parse(snap);
+          if (typeof snap === 'string') {
+            snap = JSON.parse(snap);
+          }
         } catch (e) {
-          console.error("Gagal memecah JSON:", e);
+          console.error('Gagal memecah JSON:', e);
         }
       }
 
       if (snap?.questions && snap.questions.length > 0) {
-        setDiags(computeDiagnostics(snap.questions, snap.answers));
+        const computed = computeDiagnostics(snap.questions, snap.answers);
+        setDiags(computed);
+        try {
+          sessionStorage.setItem(cacheKey, JSON.stringify(computed));
+        } catch {
+          // Abaikan
+        }
       }
     }
     setDiagLoading(false);
   }
 
+  // Pulihkan otomatis ujian yang sedang dibuka di tab Per Ujian saat di-refresh
+  useEffect(() => {
+    if (activeTab !== 'per-exam') return;
+    if (!examIdFromUrl) return;
+    if (results.length === 0) return;
+    if (restoredExamRef.current === examIdFromUrl) return;
+
+    const foundRow = results.find((r) => String(r.id) === String(examIdFromUrl));
+    if (foundRow) {
+      restoredExamRef.current = examIdFromUrl;
+      loadExamDiagnostics(foundRow, false);
+    }
+  }, [activeTab, examIdFromUrl, results]);
+
+  const handleTabSwitch = (nextTab: string) => {
+    if (nextTab === 'overall') {
+      setSearchParams({ participant: String(participant.id), tab: 'overall' }, { replace: true });
+    } else {
+      const nextParams: Record<string, string> = {
+        participant: String(participant.id),
+        tab: 'per-exam',
+      };
+      if (selectedResult?.id) {
+        nextParams.exam = String(selectedResult.id);
+      }
+      setSearchParams(nextParams, { replace: true });
+    }
+  };
+
   const formatDate = (s: string) =>
     new Date(s).toLocaleDateString('id-ID', {
-      day: 'numeric', month: 'short', year: 'numeric',
-      hour: '2-digit', minute: '2-digit',
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
     });
+
+  const isSelectedDrilling = selectedResult ? isDrillingPackage(selectedResult.package_type) : false;
 
   return (
     <div className="space-y-5">
@@ -640,13 +854,13 @@ function ParticipantDetail({ participant, onBack }: { participant: Profile; onBa
 
       {/* Tab switcher */}
       <div className="flex gap-2 bg-gray-100 p-1 rounded-xl w-fit">
-        {([
-          { id: 'overall' as DetailTab, label: 'Ringkasan Keseluruhan', icon: LineChart },
-          { id: 'per-exam' as DetailTab, label: 'Per Ujian', icon: LayoutGrid },
-        ]).map(({ id, label, icon: Icon }) => (
+        {[
+          { id: 'overall', label: 'Ringkasan Keseluruhan', icon: LineChart },
+          { id: 'per-exam', label: 'Per Ujian', icon: LayoutGrid },
+        ].map(({ id, label, icon: Icon }) => (
           <button
             key={id}
-            onClick={() => setActiveTab(id)}
+            onClick={() => handleTabSwitch(id)}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
               activeTab === id
                 ? 'bg-white text-[#1e3a8a] shadow-sm'
@@ -670,7 +884,11 @@ function ParticipantDetail({ participant, onBack }: { participant: Profile; onBa
           <p className="text-sm font-medium">Peserta belum memiliki riwayat ujian.</p>
         </div>
       ) : activeTab === 'overall' ? (
-        <OverallView results={results} participantId={participant.id} />
+        <OverallView
+          results={results}
+          participantId={participant.id}
+          onSwitchPerExam={() => handleTabSwitch('per-exam')}
+        />
       ) : (
         /* ── Per-exam tab ─────────────────────────────────── */
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -681,10 +899,11 @@ function ParticipantDetail({ participant, onBack }: { participant: Profile; onBa
             </h3>
             {results.map((r) => {
               const isSelected = selectedResult?.id === r.id;
+              const isRowDrilling = isDrillingPackage(r.package_type);
               return (
                 <button
                   key={r.id}
-                  onClick={() => handleSelectResult(r)}
+                  onClick={() => loadExamDiagnostics(r, true)}
                   className={`w-full text-left rounded-2xl border p-4 transition-all ${
                     isSelected
                       ? 'border-[#1e3a8a] bg-blue-50 shadow-sm'
@@ -697,9 +916,19 @@ function ParticipantDetail({ participant, onBack }: { participant: Profile; onBa
                       <p className="text-xs text-gray-400 mt-0.5">{formatDate(r.completed_at)}</p>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
-                      <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${r.passed ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-600'}`}>
-                        {r.passed ? 'Lulus' : 'Belum'}
-                      </span>
+                      {isRowDrilling ? (
+                        <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">
+                          Drilling
+                        </span>
+                      ) : (
+                        <span
+                          className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                            r.passed ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-600'
+                          }`}
+                        >
+                          {r.passed ? 'Lulus' : 'Belum'}
+                        </span>
+                      )}
                       <span className="text-sm font-bold text-[#1e3a8a]">{r.total_score}</span>
                       <ChevronRight className={`w-4 h-4 transition-colors ${isSelected ? 'text-[#1e3a8a]' : 'text-gray-300'}`} />
                     </div>
@@ -742,15 +971,23 @@ function ParticipantDetail({ participant, onBack }: { participant: Profile; onBa
                     </div>
                   ))}
                   <div className="text-center flex-1 min-w-12">
-                    <p className={`text-2xl font-black ${selectedResult.passed ? 'text-emerald-600' : 'text-rose-500'}`}>
-                      {selectedResult.passed ? 'Lulus' : 'Belum'}
-                    </p>
+                    {isSelectedDrilling ? (
+                      <p className="text-lg sm:text-xl font-black text-purple-600 pt-1">
+                        Drilling
+                      </p>
+                    ) : (
+                      <p className={`text-2xl font-black ${selectedResult.passed ? 'text-emerald-600' : 'text-rose-500'}`}>
+                        {selectedResult.passed ? 'Lulus' : 'Belum'}
+                      </p>
+                    )}
                     <p className="text-xs text-gray-500 mt-0.5">Status</p>
                   </div>
                 </div>
                 {/* Donut charts */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  {diags.map((diag) => <CategoryCard key={diag.id} diag={diag} />)}
+                  {diags.map((diag) => (
+                    <CategoryCard key={diag.id} diag={diag} />
+                  ))}
                 </div>
               </div>
             )}
@@ -761,14 +998,16 @@ function ParticipantDetail({ participant, onBack }: { participant: Profile; onBa
   );
 }
 
-// ─── Main list view ───────────────────────────────────────────────────────────
+// ─── Main list view (SINKRON URL ?participant=) ──────────────────────────────
 
 export default function ParticipantDiagnostic() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [participants, setParticipants] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [selected, setSelected] = useState<Profile | null>(null);
   const [examCounts, setExamCounts] = useState<Record<string, number>>({});
+
+  const participantIdFromUrl = searchParams.get('participant');
 
   useEffect(() => {
     async function load() {
@@ -791,7 +1030,9 @@ export default function ParticipantDiagnostic() {
             .not('is_deleted', 'eq', true);
           if (counts) {
             const map: Record<string, number> = {};
-            counts.forEach((r: any) => { map[r.participant_id] = (map[r.participant_id] || 0) + 1; });
+            counts.forEach((r: any) => {
+              map[r.participant_id] = (map[r.participant_id] ?? 0) + 1;
+            });
             setExamCounts(map);
           }
         }
@@ -801,13 +1042,35 @@ export default function ParticipantDiagnostic() {
     load();
   }, []);
 
-  const filtered = participants.filter((p) =>
-    p.full_name.toLowerCase().includes(search.toLowerCase()) ||
-    p.email.toLowerCase().includes(search.toLowerCase())
-  );
+  const selectedParticipant = useMemo(() => {
+    if (!participantIdFromUrl) return null;
+    return participants.find((p) => String(p.id) === String(participantIdFromUrl)) ?? null;
+  }, [participants, participantIdFromUrl]);
 
-  if (selected) {
-    return <ParticipantDetail participant={selected} onBack={() => setSelected(null)} />;
+  const q = search.toLowerCase();
+  const filtered = participants.filter((p) => {
+    const matchName = p.full_name.toLowerCase().includes(q);
+    const matchEmail = p.email.toLowerCase().includes(q);
+    return matchName ? true : matchEmail;
+  });
+
+  // Saat halaman di-refresh pada URL ?participant=..., tampilkan loading halus (bukan berkedip ke daftar peserta)
+  if (loading && participantIdFromUrl) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 gap-3 text-[#1e3a8a]">
+        <Loader2 className="w-8 h-8 animate-spin" />
+        <p className="text-sm font-semibold">Memuat diagram kompetensi peserta...</p>
+      </div>
+    );
+  }
+
+  if (selectedParticipant) {
+    return (
+      <ParticipantDetail
+        participant={selectedParticipant}
+        onBack={() => setSearchParams({}, { replace: false })}
+      />
+    );
   }
 
   return (
@@ -847,14 +1110,14 @@ export default function ParticipantDiagnostic() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <AnimatePresence>
             {filtered.map((p, i) => {
-              const count = examCounts[p.id] || 0;
+              const count = examCounts[p.id] ?? 0;
               return (
                 <motion.button
                   key={p.id}
                   initial={{ opacity: 0, y: 12 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: i * 0.03 }}
-                  onClick={() => setSelected(p)}
+                  onClick={() => setSearchParams({ participant: String(p.id) }, { replace: false })}
                   className="text-left bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:border-blue-200 transition-all p-4 flex items-center gap-4 group"
                 >
                   <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-[#1e3a8a] to-blue-600 flex items-center justify-center text-white font-bold shrink-0">
