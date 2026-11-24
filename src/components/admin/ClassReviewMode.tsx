@@ -1,12 +1,26 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
-import { ArrowLeft, CheckCircle2, XCircle, AlertCircle, ChevronLeft, ChevronRight, Users, Target, CheckSquare, AlertTriangle, Calendar } from 'lucide-react';
+import {
+  ArrowLeft,
+  CheckCircle2,
+  XCircle,
+  AlertCircle,
+  ChevronLeft,
+  ChevronRight,
+  Users,
+  Target,
+  CheckSquare,
+  AlertTriangle,
+  Calendar,
+  PenTool
+} from 'lucide-react';
+import HybridWhiteboard from './HybridWhiteboard';
 
 interface StudentAnswer {
   name: string;
   answer: string;
-  points?: number; 
+  points?: number;
 }
 
 interface QuestionStat {
@@ -20,15 +34,23 @@ interface QuestionStat {
 }
 
 export default function ClassReviewMode() {
-  const { packageId } = useParams<{ packageId: string }>(); 
+  const { packageId } = useParams<{ packageId: string }>();
   const navigate = useNavigate();
-  
+
   const [loading, setLoading] = useState(true);
-  const [rawData, setRawData] = useState<any[]>([]); 
+  const [rawData, setRawData] = useState<any[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
-  
+
   const [availableDates, setAvailableDates] = useState<string[]>([]);
   const [selectedDate, setSelectedDate] = useState<string>('all');
+
+  // State kendali buka-tutup dan mode Hybrid Whiteboard
+  const [isWhiteboardOpen, setIsWhiteboardOpen] = useState(false);
+  const [whiteboardMode, setWhiteboardMode] = useState<string>('closed');
+
+  const handleWhiteboardModeChange = useCallback((nextMode: string) => {
+    setWhiteboardMode(nextMode);
+  }, []);
 
   useEffect(() => {
     if (packageId) {
@@ -40,10 +62,28 @@ export default function ClassReviewMode() {
     setCurrentIndex(0);
   }, [selectedDate]);
 
+  // Pintasan keyboard huruf "W" untuk buka-tutup Whiteboard cepat saat mengajar
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (target) {
+        const tag = target.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable) {
+          return;
+        }
+      }
+      if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key.toLowerCase() === 'w') {
+        setIsWhiteboardOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   const extractLetter = (rawContent: any): string => {
-    if (rawContent === null || rawContent === undefined) return '';
+    if (rawContent == null) return '';
     if (typeof rawContent === 'string') return rawContent.trim().toLowerCase();
-    
+
     if (typeof rawContent === 'object') {
       if (rawContent.selectedAnswer) return String(rawContent.selectedAnswer).trim().toLowerCase();
       if (rawContent.selected_answer) return String(rawContent.selected_answer).trim().toLowerCase();
@@ -77,13 +117,13 @@ export default function ClassReviewMode() {
         .not('review_snapshot', 'is', null);
 
       if (error) throw error;
-      
+
       if (data && data.length > 0) {
         setRawData(data);
-        
+
         const datesMap = new Map<string, number>();
-        data.forEach(item => {
-          const dateStr = item.completed_at || item.started_at;
+        data.forEach((item) => {
+          const dateStr = item.completed_at ? item.completed_at : item.started_at;
           if (dateStr) {
             const dateObj = new Date(dateStr);
             const formattedDate = dateObj.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -92,15 +132,15 @@ export default function ClassReviewMode() {
             }
           }
         });
-        
+
         const sortedDates = Array.from(datesMap.entries())
           .sort((a, b) => b[1] - a[1])
-          .map(entry => entry[0]);
-          
+          .map((entry) => entry[0]);
+
         setAvailableDates(sortedDates);
       }
     } catch (error) {
-      console.error("Gagal menarik data pembahasan kelas:", error);
+      console.error('Gagal menarik data pembahasan kelas:', error);
     } finally {
       setLoading(false);
     }
@@ -115,7 +155,7 @@ export default function ClassReviewMode() {
       const snap = parseSnapshot(row.review_snapshot);
       if (snap && Array.isArray(snap.questions)) {
         snap.questions.forEach((q: any) => {
-          const qId = q.id || q.questionId || q.question_id || q.uuid;
+          const qId = q.id ?? q.questionId ?? q.question_id ?? q.uuid;
           if (!groupedData.has(qId)) {
             groupedData.set(qId, {
               questionData: q,
@@ -131,10 +171,10 @@ export default function ClassReviewMode() {
       }
     });
 
-    const filteredData = selectedDate === 'all' 
-      ? rawData 
-      : rawData.filter(row => {
-          const dateStr = row.completed_at || row.started_at;
+    const filteredData = selectedDate === 'all'
+      ? rawData
+      : rawData.filter((row) => {
+          const dateStr = row.completed_at ? row.completed_at : row.started_at;
           if (!dateStr) return false;
           const formattedDate = new Date(dateStr).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
           return formattedDate === selectedDate;
@@ -144,20 +184,20 @@ export default function ClassReviewMode() {
       const snap = parseSnapshot(row.review_snapshot);
       if (snap && Array.isArray(snap.questions)) {
         snap.questions.forEach((q: any) => {
-          const qId = q.id || q.questionId || q.question_id || q.uuid;
+          const qId = q.id ?? q.questionId ?? q.question_id ?? q.uuid;
           const stat = groupedData.get(qId)!;
-          const studentName = row.user_name || 'Peserta Tanpa Nama';
-          
-          let rawUserAnswer = q.user_answer || q.userAnswer || q.selected_option || q.selectedOption || q.answer;
-          
+          const studentName = row.user_name ? row.user_name : 'Peserta Tanpa Nama';
+
+          let rawUserAnswer = q.user_answer ?? q.userAnswer ?? q.selected_option ?? q.selectedOption ?? q.answer;
+
           if (!rawUserAnswer && snap.answers && typeof snap.answers === 'object') {
-             rawUserAnswer = snap.answers[qId]; 
+            rawUserAnswer = snap.answers[qId];
           }
           if (!rawUserAnswer && snap.responses && typeof snap.responses === 'object') {
-             rawUserAnswer = snap.responses[qId]; 
+            rawUserAnswer = snap.responses[qId];
           }
           if (!rawUserAnswer && snap.participant_answers && typeof snap.participant_answers === 'object') {
-             rawUserAnswer = snap.participant_answers[qId]; 
+            rawUserAnswer = snap.participant_answers[qId];
           }
 
           const parsedUserAnswer = extractLetter(rawUserAnswer);
@@ -169,9 +209,10 @@ export default function ClassReviewMode() {
             stat.unansweredStudents.push({ name: studentName, answer: '-' });
           } else if (isTKP) {
             const pointKey = `points_${parsedUserAnswer}`;
-            const points = Number(q[pointKey]) || 0;
+            const rawPts = Number(q[pointKey]);
+            const points = Number.isNaN(rawPts) ? 0 : rawPts;
             const studentRecord = { name: studentName, answer: displayAnswer, points };
-            
+
             if (points === 5) {
               stat.tkpPoint5.push(studentRecord);
             } else if (points === 4) {
@@ -180,10 +221,9 @@ export default function ClassReviewMode() {
               stat.tkpPointOthers.push(studentRecord);
             }
             if (points === 5) stat.correctStudents.push(studentRecord);
-            else stat.wrongStudents.push(studentRecord); 
-            
+            else stat.wrongStudents.push(studentRecord);
           } else {
-            const parsedCorrectAnswer = extractLetter(q.correct_answer || q.correctAnswer);
+            const parsedCorrectAnswer = extractLetter(q.correct_answer ?? q.correctAnswer);
             if (parsedUserAnswer === parsedCorrectAnswer) {
               stat.correctStudents.push({ name: studentName, answer: displayAnswer });
             } else {
@@ -195,8 +235,8 @@ export default function ClassReviewMode() {
     });
 
     const finalStats = Array.from(groupedData.values());
-    finalStats.forEach(stat => {
-      stat.tkpPointOthers.sort((a, b) => (b.points || 0) - (a.points || 0));
+    finalStats.forEach((stat) => {
+      stat.tkpPointOthers.sort((a, b) => (b.points ?? 0) - (a.points ?? 0));
     });
 
     return finalStats;
@@ -214,7 +254,7 @@ export default function ClassReviewMode() {
     return (
       <div className="p-10 text-center">
         <h3 className="text-xl font-bold text-gray-700 mb-4">Belum ada peserta yang mengerjakan paket soal ini.</h3>
-        <button 
+        <button
           onClick={() => navigate('/admin/packages')}
           className="bg-[#1e3a8a] text-white px-6 py-2.5 rounded-2xl flex items-center justify-center gap-2 mx-auto hover:bg-[#1e40af] transition-colors"
         >
@@ -225,337 +265,363 @@ export default function ClassReviewMode() {
   }
 
   const currentStat = questionsStats[currentIndex];
-  if (!currentStat || !currentStat.questionData) return null;
+  if (!currentStat) return null;
+  if (!currentStat.questionData) return null;
 
   const q = currentStat.questionData;
   const isTKP = q.category === 'TKP';
-  
+
   const totalStudents = currentStat.correctStudents.length + currentStat.wrongStudents.length + currentStat.unansweredStudents.length;
   const successRate = totalStudents > 0 ? Math.round((currentStat.correctStudents.length / totalStudents) * 100) : 0;
 
+  // Geser layar & ubah ke 1 kolom saat Panel Samping Whiteboard aktif agar teks soal tetap lega
+  const isBoardSplit = isWhiteboardOpen && whiteboardMode === 'board';
+
   return (
-    <div className="space-y-6 animate-in fade-in duration-300">
-      
-      {/* HEADER NAVIGASI & FILTER TANGGAL */}
-      <div className="flex flex-col sm:flex-row justify-between items-center bg-white p-4 sm:p-5 rounded-3xl shadow-sm border border-gray-100 gap-4">
-        <div className="flex flex-wrap items-center gap-3">
-          <button 
-            onClick={() => navigate('/admin/packages')}
-            className="flex items-center gap-2 text-gray-500 hover:text-[#1e3a8a] font-semibold transition-colors bg-gray-50 hover:bg-blue-50 px-5 py-2.5 rounded-xl border border-gray-100"
-          >
-            <ArrowLeft className="w-5 h-5" />
-            <span className="hidden sm:inline">Kembali</span>
-          </button>
+    <>
+      <div
+        className={`space-y-6 animate-in fade-in duration-300 transition-all ${
+          isBoardSplit ? 'md:pr-[47%] lg:pr-[45%]' : ''
+        }`}
+      >
 
-          {/* DROPDOWN FILTER TANGGAL */}
-          {availableDates.length > 0 && (
-            <div className="flex items-center gap-2 bg-blue-50 border border-blue-100 px-3 py-2.5 rounded-xl">
-              <Calendar className="w-4 h-4 text-[#1e3a8a]" />
-              <select 
-                value={selectedDate}
-                onChange={(e) => setSelectedDate(e.target.value)}
-                className="bg-transparent border-none text-sm font-bold text-[#1e3a8a] focus:ring-0 cursor-pointer outline-none p-0 pr-6"
-              >
-                <option value="all">Semua Hari / Tanggal</option>
-                {availableDates.map(date => (
-                  <option key={date} value={date}>{date}</option>
-                ))}
-              </select>
-            </div>
-          )}
-        </div>
+        {/* HEADER NAVIGASI, FILTER TANGGAL & TOMBOL WHITEBOARD */}
+        <div className="flex flex-col sm:flex-row justify-between items-center bg-white p-4 sm:p-5 rounded-3xl shadow-sm border border-gray-100 gap-4">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <button
+              onClick={() => navigate('/admin/packages')}
+              className="flex items-center gap-2 text-gray-500 hover:text-[#1e3a8a] font-semibold transition-colors bg-gray-50 hover:bg-blue-50 px-4 py-2.5 rounded-xl border border-gray-100"
+            >
+              <ArrowLeft className="w-5 h-5" />
+              <span className="hidden sm:inline">Kembali</span>
+            </button>
 
-        <div className="flex items-center gap-3 sm:gap-5 bg-gray-50 px-2 py-2 rounded-2xl border border-gray-100">
-          <button 
-            onClick={() => setCurrentIndex(prev => Math.max(0, prev - 1))}
-            disabled={currentIndex === 0}
-            className="p-2 sm:px-4 sm:py-2.5 bg-white text-[#1e3a8a] rounded-xl disabled:opacity-40 hover:bg-[#1e3a8a] hover:text-white transition-all shadow-sm flex items-center gap-2 font-bold"
-          >
-            <ChevronLeft className="w-5 h-5" />
-            <span className="hidden md:inline">Sebelumnya</span>
-          </button>
-          
-          <div className="text-center min-w-[120px]">
-            <h2 className="text-lg sm:text-xl font-extrabold text-[#1e3a8a] leading-tight">
-              Soal {currentIndex + 1}
-            </h2>
-            <p className="text-xs font-semibold text-gray-400">DARI {questionsStats.length} SOAL</p>
-          </div>
-
-          <button 
-            onClick={() => setCurrentIndex(prev => Math.min(questionsStats.length - 1, prev + 1))}
-            disabled={currentIndex === questionsStats.length - 1}
-            className="p-2 sm:px-4 sm:py-2.5 bg-white text-[#1e3a8a] rounded-xl disabled:opacity-40 hover:bg-[#1e3a8a] hover:text-white transition-all shadow-sm flex items-center gap-2 font-bold"
-          >
-            <span className="hidden md:inline">Selanjutnya</span>
-            <ChevronRight className="w-5 h-5" />
-          </button>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
-        
-        {/* BAGIAN KIRI: SOAL DAN PEMBAHASAN */}
-        <div className="md:col-span-2 space-y-6">
-          <div className="bg-white p-6 sm:p-8 rounded-3xl shadow-sm border border-gray-100">
-            <div className="flex items-center gap-2 mb-5 pb-5 border-b border-gray-50">
-               <span className="bg-[#1e3a8a]/10 text-[#1e3a8a] px-3.5 py-1.5 rounded-xl text-xs font-extrabold uppercase tracking-wider">
-                 Kategori: {q.category || 'Umum'}
-               </span>
-               <span className="bg-gray-100 text-gray-600 px-3.5 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider">
-                 {q.sub_kategori || q.sub_category || 'Tidak ada Sub Kategori'}
-               </span>
-            </div>
-            
-            <div className="text-gray-800 text-lg mb-6 leading-relaxed whitespace-pre-wrap">
-              {q.question_text || q.questionText}
-            </div>
-            {q.image_url && (
-              <img src={q.image_url} alt="Soal" className="max-h-80 object-contain mb-6 rounded-2xl border border-gray-100 shadow-sm mx-auto" />
-            )}
-            
-            <div className="space-y-3">
-              {['a', 'b', 'c', 'd', 'e'].map((opt) => {
-                const optKey = `option_${opt}`;
-                const text = q[optKey];
-                if (!text) return null;
-
-                let isCorrect = false;
-                let tkpPoints = 0;
-                
-                // 🌟 TEMA MINIMALIS: Latar belakang bersih, tanpa blok warna, tulisan netral.
-                let optionStyle = 'bg-white border-gray-200 hover:bg-gray-50 shadow-sm';
-                let circleStyle = 'bg-gray-50 text-gray-500 border border-gray-200';
-                let textStyle = 'text-gray-700 font-medium';
-                let badgeStyle = '';
-
-                if (isTKP) {
-                  tkpPoints = Number(q[`points_${opt}`]) || 0;
-                  
-                  // 🌟 FOKUS WARNA HANYA PADA BADGE POIN SAJA
-                  if (tkpPoints === 5) {
-                    // Beri sedikit highlight pada opsi poin 5 agar mudah dikenali
-                    optionStyle = 'bg-emerald-50/30 border-emerald-100 hover:bg-emerald-50 shadow-sm';
-                    circleStyle = 'bg-white text-emerald-700 border border-emerald-200';
-                    textStyle = 'text-emerald-900 font-bold';
-                    badgeStyle  = 'bg-emerald-600 text-white shadow-sm';
-                  } else if (tkpPoints === 4) {
-                    badgeStyle  = 'bg-emerald-100 text-emerald-700';
-                  } else if (tkpPoints === 3) {
-                    badgeStyle  = 'bg-gray-100 text-gray-600';
-                  } else if (tkpPoints === 2) {
-                    badgeStyle  = 'bg-gray-50 text-gray-500';
-                  } else {
-                    // Poin 1 atau 0
-                    badgeStyle  = 'bg-transparent text-gray-400 border border-gray-200';
-                  }
-                } else {
-                  isCorrect = extractLetter(q.correct_answer || q.correctAnswer) === opt;
-                  if (isCorrect) {
-                    optionStyle = 'bg-emerald-50/70 border-emerald-200 shadow-sm';
-                    circleStyle = 'bg-emerald-500 text-white border-none shadow-md';
-                    textStyle = 'text-emerald-900 font-bold';
-                  }
-                }
-
-                return (
-                  <div key={opt} className={`p-4 rounded-2xl border transition-all flex justify-between items-center ${optionStyle}`}>
-                    <div className="flex gap-4">
-                       <div className={`w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-xl font-extrabold text-sm ${circleStyle}`}>
-                         {opt.toUpperCase()}
-                       </div>
-                       <div className={`flex-1 pt-1.5 ${textStyle}`}>
-                         {text}
-                       </div>
-                    </div>
-                    {isTKP && (
-                      <div className="flex-shrink-0 pl-4 border-l border-gray-200 ml-2">
-                        <div className={`px-3 py-1.5 rounded-lg text-xs font-black ${badgeStyle}`}>
-                          Poin {tkpPoints}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="bg-gradient-to-br from-[#1e3a8a]/5 to-blue-50/50 p-6 sm:p-8 rounded-3xl shadow-sm border border-blue-100/50">
-            <h3 className="text-xl font-extrabold text-[#1e3a8a] mb-5 flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[#1e3a8a] to-blue-600 text-white flex items-center justify-center shadow-md shadow-blue-200">
-                💡
-              </div>
-              Pembahasan Resmi
-            </h3>
-            <div className="text-gray-700 leading-relaxed whitespace-pre-wrap font-medium">
-              {q.explanation || 'Belum ada pembahasan yang ditambahkan pada database soal ini.'}
-            </div>
-            {q.explanation_image_url && (
-              <img src={q.explanation_image_url} alt="Pembahasan" className="mt-6 max-h-80 object-contain rounded-2xl border border-blue-200/50 shadow-sm mx-auto" />
-            )}
-          </div>
-        </div>
-
-        {/* BAGIAN KANAN: STATISTIK SISWA */}
-        <div className="space-y-6">
-          <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100 text-center relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-[#1e3a8a] to-blue-400"></div>
-            <h3 className="text-gray-400 font-bold mb-2 text-xs uppercase tracking-widest">
-              {isTKP ? 'Siswa Mendapat Poin 5' : 'Tingkat Keberhasilan'}
-            </h3>
-            <div className={`text-6xl font-black my-5 tracking-tighter ${totalStudents === 0 ? 'text-gray-400' : successRate >= 50 ? 'text-emerald-500' : 'text-rose-500'}`}>
-              {totalStudents === 0 ? '-' : `${successRate}%`}
-            </div>
-            <div className="inline-flex items-center gap-2 bg-gray-50 px-4 py-2 rounded-xl border border-gray-100">
-               <Users className="w-4 h-4 text-gray-400" />
-               <span className="text-sm font-semibold text-gray-600">
-                 {currentStat.correctStudents.length} dari {totalStudents} menjawab {isTKP ? 'poin maksimal' : 'benar'}
-               </span>
-            </div>
-          </div>
-
-          {isTKP ? (
-            <>
-              {/* 🌟 Card Poin 5 (Satu-satunya yang berwarna mencolok) */}
-              <div className="bg-white rounded-3xl shadow-sm border border-emerald-200 overflow-hidden flex flex-col max-h-[250px]">
-                <div className="bg-emerald-600 px-5 py-4 flex justify-between items-center text-white">
-                  <div className="flex items-center gap-2 font-bold">
-                    <Target className="w-5 h-5 opacity-90" /> Poin 5 (Sangat Tepat)
-                  </div>
-                  <span className="bg-white/20 text-white px-3 py-1 rounded-xl text-sm font-black">{currentStat.tkpPoint5.length}</span>
-                </div>
-                <div className="p-3 overflow-y-auto scrollbar-thin">
-                  <div className="space-y-1.5">
-                    {currentStat.tkpPoint5.map((student, idx) => (
-                      <div key={idx} className="flex justify-between items-center px-4 py-3 hover:bg-emerald-50/50 rounded-2xl transition-colors border border-transparent hover:border-emerald-100">
-                        <span className="text-sm font-bold text-gray-700">{student.name}</span>
-                        <span className="text-xs font-black bg-emerald-600 text-white w-8 h-8 flex items-center justify-center rounded-xl shadow-sm">{student.answer}</span>
-                      </div>
-                    ))}
-                    {currentStat.tkpPoint5.length === 0 && <div className="text-center text-gray-400 text-sm font-medium py-6">Tidak ada peserta</div>}
-                  </div>
-                </div>
-              </div>
-
-              {/* 🌟 Card Poin 4 (Bersih dengan highlight hijau muda) */}
-              <div className="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden flex flex-col max-h-[250px]">
-                <div className="bg-gray-50 px-5 py-4 flex justify-between items-center text-gray-700 border-b border-gray-200">
-                  <div className="flex items-center gap-2 font-bold">
-                    <CheckSquare className="w-5 h-5 opacity-80 text-emerald-600" /> Poin 4 (Tepat)
-                  </div>
-                  <span className="bg-emerald-100 text-emerald-700 px-3 py-1 rounded-xl text-sm font-black">{currentStat.tkpPoint4.length}</span>
-                </div>
-                <div className="p-3 overflow-y-auto scrollbar-thin">
-                  <div className="space-y-1.5">
-                    {currentStat.tkpPoint4.map((student, idx) => (
-                      <div key={idx} className="flex justify-between items-center px-4 py-3 hover:bg-gray-50 rounded-2xl transition-colors border border-transparent hover:border-gray-100">
-                        <span className="text-sm font-bold text-gray-600">{student.name}</span>
-                        <span className="text-xs font-black bg-emerald-100 text-emerald-700 w-8 h-8 flex items-center justify-center rounded-xl">{student.answer}</span>
-                      </div>
-                    ))}
-                    {currentStat.tkpPoint4.length === 0 && <div className="text-center text-gray-400 text-sm font-medium py-6">Tidak ada peserta</div>}
-                  </div>
-                </div>
-              </div>
-
-              {/* 🌟 Card Poin 1,2,3 (Sangat netral dan bersih) */}
-              <div className="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden flex flex-col max-h-[250px]">
-                <div className="bg-white px-5 py-4 flex justify-between items-center text-gray-500 border-b border-gray-100">
-                  <div className="flex items-center gap-2 font-bold">
-                    <AlertTriangle className="w-5 h-5 opacity-50" /> Poin 1-3 (Kurang)
-                  </div>
-                  <span className="bg-gray-100 text-gray-500 px-3 py-1 rounded-xl text-sm font-black">{currentStat.tkpPointOthers.length}</span>
-                </div>
-                <div className="p-3 overflow-y-auto scrollbar-thin">
-                  <div className="space-y-1.5">
-                    {currentStat.tkpPointOthers.map((student, idx) => (
-                      <div key={idx} className="flex justify-between items-center px-4 py-3 hover:bg-gray-50 rounded-2xl transition-colors border border-transparent hover:border-gray-100">
-                        <span className="text-sm font-bold text-gray-500 truncate mr-3">{student.name}</span>
-                        <div className="flex items-center gap-2 flex-shrink-0">
-                          <span className="text-[10px] font-bold text-gray-400 uppercase">Jawab:</span>
-                          <span className="text-xs font-black px-2 h-8 flex items-center justify-center rounded-xl bg-gray-50 text-gray-500 border border-gray-100">
-                            {student.answer} (Poin {student.points})
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                    {currentStat.tkpPointOthers.length === 0 && <div className="text-center text-gray-300 text-sm font-medium py-6">Tidak ada peserta</div>}
-                  </div>
-                </div>
-              </div>
-            </>
-          ) : (
-            // RENDER KHUSUS TIU & TWK
-            <>
-              <div className="bg-white rounded-3xl shadow-sm border border-emerald-100 overflow-hidden flex flex-col max-h-[350px]">
-                <div className="bg-emerald-500 px-5 py-4 flex justify-between items-center text-white">
-                  <div className="flex items-center gap-2 font-bold">
-                    <CheckCircle2 className="w-5 h-5 opacity-90" /> Menjawab Benar
-                  </div>
-                  <span className="bg-white/20 text-white px-3 py-1 rounded-xl text-sm font-black">{currentStat.correctStudents.length}</span>
-                </div>
-                <div className="p-3 overflow-y-auto scrollbar-thin">
-                  <div className="space-y-1.5">
-                    {currentStat.correctStudents.map((student, idx) => (
-                      <div key={idx} className="flex justify-between items-center px-4 py-3 hover:bg-emerald-50 rounded-2xl transition-colors border border-transparent hover:border-emerald-100">
-                        <span className="text-sm font-bold text-gray-700">{student.name}</span>
-                        <span className="text-xs font-black bg-emerald-100 text-emerald-700 w-8 h-8 flex items-center justify-center rounded-xl">{student.answer}</span>
-                      </div>
-                    ))}
-                    {currentStat.correctStudents.length === 0 && <div className="text-center text-gray-400 text-sm font-medium py-8">Belum ada peserta yang benar</div>}
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-white rounded-3xl shadow-sm border border-rose-100 overflow-hidden flex flex-col max-h-[350px]">
-                <div className="bg-rose-500 px-5 py-4 flex justify-between items-center text-white">
-                  <div className="flex items-center gap-2 font-bold">
-                    <XCircle className="w-5 h-5 opacity-90" /> Menjawab Salah
-                  </div>
-                  <span className="bg-white/20 text-white px-3 py-1 rounded-xl text-sm font-black">{currentStat.wrongStudents.length}</span>
-                </div>
-                <div className="p-3 overflow-y-auto scrollbar-thin">
-                  <div className="space-y-1.5">
-                    {currentStat.wrongStudents.map((student, idx) => (
-                      <div key={idx} className="flex justify-between items-center px-4 py-3 hover:bg-rose-50 rounded-2xl transition-colors border border-transparent hover:border-rose-100">
-                        <span className="text-sm font-bold text-gray-700 truncate mr-3">{student.name}</span>
-                        <div className="flex items-center gap-2 flex-shrink-0">
-                          <span className="text-[10px] font-bold text-rose-400 uppercase">Jawab:</span>
-                          <span className="text-xs font-black bg-rose-100 text-rose-700 w-8 h-8 flex items-center justify-center rounded-xl">{student.answer}</span>
-                        </div>
-                      </div>
-                    ))}
-                    {currentStat.wrongStudents.length === 0 && <div className="text-center text-gray-400 text-sm font-medium py-8">Tidak ada peserta yang salah</div>}
-                  </div>
-                </div>
-              </div>
-            </>
-          )}
-
-          {/* CARD KOSONG */}
-          {currentStat.unansweredStudents.length > 0 && (
-            <div className="bg-white rounded-3xl shadow-sm border border-amber-100 overflow-hidden">
-              <div className="bg-amber-400 px-5 py-3.5 flex justify-between items-center text-amber-900">
-                <div className="flex items-center gap-2 font-bold text-sm">
-                  <AlertCircle className="w-4 h-4 opacity-80" /> Kosong / Dilewati
-                </div>
-                <span className="bg-white/30 px-2.5 py-0.5 rounded-lg text-xs font-black">{currentStat.unansweredStudents.length}</span>
-              </div>
-              <div className="p-3 max-h-40 overflow-y-auto scrollbar-thin">
-                <div className="space-y-1.5">
-                  {currentStat.unansweredStudents.map((student, idx) => (
-                    <div key={idx} className="px-4 py-2.5 text-sm font-semibold text-gray-700 bg-gray-50 rounded-xl border border-gray-100">
-                      {student.name}
-                    </div>
+            {/* DROPDOWN FILTER TANGGAL */}
+            {availableDates.length > 0 && (
+              <div className="flex items-center gap-2 bg-blue-50 border border-blue-100 px-3 py-2.5 rounded-xl">
+                <Calendar className="w-4 h-4 text-[#1e3a8a]" />
+                <select
+                  value={selectedDate}
+                  onChange={(e) => setSelectedDate(e.target.value)}
+                  className="bg-transparent border-none text-sm font-bold text-[#1e3a8a] focus:ring-0 cursor-pointer outline-none p-0 pr-6"
+                >
+                  <option value="all">Semua Hari / Tanggal</option>
+                  {availableDates.map((date) => (
+                    <option key={date} value={date}>{date}</option>
                   ))}
-                </div>
+                </select>
+              </div>
+            )}
+
+            {/* TOMBOL BUKA-TUTUP WHITEBOARD HYBRID */}
+            <button
+              type="button"
+              onClick={() => setIsWhiteboardOpen((prev) => !prev)}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all border shadow-sm ${
+                isWhiteboardOpen
+                  ? 'bg-amber-500 hover:bg-amber-600 text-slate-950 border-amber-400'
+                  : 'bg-[#1e3a8a] hover:bg-[#1e40af] text-white border-[#1e3a8a]'
+              }`}
+              title="Buka atau tutup papan cakaran & mode coret soal (Pintasan: tombol W)"
+            >
+              <PenTool className="w-4 h-4" />
+              <span>{isWhiteboardOpen ? 'Tutup Whiteboard' : 'Whiteboard'}</span>
+            </button>
+          </div>
+
+          <div className="flex items-center gap-3 sm:gap-5 bg-gray-50 px-2 py-2 rounded-2xl border border-gray-100">
+            <button
+              onClick={() => setCurrentIndex((prev) => Math.max(0, prev - 1))}
+              disabled={currentIndex === 0}
+              className="p-2 sm:px-4 sm:py-2.5 bg-white text-[#1e3a8a] rounded-xl disabled:opacity-40 hover:bg-[#1e3a8a] hover:text-white transition-all shadow-sm flex items-center gap-2 font-bold"
+            >
+              <ChevronLeft className="w-5 h-5" />
+              <span className="hidden md:inline">Sebelumnya</span>
+            </button>
+
+            <div className="text-center min-w-[110px]">
+              <h2 className="text-lg sm:text-xl font-extrabold text-[#1e3a8a] leading-tight">
+                Soal {currentIndex + 1}
+              </h2>
+              <p className="text-xs font-semibold text-gray-400">DARI {questionsStats.length} SOAL</p>
+            </div>
+
+            <button
+              onClick={() => setCurrentIndex((prev) => Math.min(questionsStats.length - 1, prev + 1))}
+              disabled={currentIndex === questionsStats.length - 1}
+              className="p-2 sm:px-4 sm:py-2.5 bg-white text-[#1e3a8a] rounded-xl disabled:opacity-40 hover:bg-[#1e3a8a] hover:text-white transition-all shadow-sm flex items-center gap-2 font-bold"
+            >
+              <span className="hidden md:inline">Selanjutnya</span>
+              <ChevronRight className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+
+        <div className={`grid grid-cols-1 gap-4 md:gap-6 ${isBoardSplit ? '' : 'md:grid-cols-3'}`}>
+
+          {/* BAGIAN KIRI: SOAL DAN PEMBAHASAN */}
+          <div className={`${isBoardSplit ? '' : 'md:col-span-2'} space-y-6`}>
+            <div className="bg-white p-6 sm:p-8 rounded-3xl shadow-sm border border-gray-100">
+              <div className="flex items-center gap-2 mb-5 pb-5 border-b border-gray-50 flex-wrap">
+                <span className="bg-[#1e3a8a]/10 text-[#1e3a8a] px-3.5 py-1.5 rounded-xl text-xs font-extrabold uppercase tracking-wider">
+                  Kategori: {q.category ? q.category : 'Umum'}
+                </span>
+                <span className="bg-gray-100 text-gray-600 px-3.5 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider">
+                  {q.sub_kategori ?? q.sub_category ?? 'Tidak ada Sub Kategori'}
+                </span>
+              </div>
+
+              <div className="text-gray-800 text-lg mb-6 leading-relaxed whitespace-pre-wrap">
+                {q.question_text ?? q.questionText}
+              </div>
+              {q.image_url && (
+                <img src={q.image_url} alt="Soal" className="max-h-80 object-contain mb-6 rounded-2xl border border-gray-100 shadow-sm mx-auto" />
+              )}
+
+              <div className="space-y-3">
+                {['a', 'b', 'c', 'd', 'e'].map((opt) => {
+                  const optKey = `option_${opt}`;
+                  const text = q[optKey];
+                  if (!text) return null;
+
+                  let isCorrect = false;
+                  let tkpPoints = 0;
+
+                  let optionStyle = 'bg-white border-gray-200 hover:bg-gray-50 shadow-sm';
+                  let circleStyle = 'bg-gray-50 text-gray-500 border border-gray-200';
+                  let textStyle = 'text-gray-700 font-medium';
+                  let badgeStyle = '';
+
+                  if (isTKP) {
+                    const rawTkpPts = Number(q[`points_${opt}`]);
+                    tkpPoints = Number.isNaN(rawTkpPts) ? 0 : rawTkpPts;
+
+                    if (tkpPoints === 5) {
+                      optionStyle = 'bg-emerald-50/30 border-emerald-100 hover:bg-emerald-50 shadow-sm';
+                      circleStyle = 'bg-white text-emerald-700 border border-emerald-200';
+                      textStyle = 'text-emerald-900 font-bold';
+                      badgeStyle = 'bg-emerald-600 text-white shadow-sm';
+                    } else if (tkpPoints === 4) {
+                      badgeStyle = 'bg-emerald-100 text-emerald-700';
+                    } else if (tkpPoints === 3) {
+                      badgeStyle = 'bg-gray-100 text-gray-600';
+                    } else if (tkpPoints === 2) {
+                      badgeStyle = 'bg-gray-50 text-gray-500';
+                    } else {
+                      badgeStyle = 'bg-transparent text-gray-400 border border-gray-200';
+                    }
+                  } else {
+                    isCorrect = extractLetter(q.correct_answer ?? q.correctAnswer) === opt;
+                    if (isCorrect) {
+                      optionStyle = 'bg-emerald-50/70 border-emerald-200 shadow-sm';
+                      circleStyle = 'bg-emerald-500 text-white border-none shadow-md';
+                      textStyle = 'text-emerald-900 font-bold';
+                    }
+                  }
+
+                  return (
+                    <div key={opt} className={`p-4 rounded-2xl border transition-all flex justify-between items-center ${optionStyle}`}>
+                      <div className="flex gap-4">
+                        <div className={`w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-xl font-extrabold text-sm ${circleStyle}`}>
+                          {opt.toUpperCase()}
+                        </div>
+                        <div className={`flex-1 pt-1.5 ${textStyle}`}>
+                          {text}
+                        </div>
+                      </div>
+                      {isTKP && (
+                        <div className="flex-shrink-0 pl-4 border-l border-gray-200 ml-2">
+                          <div className={`px-3 py-1.5 rounded-lg text-xs font-black ${badgeStyle}`}>
+                            Poin {tkpPoints}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
-          )}
 
+            <div className="bg-gradient-to-br from-[#1e3a8a]/5 to-blue-50/50 p-6 sm:p-8 rounded-3xl shadow-sm border border-blue-100/50">
+              <h3 className="text-xl font-extrabold text-[#1e3a8a] mb-5 flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[#1e3a8a] to-blue-600 text-white flex items-center justify-center shadow-md shadow-blue-200">
+                  💡
+                </div>
+                Pembahasan Resmi
+              </h3>
+              <div className="text-gray-700 leading-relaxed whitespace-pre-wrap font-medium">
+                {q.explanation ? q.explanation : 'Belum ada pembahasan yang ditambahkan pada database soal ini.'}
+              </div>
+              {q.explanation_image_url && (
+                <img src={q.explanation_image_url} alt="Pembahasan" className="mt-6 max-h-80 object-contain rounded-2xl border border-blue-200/50 shadow-sm mx-auto" />
+              )}
+            </div>
+          </div>
+
+          {/* BAGIAN KANAN: STATISTIK SISWA */}
+          <div className="space-y-6">
+            <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100 text-center relative overflow-hidden">
+              <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-[#1e3a8a] to-blue-400"></div>
+              <h3 className="text-gray-400 font-bold mb-2 text-xs uppercase tracking-widest">
+                {isTKP ? 'Siswa Mendapat Poin 5' : 'Tingkat Keberhasilan'}
+              </h3>
+              <div className={`text-6xl font-black my-5 tracking-tighter ${totalStudents === 0 ? 'text-gray-400' : successRate >= 50 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                {totalStudents === 0 ? '-' : `${successRate}%`}
+              </div>
+              <div className="inline-flex items-center gap-2 bg-gray-50 px-4 py-2 rounded-xl border border-gray-100">
+                <Users className="w-4 h-4 text-gray-400" />
+                <span className="text-sm font-semibold text-gray-600">
+                  {currentStat.correctStudents.length} dari {totalStudents} menjawab {isTKP ? 'poin maksimal' : 'benar'}
+                </span>
+              </div>
+            </div>
+
+            {isTKP ? (
+              <>
+                <div className="bg-white rounded-3xl shadow-sm border border-emerald-200 overflow-hidden flex flex-col max-h-[250px]">
+                  <div className="bg-emerald-600 px-5 py-4 flex justify-between items-center text-white">
+                    <div className="flex items-center gap-2 font-bold">
+                      <Target className="w-5 h-5 opacity-90" /> Poin 5 (Sangat Tepat)
+                    </div>
+                    <span className="bg-white/20 text-white px-3 py-1 rounded-xl text-sm font-black">{currentStat.tkpPoint5.length}</span>
+                  </div>
+                  <div className="p-3 overflow-y-auto scrollbar-thin">
+                    <div className="space-y-1.5">
+                      {currentStat.tkpPoint5.map((student, idx) => (
+                        <div key={idx} className="flex justify-between items-center px-4 py-3 hover:bg-emerald-50/50 rounded-2xl transition-colors border border-transparent hover:border-emerald-100">
+                          <span className="text-sm font-bold text-gray-700">{student.name}</span>
+                          <span className="text-xs font-black bg-emerald-600 text-white w-8 h-8 flex items-center justify-center rounded-xl shadow-sm">{student.answer}</span>
+                        </div>
+                      ))}
+                      {currentStat.tkpPoint5.length === 0 && <div className="text-center text-gray-400 text-sm font-medium py-6">Tidak ada peserta</div>}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden flex flex-col max-h-[250px]">
+                  <div className="bg-gray-50 px-5 py-4 flex justify-between items-center text-gray-700 border-b border-gray-200">
+                    <div className="flex items-center gap-2 font-bold">
+                      <CheckSquare className="w-5 h-5 opacity-80 text-emerald-600" /> Poin 4 (Tepat)
+                    </div>
+                    <span className="bg-emerald-100 text-emerald-700 px-3 py-1 rounded-xl text-sm font-black">{currentStat.tkpPoint4.length}</span>
+                  </div>
+                  <div className="p-3 overflow-y-auto scrollbar-thin">
+                    <div className="space-y-1.5">
+                      {currentStat.tkpPoint4.map((student, idx) => (
+                        <div key={idx} className="flex justify-between items-center px-4 py-3 hover:bg-gray-50 rounded-2xl transition-colors border border-transparent hover:border-gray-100">
+                          <span className="text-sm font-bold text-gray-600">{student.name}</span>
+                          <span className="text-xs font-black bg-emerald-100 text-emerald-700 w-8 h-8 flex items-center justify-center rounded-xl">{student.answer}</span>
+                        </div>
+                      ))}
+                      {currentStat.tkpPoint4.length === 0 && <div className="text-center text-gray-400 text-sm font-medium py-6">Tidak ada peserta</div>}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden flex flex-col max-h-[250px]">
+                  <div className="bg-white px-5 py-4 flex justify-between items-center text-gray-500 border-b border-gray-100">
+                    <div className="flex items-center gap-2 font-bold">
+                      <AlertTriangle className="w-5 h-5 opacity-50" /> Poin 1-3 (Kurang)
+                    </div>
+                    <span className="bg-gray-100 text-gray-500 px-3 py-1 rounded-xl text-sm font-black">{currentStat.tkpPointOthers.length}</span>
+                  </div>
+                  <div className="p-3 overflow-y-auto scrollbar-thin">
+                    <div className="space-y-1.5">
+                      {currentStat.tkpPointOthers.map((student, idx) => (
+                        <div key={idx} className="flex justify-between items-center px-4 py-3 hover:bg-gray-50 rounded-2xl transition-colors border border-transparent hover:border-gray-100">
+                          <span className="text-sm font-bold text-gray-500 truncate mr-3">{student.name}</span>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <span className="text-[10px] font-bold text-gray-400 uppercase">Jawab:</span>
+                            <span className="text-xs font-black px-2 h-8 flex items-center justify-center rounded-xl bg-gray-50 text-gray-500 border border-gray-100">
+                              {student.answer} (Poin {student.points})
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                      {currentStat.tkpPointOthers.length === 0 && <div className="text-center text-gray-300 text-sm font-medium py-6">Tidak ada peserta</div>}
+                    </div>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="bg-white rounded-3xl shadow-sm border border-emerald-100 overflow-hidden flex flex-col max-h-[350px]">
+                  <div className="bg-emerald-500 px-5 py-4 flex justify-between items-center text-white">
+                    <div className="flex items-center gap-2 font-bold">
+                      <CheckCircle2 className="w-5 h-5 opacity-90" /> Menjawab Benar
+                    </div>
+                    <span className="bg-white/20 text-white px-3 py-1 rounded-xl text-sm font-black">{currentStat.correctStudents.length}</span>
+                  </div>
+                  <div className="p-3 overflow-y-auto scrollbar-thin">
+                    <div className="space-y-1.5">
+                      {currentStat.correctStudents.map((student, idx) => (
+                        <div key={idx} className="flex justify-between items-center px-4 py-3 hover:bg-emerald-50 rounded-2xl transition-colors border border-transparent hover:border-emerald-100">
+                          <span className="text-sm font-bold text-gray-700">{student.name}</span>
+                          <span className="text-xs font-black bg-emerald-100 text-emerald-700 w-8 h-8 flex items-center justify-center rounded-xl">{student.answer}</span>
+                        </div>
+                      ))}
+                      {currentStat.correctStudents.length === 0 && <div className="text-center text-gray-400 text-sm font-medium py-8">Belum ada peserta yang benar</div>}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-3xl shadow-sm border border-rose-100 overflow-hidden flex flex-col max-h-[350px]">
+                  <div className="bg-rose-500 px-5 py-4 flex justify-between items-center text-white">
+                    <div className="flex items-center gap-2 font-bold">
+                      <XCircle className="w-5 h-5 opacity-90" /> Menjawab Salah
+                    </div>
+                    <span className="bg-white/20 text-white px-3 py-1 rounded-xl text-sm font-black">{currentStat.wrongStudents.length}</span>
+                  </div>
+                  <div className="p-3 overflow-y-auto scrollbar-thin">
+                    <div className="space-y-1.5">
+                      {currentStat.wrongStudents.map((student, idx) => (
+                        <div key={idx} className="flex justify-between items-center px-4 py-3 hover:bg-rose-50 rounded-2xl transition-colors border border-transparent hover:border-rose-100">
+                          <span className="text-sm font-bold text-gray-700 truncate mr-3">{student.name}</span>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <span className="text-[10px] font-bold text-rose-400 uppercase">Jawab:</span>
+                            <span className="text-xs font-black bg-rose-100 text-rose-700 w-8 h-8 flex items-center justify-center rounded-xl">{student.answer}</span>
+                          </div>
+                        </div>
+                      ))}
+                      {currentStat.wrongStudents.length === 0 && <div className="text-center text-gray-400 text-sm font-medium py-8">Tidak ada peserta yang salah</div>}
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* CARD KOSONG */}
+            {currentStat.unansweredStudents.length > 0 && (
+              <div className="bg-white rounded-3xl shadow-sm border border-amber-100 overflow-hidden">
+                <div className="bg-amber-400 px-5 py-3.5 flex justify-between items-center text-amber-900">
+                  <div className="flex items-center gap-2 font-bold text-sm">
+                    <AlertCircle className="w-4 h-4 opacity-80" /> Kosong / Dilewati
+                  </div>
+                  <span className="bg-white/30 px-2.5 py-0.5 rounded-lg text-xs font-black">{currentStat.unansweredStudents.length}</span>
+                </div>
+                <div className="p-3 max-h-40 overflow-y-auto scrollbar-thin">
+                  <div className="space-y-1.5">
+                    {currentStat.unansweredStudents.map((student, idx) => (
+                      <div key={idx} className="px-4 py-2.5 text-sm font-semibold text-gray-700 bg-gray-50 rounded-xl border border-gray-100">
+                        {student.name}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+          </div>
         </div>
       </div>
-    </div>
+
+      {/* HYBRID WHITEBOARD (TERTUTUP SECARA DEFAULT) */}
+      <HybridWhiteboard
+        isOpen={isWhiteboardOpen}
+        onClose={() => setIsWhiteboardOpen(false)}
+        questionKey={`${currentIndex}-${selectedDate}`}
+        onModeChange={handleWhiteboardModeChange}
+      />
+    </>
   );
 }
