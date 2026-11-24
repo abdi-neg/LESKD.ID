@@ -1,23 +1,23 @@
-import { useState, useEffect } from 'react'; 
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import {
   LogOut, LayoutDashboard, BookOpen, Activity, History,
-  Package, Users, Shield, Menu, X, UserCheck, BarChart3
+  Package, Users, Shield, UserCheck, BarChart3
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { supabase } from '../../lib/supabase';
 import QuestionManager from './QuestionManager';
 import LiveScoreMonitor from './LiveScoreMonitor';
-import ExamHistoryMonitor from './ExamHistoryMonitor'; 
+import ExamHistoryMonitor from './ExamHistoryMonitor';
 import PackageManager from './PackageManager';
 import ManageAdmins from './ManageAdmins';
 import ManageParticipants from './ManageParticipants';
 import ExamReview from '../exam/ExamReview';
 import ParticipantDiagnostic from './ParticipantDiagnostic';
-import ClassReviewMode from './ClassReviewMode'; 
+import ClassReviewMode from './ClassReviewMode';
 
-type TabPath = 'overview' | 'packages' | 'questions' | 'participants' | 'diagnostic' | 'results' | 'live' | 'admins';
+type TabPath = string;
 
 interface DashboardStats {
   totalQuestions: number;
@@ -28,14 +28,15 @@ interface DashboardStats {
 }
 
 export default function AdminDashboard() {
-  const { state, signOut } = useApp();
+  const { state, dispatch, signOut } = useApp();
   const navigate = useNavigate();
   const location = useLocation();
 
   const profile = state.profile;
   const isSuperAdmin = profile?.role === 'super_admin';
 
-  const currentSubPath = location.pathname.split('/admin/')[1] || 'overview';
+  const rawSubPath = location.pathname.split('/admin/')[1];
+  const currentSubPath = rawSubPath ? rawSubPath : 'overview';
 
   const allTabs: { id: TabPath; label: string; icon: React.ElementType; superAdminOnly?: boolean }[] = [
     { id: 'overview', label: 'Ringkasan', icon: LayoutDashboard },
@@ -47,10 +48,28 @@ export default function AdminDashboard() {
     { id: 'live', label: 'Monitor Live', icon: Activity },
     { id: 'admins', label: 'Kelola Admin', icon: Shield, superAdminOnly: true },
   ];
-  
-  const tabs = allTabs.filter((t) => !t.superAdminOnly || isSuperAdmin);
+
+  const tabs = allTabs.filter((t) => (t.superAdminOnly ? isSuperAdmin : true));
+
+  const isTabActive = (tabId: string): boolean => {
+    if (currentSubPath === tabId) return true;
+    if (tabId === 'results' && currentSubPath.startsWith('results')) return true;
+    if (tabId === 'diagnostic' && currentSubPath.startsWith('diagnostic')) return true;
+    if (tabId === 'packages' && currentSubPath.startsWith('pembahasan-kelas')) return true;
+    return false;
+  };
 
   const handleTabChange = (targetPath: TabPath) => {
+    // Reset state review saat Admin berpindah tab dari halaman Tinjau Peserta
+    if (state.currentView === 'exam-review') {
+      try {
+        localStorage.removeItem('leskd_saved_review_id');
+      } catch {
+        // Abaikan
+      }
+      dispatch({ type: 'SET_VIEW', payload: 'admin-dashboard' });
+    }
+
     if (targetPath === 'overview') {
       navigate('/admin');
     } else {
@@ -63,7 +82,7 @@ export default function AdminDashboard() {
       <header className="bg-[#1e3a8a] text-white shadow-lg sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <span 
+            <span
               className="text-white font-extrabold text-lg cursor-pointer"
               onClick={() => handleTabChange('overview')}
             >
@@ -89,11 +108,8 @@ export default function AdminDashboard() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 border-t border-white/10 overflow-x-auto">
           <div className="flex gap-1 -mb-px">
             {tabs.map((tab) => {
-              const isActive = currentSubPath === tab.id || 
-                               (tab.id === 'results' && currentSubPath.startsWith('results')) || 
-                               (tab.id === 'diagnostic' && currentSubPath.startsWith('diagnostic')) ||
-                               (tab.id === 'packages' && currentSubPath.startsWith('pembahasan-kelas'));
-              
+              const isActive = isTabActive(tab.id);
+
               return (
                 <button
                   key={tab.id}
@@ -130,9 +146,9 @@ export default function AdminDashboard() {
             <Route path="results" element={<ExamHistoryMonitor />} />
             <Route path="results/review" element={<ExamReview />} />
             <Route path="live" element={<LiveScoreMonitor />} />
-            <Route 
-              path="admins" 
-              element={isSuperAdmin ? <ManageAdmins /> : <Navigate to="/admin" replace />} 
+            <Route
+              path="admins"
+              element={isSuperAdmin ? <ManageAdmins /> : <Navigate to="/admin" replace />}
             />
             <Route path="*" element={<Navigate to="/admin" replace />} />
           </Routes>
@@ -156,7 +172,6 @@ function AdminOverview({ onNavigate, isSuperAdmin }: { onNavigate: (tab: TabPath
     let isMounted = true;
     async function load() {
       try {
-        // 🌟 AMAN 100%: Menggunakan "head: true" hanya mengambil jumlah baris (count), tidak mengunduh data JSON/barisnya. Egress sangat hemat!
         const [q, p, r, pa, pp] = await Promise.all([
           supabase.from('questions').select('id', { count: 'exact', head: true }),
           supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'participant').eq('is_approved', true),
@@ -166,7 +181,7 @@ function AdminOverview({ onNavigate, isSuperAdmin }: { onNavigate: (tab: TabPath
             : Promise.resolve({ count: 0 }),
           supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'participant').eq('is_approved', false),
         ]);
-        
+
         if (isMounted) {
           setStats({
             totalQuestions: q.count ?? 0,
@@ -178,7 +193,7 @@ function AdminOverview({ onNavigate, isSuperAdmin }: { onNavigate: (tab: TabPath
           setLoading(false);
         }
       } catch (err) {
-        console.error("Gagal memperbarui ringkasan:", err);
+        console.error('Gagal memperbarui ringkasan:', err);
       }
     }
     load();
@@ -192,9 +207,11 @@ function AdminOverview({ onNavigate, isSuperAdmin }: { onNavigate: (tab: TabPath
     { label: 'Peserta Pending', value: loading ? '...' : stats.pendingParticipants.toString(), tab: 'participants' as TabPath },
   ];
 
+  const hasPendingApproval = stats.pendingParticipants > 0 ? true : (isSuperAdmin && stats.pendingAdmins > 0);
+
   return (
     <div className="space-y-6">
-      {(stats.pendingParticipants > 0 || (isSuperAdmin && stats.pendingAdmins > 0)) && (
+      {hasPendingApproval && (
         <div className="space-y-2">
           {isSuperAdmin && stats.pendingAdmins > 0 && (
             <motion.button
