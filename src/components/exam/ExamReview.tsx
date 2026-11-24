@@ -12,14 +12,13 @@ import {
   AlertTriangle,
   Loader2
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import DiagnosticReport from './DiagnosticReport';
 
 type AnswerOption = 'A' | 'B' | 'C' | 'D' | 'E';
 const OPTIONS: AnswerOption[] = ['A', 'B', 'C', 'D', 'E'];
 
-// ─── RADAR PENDETEKSI GAMBAR ───
 function renderTextWithImages(text: any, isOption = false) {
   if (!text) return null;
   if (typeof text !== 'string') return text;
@@ -275,6 +274,7 @@ function QuestionCard({ question, answer, displayNumber, forceExpand }: any) {
 export function ExamReview({ questions: propQuestions, answers: propAnswers }: any) {
   const { state, dispatch, fetchExamSnapshot } = useApp();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const userRole = (state as any)?.profile?.role?.toLowerCase() ?? 'participant';
   const isAdmin = userRole !== 'participant';
@@ -291,6 +291,16 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
   const memoryQuestions = (state as any)?.examSession?.questions ?? (state as any)?.activeQuestions ?? (state as any)?.questions ?? [];
   const memoryAnswers = (state as any)?.examSession?.answers ?? (state as any)?.activeAnswers ?? (state as any)?.answers ?? {};
 
+  const urlReviewId = new URLSearchParams(location.search).get('id');
+  const resolvedResultId =
+    urlReviewId ??
+    (state as any)?.reviewResultId ??
+    (state as any)?.activeReviewId ??
+    (state as any)?.activeResultId ??
+    (state as any)?.selectedResultId ??
+    (state as any)?.reviewId ??
+    localStorage.getItem('leskd_saved_review_id');
+
   useEffect(() => {
     const hasPropQuestions = Boolean(propQuestions && propQuestions.length > 0);
     if (hasPropQuestions ? true : memoryQuestions.length > 0) {
@@ -298,21 +308,32 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
     }
 
     async function loadLazySnapshot() {
+      if (!resolvedResultId) {
+        console.warn('ExamReview: Tidak ada result ID yang ditemukan.');
+        return;
+      }
+
+      const cacheKey = `leskd_review_cache_${resolvedResultId}`;
+
+      // 1. Cek cache sessionStorage dulu (0 Byte egress Supabase saat di-refresh!)
+      try {
+        const cachedRaw = sessionStorage.getItem(cacheKey);
+        if (cachedRaw) {
+          const cached = JSON.parse(cachedRaw);
+          if (cached && Array.isArray(cached.questions) && cached.questions.length > 0) {
+            setFetchedQuestions(cached.questions);
+            setFetchedAnswers(cached.answers ?? {});
+            return;
+          }
+        }
+      } catch {
+        sessionStorage.removeItem(cacheKey);
+      }
+
+      // 2. Jika belum ada di cache tab saat ini, tarik 1x dari Supabase
       setIsFetchingDb(true);
       try {
-        const resultId =
-          (state as any)?.reviewResultId ??
-          (state as any)?.activeReviewId ??
-          (state as any)?.activeResultId ??
-          (state as any)?.selectedResultId ??
-          (state as any)?.reviewId;
-
-        if (!resultId) {
-          console.warn('ExamReview: Tidak ada result ID yang ditemukan di state.');
-          return;
-        }
-
-        const data = await fetchExamSnapshot(resultId);
+        const data = await fetchExamSnapshot(resolvedResultId);
 
         if (data && data.review_snapshot) {
           let snapshot = data.review_snapshot;
@@ -337,8 +358,15 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
                 sub_kategori: verifiedSub
               };
             });
+            const safeAnswers = snapshot.answers ?? {};
             setFetchedQuestions(safeQuestions);
-            setFetchedAnswers(snapshot.answers ?? {});
+            setFetchedAnswers(safeAnswers);
+
+            try {
+              sessionStorage.setItem(cacheKey, JSON.stringify({ questions: safeQuestions, answers: safeAnswers }));
+            } catch {
+              // Abaikan jika kapasitas sessionStorage penuh
+            }
           }
         }
       } catch (err) {
@@ -349,7 +377,7 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
     }
 
     loadLazySnapshot();
-  }, [(state as any)?.reviewResultId, propQuestions?.length, memoryQuestions.length]);
+  }, [resolvedResultId, propQuestions?.length, memoryQuestions.length]);
 
   const rawQuestions = propQuestions && propQuestions.length > 0
     ? propQuestions
@@ -363,7 +391,6 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
       ? memoryAnswers
       : fetchedAnswers;
 
-  // Simpan nomor asli soal (originalNumber) sebelum difilter agar tidak bergeser
   const numberedQuestions = [...rawQuestions].map((q: any, idx: number) => ({
     ...q,
     originalNumber: idx + 1,
@@ -382,7 +409,6 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
     return undefined;
   };
 
-  // Cek apakah soal perlu direview (salah pada TWK/TIU, atau poin <= 3 pada TKP)
   const isQuestionNeedsReview = (q: any, ansObj: any) => {
     const selected = resolveSelectedAnswer(ansObj);
     if (!selected) return false;
@@ -427,6 +453,12 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
   });
 
   const handleGoBack = () => {
+    try {
+      localStorage.removeItem('leskd_saved_review_id');
+    } catch {
+      // Abaikan
+    }
+
     if ((state as any)?.reviewResultId) {
       dispatch({ type: 'DELETE_EXAM_RESULT', payload: (state as any).reviewResultId });
     }
@@ -434,15 +466,17 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
     if (isAdmin) {
       dispatch({ type: 'SET_VIEW', payload: 'admin-dashboard' });
       navigate('/admin/results', { replace: true });
+    } else if ((state as any)?.examSession) {
+      dispatch({ type: 'SET_VIEW', payload: 'exam-results' });
+      navigate('/exam/results', { replace: true });
     } else {
-      dispatch({ type: 'SET_VIEW', payload: (state as any)?.examSession ? 'exam-results' : 'participant-dashboard' });
-      navigate('/', { replace: true });
+      dispatch({ type: 'SET_VIEW', payload: 'participant-dashboard' });
+      navigate('/dashboard', { replace: true });
     }
   };
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto px-2 py-4">
-      {/* Header */}
       <div className="flex items-center justify-between bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
         <div className="flex items-center gap-3">
           <button
@@ -468,7 +502,6 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
         )}
       </div>
 
-      {/* Bar Pencarian & Filter */}
       <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm space-y-3">
         <div className="relative">
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
@@ -495,7 +528,6 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
           ))}
         </div>
 
-        {/* Filter Status Jawaban (Memudahkan Peserta Bedah Nomor Salah) */}
         <div className="flex flex-wrap gap-2 items-center text-xs pt-2 border-t border-gray-100">
           {[
             { key: 'ALL', label: 'Semua Status' },
@@ -520,7 +552,6 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
         </div>
       </div>
 
-      {/* Peta Kekuatan & Kelemahan (Tampil jika multi sub-materi) */}
       {!isFetchingDb && numberedQuestions.length > 0 && showDiagnosticChart && (
         <motion.div
           initial={{ opacity: 0, y: 15 }}
@@ -531,7 +562,6 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
         </motion.div>
       )}
 
-      {/* Daftar Soal */}
       <div className="space-y-4">
         {isFetchingDb ? (
           <div className="text-center py-12 bg-white rounded-2xl border flex flex-col items-center justify-center gap-3">
