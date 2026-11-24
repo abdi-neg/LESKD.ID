@@ -13,7 +13,6 @@ import ExamReview from './components/exam/ExamReview';
 import AdminDashboard from './components/admin/AdminDashboard';
 import ClassReviewMode from './components/admin/ClassReviewMode';
 
-// Naikkan kode versi ini kapan saja di masa depan jika ada perubahan struktur data besar
 const APP_CACHE_VERSION = '2026.11.24-v1';
 
 // ==================================================
@@ -21,7 +20,6 @@ const APP_CACHE_VERSION = '2026.11.24-v1';
 // ==================================================
 function useAutoUpdateGuard() {
   useEffect(() => {
-    // 1. Cek perubahan versi aplikasi untuk membersihkan sisa cache sementara (tanpa menghapus login Supabase)
     try {
       const savedVersion = localStorage.getItem('leskd_app_version');
       if (savedVersion !== APP_CACHE_VERSION) {
@@ -43,7 +41,6 @@ function useAutoUpdateGuard() {
       // Abaikan jika storage dibatasi
     }
 
-    // 2. Tangkap error file JS lama pasca-deploy Vercel (maksimal 1x auto-reload agar tidak looping)
     const triggerSafeReload = () => {
       const reloadKey = 'leskd_chunk_reloaded';
       if (!sessionStorage.getItem(reloadKey)) {
@@ -130,7 +127,6 @@ function AppRouter() {
     Boolean(localStorage.getItem('exam_active_session_id')) &&
     !state.examSession;
 
-  // Jika pemulihan sesi ujian macet lebih dari 7 detik (misalnya sisa sesi lama), tampilkan tombol penyelamat
   useEffect(() => {
     if (!isResumingExam) {
       setResumeTimedOut(false);
@@ -140,12 +136,28 @@ function AppRouter() {
     return () => clearTimeout(timer);
   }, [isResumingExam]);
 
-  // Efek A: URL Membimbing State (Saat Refresh / Buka Ulang Tab Browser)
+  // Efek A: URL Membimbing State (Saat Refresh / Navigasi Menu Admin / Tombol Back Browser)
   useEffect(() => {
     if (state.authLoading) return;
     if (!state.profile) return;
 
     const currentPath = location.pathname;
+
+    // PERBAIKAN BUG: Jika Admin pindah dari /admin/results/review ke menu admin lain (misal /admin/questions),
+    // segera reset currentView ke 'admin-dashboard' agar tidak ditarik ke rute /exam/review
+    if (
+      currentPath.startsWith('/admin') &&
+      !currentPath.startsWith('/admin/results/review') &&
+      state.currentView === 'exam-review'
+    ) {
+      try {
+        localStorage.removeItem('leskd_saved_review_id');
+      } catch {
+        // Abaikan
+      }
+      dispatch({ type: 'SET_VIEW', payload: 'admin-dashboard' });
+      return;
+    }
 
     if (currentPath === '/exam' && state.currentView !== 'exam-engine') {
       const activeSessionId = localStorage.getItem('exam_active_session_id');
@@ -157,13 +169,11 @@ function AppRouter() {
       return;
     }
 
-    // Cegah white screen jika tab HP lama tertinggal di /exam/results saat sesi sudah kosong
     if (currentPath === '/exam/results' && !state.examSession) {
       navigate('/dashboard', { replace: true });
       return;
     }
 
-    // Pertahankan halaman Pembahasan saat di-refresh menggunakan ?id= atau localStorage
     if (currentPath === '/exam/review') {
       const params = new URLSearchParams(location.search);
       const urlReviewId = params.get('id');
@@ -191,16 +201,21 @@ function AppRouter() {
     navigate
   ]);
 
-  // Efek B: State Membimbing URL (Hanya berjalan setelah auth selesai & ada perubahan view aktif)
+  // Efek B: State Membimbing URL
   useEffect(() => {
-    // PENGAMAN UTAMA STAY-ON-PAGE: Jangan pernah ubah URL selama proses auth belum selesai
     if (state.authLoading) return;
     if (location.pathname === '/update-password') return;
 
     const previousView = prevViewRef.current;
     prevViewRef.current = state.currentView;
 
-    // Jika halaman baru saja di-refresh (transisi dari inisialisasi awal 'landing'), biarkan URL saat ini menang
+    // PENGAMAN UTAMA ADMIN: Jika Admin berada di rute /admin/* mana pun,
+    // biarkan AdminDashboard yang mengatur sub-rute dan jangan pernah alihkan ke /exam/review full-screen
+    const isAdminUser = state.profile ? state.profile.role.toLowerCase() !== 'participant' : false;
+    if (isAdminUser && location.pathname.startsWith('/admin')) {
+      return;
+    }
+
     const isInitialHydration = previousView === 'landing' && Boolean(state.profile);
     if (isInitialHydration) {
       if (location.pathname.startsWith('/admin')) return;
@@ -213,17 +228,16 @@ function AppRouter() {
       return;
     }
 
-    // Simpan reviewResultId ke URL & localStorage saat membuka pembahasan
     if (state.currentView === 'exam-review') {
       const reviewId = (state as any).reviewResultId ?? localStorage.getItem('leskd_saved_review_id');
       if (reviewId) {
         localStorage.setItem('leskd_saved_review_id', String(reviewId));
         const targetReviewUrl = `/exam/review?id=${encodeURIComponent(String(reviewId))}`;
         const currentFullUrl = `${location.pathname}${location.search}`;
-        if (currentFullUrl !== targetReviewUrl && !location.pathname.startsWith('/admin/results/review')) {
+        if (currentFullUrl !== targetReviewUrl) {
           navigate(targetReviewUrl, { replace: true });
         }
-      } else if (location.pathname !== '/exam/review' && !location.pathname.startsWith('/admin/results/review')) {
+      } else if (location.pathname !== '/exam/review') {
         navigate('/exam/review', { replace: true });
       }
       return;
@@ -286,7 +300,6 @@ function AppRouter() {
         element={!state.profile ? <LandingPage /> : <Navigate to={getHomeRoute()} replace />}
       />
 
-      {/* RUTE PUBLIK: FORM PENGISIAN KATA SANDI BARU */}
       <Route
         path="/update-password"
         element={<UpdatePassword />}
@@ -328,7 +341,6 @@ function AppRouter() {
         element={<ProtectedRoute allowedRoles={['admin', 'super_admin']}><AdminDashboard /></ProtectedRoute>}
       />
 
-      {/* FALLBACK RUTE NYASAR */}
       <Route path="*" element={<Navigate to={getHomeRoute()} replace />} />
     </Routes>
   );
