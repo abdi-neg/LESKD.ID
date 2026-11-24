@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus, Trash2, Edit3, Check, X, Search, Filter,
@@ -76,6 +77,7 @@ function PackageCompletenessCard({ pkg, counts, requirements }: { pkg: ExamPacka
 }
 
 export default function QuestionManager() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [packages, setPackages] = useState<ExamPackage[]>([]);
   const [selectedPkg, setSelectedPkg] = useState<any>(null);
   const [pkgDropdownOpen, setPkgDropdownOpen] = useState(false);
@@ -108,7 +110,9 @@ export default function QuestionManager() {
   });
 
   const [uploadingImage, setUploadingImage] = useState(false);
+  const restoredEditRef = useRef<string>('');
 
+  // 1. Muat daftar paket & pulihkan otomatis paket terpilih dari URL (?pkg=...)
   useEffect(() => {
     async function loadPackages() {
       setLoadingPkgs(true);
@@ -116,7 +120,18 @@ export default function QuestionManager() {
         .from('exam_packages')
         .select('*')
         .order('created_at');
-      if (data) setPackages(data as ExamPackage[]);
+      if (data) {
+        const pkgList = data as ExamPackage[];
+        setPackages(pkgList);
+
+        const pkgIdFromUrl = searchParams.get('pkg');
+        if (pkgIdFromUrl) {
+          const foundPkg = pkgList.find((p) => String(p.id) === String(pkgIdFromUrl));
+          if (foundPkg) {
+            setSelectedPkg(foundPkg);
+          }
+        }
+      }
       setLoadingPkgs(false);
     }
     loadPackages();
@@ -158,6 +173,20 @@ export default function QuestionManager() {
     }
   }, [selectedPkg]);
 
+  // 2. Pulihkan otomatis form Edit Soal jika URL memiliki &edit=<id_soal> saat di-refresh
+  useEffect(() => {
+    const editIdFromUrl = searchParams.get('edit');
+    if (!editIdFromUrl) return;
+    if (questions.length === 0) return;
+    if (restoredEditRef.current === editIdFromUrl) return;
+
+    const targetQuestion = questions.find((q) => String(q.id) === String(editIdFromUrl));
+    if (targetQuestion) {
+      restoredEditRef.current = editIdFromUrl;
+      openEditForm(targetQuestion, false);
+    }
+  }, [questions, searchParams]);
+
   const catCounts: Record<string, number> = {
     TIU: questions.filter((q) => q.category === 'TIU').length,
     TWK: questions.filter((q) => q.category === 'TWK').length,
@@ -176,6 +205,16 @@ export default function QuestionManager() {
     const matchSearch = qTextMatch ? true : subTextMatch;
     return matchCat && matchSearch;
   });
+
+  function handleSelectPackage(pkg: ExamPackage) {
+    restoredEditRef.current = '';
+    setSelectedPkg(pkg);
+    setPkgDropdownOpen(false);
+    setShowForm(false);
+    setEditId(null);
+    setShowImporter(false);
+    setSearchParams({ pkg: String(pkg.id) }, { replace: true });
+  }
 
   function handleImageChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -290,7 +329,7 @@ export default function QuestionManager() {
     loadQuestions();
   }
 
-  function startEdit(q: any) {
+  function openEditForm(q: any, syncUrl = true) {
     setForm({
       category: q.category,
       sub_category: q.sub_category ?? 'Umum',
@@ -329,16 +368,26 @@ export default function QuestionManager() {
     setEditId(q.id);
     setShowForm(true);
     setShowImporter(false);
+
+    if (syncUrl && selectedPkg) {
+      restoredEditRef.current = String(q.id);
+      setSearchParams({ pkg: String(selectedPkg.id), edit: String(q.id) }, { replace: true });
+    }
+
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   async function confirmDelete(id: string) {
     await supabase.from('questions').delete().eq('id', id);
+    if (String(editId) === String(id)) {
+      cancelForm();
+    }
     setDeleteId(null);
     loadQuestions();
   }
 
   function cancelForm() {
+    restoredEditRef.current = '';
     setShowForm(false);
     setEditId(null);
     setForm(emptyForm);
@@ -352,6 +401,10 @@ export default function QuestionManager() {
 
     setOptImageFiles({ A: null, B: null, C: null, D: null, E: null });
     setOptImagePreviews({ A: null, B: null, C: null, D: null, E: null });
+
+    if (selectedPkg) {
+      setSearchParams({ pkg: String(selectedPkg.id) }, { replace: true });
+    }
   }
 
   return (
@@ -421,7 +474,7 @@ export default function QuestionManager() {
                   {packages.map((pkg) => (
                     <button
                       key={pkg.id}
-                      onClick={() => { setSelectedPkg(pkg); setPkgDropdownOpen(false); cancelForm(); setShowImporter(false); }}
+                      onClick={() => handleSelectPackage(pkg)}
                       className={`w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-gray-50 transition-colors border-b border-gray-50 last:border-0
                         ${selectedPkg?.id === pkg.id ? 'bg-blue-50' : ''}`}
                     >
@@ -471,6 +524,7 @@ export default function QuestionManager() {
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
               onClick={() => {
+                restoredEditRef.current = '';
                 setForm(prev => ({ ...emptyForm, category: prev.category }));
                 setEditId(null);
                 setImageFile(null);
@@ -481,6 +535,7 @@ export default function QuestionManager() {
                 setOptImagePreviews({ A: null, B: null, C: null, D: null, E: null });
                 if (fileInputRef.current) fileInputRef.current.value = '';
                 if (expFileInputRef.current) expFileInputRef.current.value = '';
+                setSearchParams({ pkg: String(selectedPkg.id) }, { replace: true });
                 setShowForm(true);
                 setShowImporter(false);
               }}
@@ -760,7 +815,7 @@ export default function QuestionManager() {
                     </div>
                   </div>
                   <div className="flex items-center gap-1.5 flex-shrink-0">
-                    <button onClick={() => startEdit(q)} className="w-8 h-8 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center"><Edit3 className="w-4 h-4" /></button>
+                    <button onClick={() => openEditForm(q, true)} className="w-8 h-8 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center"><Edit3 className="w-4 h-4" /></button>
                     <button onClick={() => { if (confirm('Hapus soal ini?')) confirmDelete(q.id); }} className="w-8 h-8 bg-red-50 text-red-500 rounded-lg flex items-center justify-center"><Trash2 className="w-4 h-4" /></button>
                   </div>
                 </div>
