@@ -1,8 +1,8 @@
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { AppProvider, useApp } from './context/AppContext';
 
-// Import Komponen Halaman
+import ErrorBoundary from './components/common/ErrorBoundary';
 import LandingPage from './components/auth/LandingPage';
 import WaitingRoom from './components/auth/WaitingRoom';
 import UpdatePassword from './components/auth/UpdatePassword';
@@ -11,12 +11,79 @@ import { ExamEngine } from './components/exam/ExamEngine';
 import { ExamResults } from './components/exam/ExamResults';
 import ExamReview from './components/exam/ExamReview';
 import AdminDashboard from './components/admin/AdminDashboard';
-import ClassReviewMode from './components/admin/ClassReviewMode'; // 🌟 TAMBAHKAN IMPORT INI
+import ClassReviewMode from './components/admin/ClassReviewMode';
+
+// Naikkan kode versi ini kapan saja di masa depan jika ada perubahan struktur data besar
+const APP_CACHE_VERSION = '2026.11.24-v1';
 
 // ==================================================
-// 🛡️ KOMPONEN SATPAM (Mencegah Akses Tanpa Izin)
+// PENJAGA VERSI & ANTI STALE-CHUNK VERCEL
 // ==================================================
-function ProtectedRoute({ children, allowedRoles }: { children: JSX.Element, allowedRoles?: string[] }) {
+function useAutoUpdateGuard() {
+  useEffect(() => {
+    // 1. Cek perubahan versi aplikasi untuk membersihkan sisa cache sementara (tanpa menghapus login Supabase)
+    try {
+      const savedVersion = localStorage.getItem('leskd_app_version');
+      if (savedVersion !== APP_CACHE_VERSION) {
+        const keysToClean: string[] = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (!k) continue;
+          if (k.startsWith('sb-')) continue;
+          if (k === 'exam_active_session_id') continue;
+          if (k === 'leskd_saved_review_id') continue;
+          if (k.includes('snapshot')) {
+            keysToClean.push(k);
+          }
+        }
+        keysToClean.forEach((k) => localStorage.removeItem(k));
+        localStorage.setItem('leskd_app_version', APP_CACHE_VERSION);
+      }
+    } catch {
+      // Abaikan jika storage dibatasi
+    }
+
+    // 2. Tangkap error file JS lama pasca-deploy Vercel (maksimal 1x auto-reload agar tidak looping)
+    const triggerSafeReload = () => {
+      const reloadKey = 'leskd_chunk_reloaded';
+      if (!sessionStorage.getItem(reloadKey)) {
+        sessionStorage.setItem(reloadKey, '1');
+        window.location.reload();
+      }
+    };
+
+    const handlePreloadError = (event: Event) => {
+      event.preventDefault();
+      triggerSafeReload();
+    };
+
+    const handlePromiseRejection = (event: PromiseRejectionEvent) => {
+      const msg = String(event?.reason?.message ?? event?.reason ?? '');
+      const isChunkError =
+        msg.includes('Failed to fetch dynamically imported module') ? true :
+        msg.includes('Importing a module script failed') ? true :
+        msg.includes('Loading chunk') ? true :
+        msg.includes('ChunkLoadError');
+
+      if (isChunkError) {
+        triggerSafeReload();
+      }
+    };
+
+    window.addEventListener('vite:preloadError', handlePreloadError);
+    window.addEventListener('unhandledrejection', handlePromiseRejection);
+
+    return () => {
+      window.removeEventListener('vite:preloadError', handlePreloadError);
+      window.removeEventListener('unhandledrejection', handlePromiseRejection);
+    };
+  }, []);
+}
+
+// ==================================================
+// KOMPONEN SATPAM (Mencegah Akses Tanpa Izin)
+// ==================================================
+function ProtectedRoute({ children, allowedRoles }: { children: JSX.Element; allowedRoles?: string[] }) {
   const { state } = useApp();
 
   if (state.authLoading) {
@@ -41,7 +108,7 @@ function ProtectedRoute({ children, allowedRoles }: { children: JSX.Element, all
   if (allowedRoles) {
     const userRole = state.profile.role.toLowerCase();
     if (!allowedRoles.includes(userRole)) {
-      return <Navigate to="/dashboard" replace />;
+      return <Navigate to={userRole === 'participant' ? '/dashboard' : '/admin'} replace />;
     }
   }
 
@@ -49,25 +116,34 @@ function ProtectedRoute({ children, allowedRoles }: { children: JSX.Element, all
 }
 
 // ==================================================
-// 🗺️ PEMETAAN RUTE URL (ROUTER)
+// PEMETAAN RUTE URL (ROUTER) — STAY ON PAGE SAAT REFRESH
 // ==================================================
 function AppRouter() {
   const { state, dispatch } = useApp();
   const navigate = useNavigate();
   const location = useLocation();
+  const prevViewRef = useRef<string>(state.currentView);
+  const [resumeTimedOut, setResumeTimedOut] = useState(false);
 
-  // Deteksi apakah aplikasi sedang dalam proses memulihkan data ujian dari database
-  const isResumingExam = location.pathname === '/exam' && 
-                         localStorage.getItem('exam_active_session_id') && 
-                         !state.examSession;
+  const isResumingExam =
+    location.pathname === '/exam' &&
+    Boolean(localStorage.getItem('exam_active_session_id')) &&
+    !state.examSession;
 
-  // ==================================================
-  // 🔄 JEMBATAN SINKRONISASI PUSAT (Dua Arah & Anti-Gagal)
-  // ==================================================
-  
-  // Efek A: URL Membimbing State (Saat reload / history browser dibuka)
+  // Jika pemulihan sesi ujian macet lebih dari 7 detik (misalnya sisa sesi lama), tampilkan tombol penyelamat
   useEffect(() => {
-    if (state.authLoading || !state.profile) return;
+    if (!isResumingExam) {
+      setResumeTimedOut(false);
+      return;
+    }
+    const timer = setTimeout(() => setResumeTimedOut(true), 7000);
+    return () => clearTimeout(timer);
+  }, [isResumingExam]);
+
+  // Efek A: URL Membimbing State (Saat Refresh / Buka Ulang Tab Browser)
+  useEffect(() => {
+    if (state.authLoading) return;
+    if (!state.profile) return;
 
     const currentPath = location.pathname;
 
@@ -78,49 +154,98 @@ function AppRouter() {
       } else {
         navigate('/dashboard', { replace: true });
       }
+      return;
     }
 
-    if (currentPath === '/exam/review' && state.currentView !== 'exam-review') {
-      const savedReviewId = localStorage.getItem('leskd_saved_review_id');
+    // Cegah white screen jika tab HP lama tertinggal di /exam/results saat sesi sudah kosong
+    if (currentPath === '/exam/results' && !state.examSession) {
+      navigate('/dashboard', { replace: true });
+      return;
+    }
+
+    // Pertahankan halaman Pembahasan saat di-refresh menggunakan ?id= atau localStorage
+    if (currentPath === '/exam/review') {
+      const params = new URLSearchParams(location.search);
+      const urlReviewId = params.get('id');
+      const savedReviewId = urlReviewId ? urlReviewId : localStorage.getItem('leskd_saved_review_id');
+
       if (savedReviewId) {
-        dispatch({ type: 'SET_VIEW', payload: 'exam-review' });
-      } else {
-        navigate('/dashboard', { replace: true });
+        localStorage.setItem('leskd_saved_review_id', savedReviewId);
+        const currentReviewId = (state as any).reviewResultId;
+        if (state.currentView !== 'exam-review' ? true : currentReviewId !== savedReviewId) {
+          dispatch({ type: 'OPEN_REVIEW', payload: savedReviewId });
+        }
+      } else if (!state.examSession) {
+        const home = state.profile.role.toLowerCase() === 'participant' ? '/dashboard' : '/admin/results';
+        navigate(home, { replace: true });
       }
     }
-  }, [location.pathname, state.authLoading, state.profile, dispatch, navigate, state.currentView]);
+  }, [
+    location.pathname,
+    location.search,
+    state.authLoading,
+    state.profile,
+    state.examSession,
+    state.currentView,
+    dispatch,
+    navigate
+  ]);
 
-
-  // Efek B: State Membimbing URL (Navigasi Tombol Internal Aplikasi)
+  // Efek B: State Membimbing URL (Hanya berjalan setelah auth selesai & ada perubahan view aktif)
   useEffect(() => {
-    const viewToPath: Record<string, string> = {
-      'landing': '/',
-      'waiting-room': '/waiting-room',
-      'participant-dashboard': '/dashboard',
-      'exam-engine': '/exam',
-      'exam-results': '/exam/results',
-      'exam-review': '/exam/review',
-      'admin-dashboard': '/admin',
-    };
+    // PENGAMAN UTAMA STAY-ON-PAGE: Jangan pernah ubah URL selama proses auth belum selesai
+    if (state.authLoading) return;
+    if (location.pathname === '/update-password') return;
 
-    const targetPath = viewToPath[state.currentView];
+    const previousView = prevViewRef.current;
+    prevViewRef.current = state.currentView;
+
+    // Jika halaman baru saja di-refresh (transisi dari inisialisasi awal 'landing'), biarkan URL saat ini menang
+    const isInitialHydration = previousView === 'landing' && Boolean(state.profile);
+    if (isInitialHydration) {
+      if (location.pathname.startsWith('/admin')) return;
+      if (location.pathname === '/exam/review') return;
+      if (location.pathname === '/exam' && Boolean(localStorage.getItem('exam_active_session_id'))) return;
+      if (location.pathname === '/dashboard' && state.profile?.role.toLowerCase() === 'participant') return;
+    }
 
     if (state.currentView === 'admin-dashboard' && location.pathname.startsWith('/admin')) {
       return;
     }
 
-    // 🌟 SABUK PENGAMAN UTAMA: Jika user mengakses link reset password dari Gmail, hentikan paksaan redirect otomatis!
-    if (location.pathname === '/update-password') {
+    // Simpan reviewResultId ke URL & localStorage saat membuka pembahasan
+    if (state.currentView === 'exam-review') {
+      const reviewId = (state as any).reviewResultId ?? localStorage.getItem('leskd_saved_review_id');
+      if (reviewId) {
+        localStorage.setItem('leskd_saved_review_id', String(reviewId));
+        const targetReviewUrl = `/exam/review?id=${encodeURIComponent(String(reviewId))}`;
+        const currentFullUrl = `${location.pathname}${location.search}`;
+        if (currentFullUrl !== targetReviewUrl && !location.pathname.startsWith('/admin/results/review')) {
+          navigate(targetReviewUrl, { replace: true });
+        }
+      } else if (location.pathname !== '/exam/review' && !location.pathname.startsWith('/admin/results/review')) {
+        navigate('/exam/review', { replace: true });
+      }
       return;
     }
 
+    const viewToPath: Record<string, string> = {
+      landing: '/',
+      'waiting-room': '/waiting-room',
+      'participant-dashboard': '/dashboard',
+      'exam-engine': '/exam',
+      'exam-results': '/exam/results',
+      'admin-dashboard': '/admin',
+    };
+
+    const targetPath = viewToPath[state.currentView];
     if (targetPath && location.pathname !== targetPath) {
-      if (location.pathname === '/exam' && localStorage.getItem('exam_active_session_id')) {
+      if (location.pathname === '/exam' && Boolean(localStorage.getItem('exam_active_session_id'))) {
         return;
       }
       navigate(targetPath, { replace: true });
     }
-  }, [state.currentView, location.pathname, navigate]);
+  }, [state.currentView, state.authLoading, state.profile, location.pathname, location.search, navigate]);
 
   const getHomeRoute = () => {
     if (!state.profile) return '/';
@@ -129,15 +254,26 @@ function AppRouter() {
     return '/admin';
   };
 
-  // Sabuk Pengaman: Jika sedang loading auth ATAU sedang mengambil data soal resume, kunci di layar loading
-  if (state.authLoading || isResumingExam) {
+  if (state.authLoading ? true : isResumingExam) {
     return (
-      <div className="min-h-screen bg-white flex items-center justify-center">
-        <div className="text-center">
+      <div className="min-h-screen bg-white flex items-center justify-center p-6">
+        <div className="text-center max-w-xs">
           <div className="w-10 h-10 border-4 border-[#1e3a8a] border-t-transparent rounded-full animate-spin mx-auto mb-4" />
           <p className="text-gray-500 text-sm font-medium">
-            {isResumingExam ? "Memulihkan sesi ujian Anda..." : "Menghubungkan..."}
+            {isResumingExam ? 'Memulihkan sesi ujian Anda...' : 'Menghubungkan...'}
           </p>
+          {resumeTimedOut && (
+            <button
+              type="button"
+              onClick={() => {
+                localStorage.removeItem('exam_active_session_id');
+                navigate('/dashboard', { replace: true });
+              }}
+              className="mt-5 px-4 py-2.5 rounded-xl bg-[#1e3a8a] text-white text-xs font-bold hover:bg-[#1e40af] transition-colors"
+            >
+              Kembali ke Dashboard
+            </button>
+          )}
         </div>
       </div>
     );
@@ -145,66 +281,69 @@ function AppRouter() {
 
   return (
     <Routes>
-      <Route 
-        path="/" 
-        element={!state.profile ? <LandingPage /> : <Navigate to={getHomeRoute()} replace />} 
-      />
-      
-      {/* ─── 🌟 RUTE PUBLIK: FORM PENGISIAN KATA SANDI BARU ─── */}
-      <Route 
-        path="/update-password" 
-        element={<UpdatePassword />} 
+      <Route
+        path="/"
+        element={!state.profile ? <LandingPage /> : <Navigate to={getHomeRoute()} replace />}
       />
 
-      <Route 
-        path="/waiting-room" 
-        element={!state.profile?.is_approved ? <WaitingRoom /> : <Navigate to={getHomeRoute()} replace />} 
+      {/* RUTE PUBLIK: FORM PENGISIAN KATA SANDI BARU */}
+      <Route
+        path="/update-password"
+        element={<UpdatePassword />}
       />
 
-      {/* --- RUTE KHUSUS PESERTA --- */}
-      <Route 
-        path="/dashboard" 
-        element={<ProtectedRoute allowedRoles={['participant']}><ParticipantDashboard /></ProtectedRoute>} 
-      />
-      <Route 
-        path="/exam" 
-        element={<ProtectedRoute allowedRoles={['participant']}><ExamEngine /></ProtectedRoute>} 
-      />
-      <Route 
-        path="/exam/results" 
-        element={<ProtectedRoute allowedRoles={['participant']}><ExamResults /></ProtectedRoute>} 
+      <Route
+        path="/waiting-room"
+        element={!state.profile?.is_approved ? <WaitingRoom /> : <Navigate to={getHomeRoute()} replace />}
       />
 
-      {/* --- RUTE GABUNGAN --- */}
-      <Route 
-        path="/exam/review" 
-        element={<ProtectedRoute><ExamReview /></ProtectedRoute>} 
+      {/* RUTE KHUSUS PESERTA */}
+      <Route
+        path="/dashboard"
+        element={<ProtectedRoute allowedRoles={['participant']}><ParticipantDashboard /></ProtectedRoute>}
+      />
+      <Route
+        path="/exam"
+        element={<ProtectedRoute allowedRoles={['participant']}><ExamEngine /></ProtectedRoute>}
+      />
+      <Route
+        path="/exam/results"
+        element={<ProtectedRoute allowedRoles={['participant']}><ExamResults /></ProtectedRoute>}
       />
 
-      {/* --- RUTE KHUSUS ADMIN --- */}
-      {/* 🌟 TAMBAHAN BARU: RUTE PEMBAHASAN KELAS */}
-      <Route 
-        path="/admin/pembahasan-kelas/:packageId" 
-        element={<ProtectedRoute allowedRoles={['admin', 'super_admin']}><ClassReviewMode /></ProtectedRoute>} 
-      />
-      
-      <Route 
-        path="/admin/*" 
-        element={<ProtectedRoute allowedRoles={['admin', 'super_admin']}><AdminDashboard /></ProtectedRoute>} 
+      {/* RUTE GABUNGAN */}
+      <Route
+        path="/exam/review"
+        element={<ProtectedRoute><ExamReview /></ProtectedRoute>}
       />
 
-      {/* --- FALLBACK RUTE NYASAR --- */}
+      {/* RUTE KHUSUS ADMIN */}
+      <Route
+        path="/admin/pembahasan-kelas/:packageId"
+        element={<ProtectedRoute allowedRoles={['admin', 'super_admin']}><ClassReviewMode /></ProtectedRoute>}
+      />
+
+      <Route
+        path="/admin/*"
+        element={<ProtectedRoute allowedRoles={['admin', 'super_admin']}><AdminDashboard /></ProtectedRoute>}
+      />
+
+      {/* FALLBACK RUTE NYASAR */}
       <Route path="*" element={<Navigate to={getHomeRoute()} replace />} />
     </Routes>
   );
 }
 
 export default function App() {
+  useAutoUpdateGuard();
+
   return (
-    <BrowserRouter>
-      <AppProvider>
-        <AppRouter />
-      </AppProvider>
-    </BrowserRouter>
+    <ErrorBoundary>
+      <BrowserRouter>
+        <AppProvider>
+          <AppRouter />
+        </AppProvider>
+      </BrowserRouter>
+    </ErrorBoundary>
   );
 }
