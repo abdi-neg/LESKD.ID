@@ -110,7 +110,7 @@ function drawStrokeList(
 }
 
 export default function HybridWhiteboard({ isOpen, onClose, questionKey, onModeChange }: Props) {
-  // 'board' = Panel Samping Cakaran TIU, 'overlay' = Coret Langsung di Atas Soal
+  // 'board' = Panel Samping Whiteboard, 'overlay' = Coret Langsung di Atas Soal
   const [mode, setMode] = useState<string>('board');
   const [tool, setTool] = useState<string>('pen');
   const [color, setColor] = useState<string>('#0f172a');
@@ -312,7 +312,7 @@ export default function HybridWhiteboard({ isOpen, onClose, questionKey, onModeC
             </div>
           )}
 
-          {/* MODE 2: PAPAN CAKARAN SAMPING (SPLIT-SCREEN DRAWER) */}
+          {/* MODE 2: PANEL SAMPING WHITEBOARD (SPLIT-SCREEN DRAWER) */}
           {!isOverlay && (
             <motion.div
               initial={{ x: '100%' }}
@@ -321,11 +321,11 @@ export default function HybridWhiteboard({ isOpen, onClose, questionKey, onModeC
               transition={{ type: 'spring', damping: 28, stiffness: 280 }}
               className="fixed top-0 right-0 bottom-0 z-40 w-full md:w-[46%] lg:w-[44%] bg-white shadow-2xl border-l border-slate-200 flex flex-col"
             >
-              {/* Header Papan Cakaran */}
+              {/* Header Whiteboard */}
               <div className="px-4 py-3 bg-slate-900 text-white flex items-center justify-between gap-2 flex-shrink-0">
                 <div className="flex items-center gap-2">
                   <PenTool className="w-4 h-4 text-amber-400" />
-                  <span className="text-xs font-bold uppercase tracking-wider">Papan Cakaran TIU</span>
+                  <span className="text-xs font-bold uppercase tracking-wider">Whiteboard</span>
                 </div>
 
                 <div className="flex items-center gap-1.5">
@@ -359,7 +359,7 @@ export default function HybridWhiteboard({ isOpen, onClose, questionKey, onModeC
                 </div>
               </div>
 
-              {/* Toolbar Alat Papan Samping */}
+              {/* Toolbar Alat Panel Samping */}
               <div className="px-3 py-2.5 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2 flex-shrink-0">
                 {/* Pilihan Alat */}
                 <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200">
@@ -462,7 +462,7 @@ export default function HybridWhiteboard({ isOpen, onClose, questionKey, onModeC
                 </div>
               </div>
 
-              {/* Area Kanvas Papan Samping */}
+              {/* Area Kanvas Panel Samping */}
               <div className="flex-1 relative bg-white overflow-hidden" style={gridBgStyle}>
                 <canvas
                   ref={canvasRef}
@@ -486,15 +486,15 @@ export default function HybridWhiteboard({ isOpen, onClose, questionKey, onModeC
               exit={{ y: 40, opacity: 0 }}
               className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 bg-slate-900/95 backdrop-blur-md text-white px-3 py-2 rounded-2xl shadow-2xl border border-slate-700 flex flex-wrap items-center justify-center gap-2 max-w-[95vw]"
             >
-              {/* Pindah ke Papan Cakaran */}
+              {/* Pindah ke Panel Samping Whiteboard */}
               <button
                 type="button"
                 onClick={() => setMode('board')}
                 className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold transition-colors"
-                title="Buka Papan Cakaran Samping"
+                title="Buka Whiteboard"
               >
                 <PanelRight className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Papan Cakaran</span>
+                <span className="hidden sm:inline">Whiteboard</span>
               </button>
 
               <div className="w-px h-5 bg-slate-700" />
