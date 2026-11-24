@@ -18,6 +18,13 @@ import DiagnosticReport from './DiagnosticReport';
 
 type AnswerOption = 'A' | 'B' | 'C' | 'D' | 'E';
 const OPTIONS: AnswerOption[] = ['A', 'B', 'C', 'D', 'E'];
+const IMAGE_EXTENSIONS = ['.jpeg', '.jpg', '.gif', '.png', '.webp'];
+
+function isImageUrl(url: string): boolean {
+  if (url.includes('supabase.co/storage')) return true;
+  const cleanPath = url.toLowerCase().split('?')[0];
+  return IMAGE_EXTENSIONS.some((ext) => cleanPath.endsWith(ext));
+}
 
 function renderTextWithImages(text: any, isOption = false) {
   if (!text) return null;
@@ -39,9 +46,7 @@ function renderTextWithImages(text: any, isOption = false) {
     <span className="whitespace-pre-wrap leading-relaxed inline-block w-full">
       {parts.map((part, i) => {
         if (part.match(urlRegex)) {
-          const isSupabaseStorage = part.includes('supabase.co/storage');
-          const isImageExt = Boolean(part.match(/\.(jpeg|jpg|gif|png|webp)(\?.*)?$/i));
-          if (isSupabaseStorage ? true : isImageExt) {
+          if (isImageUrl(part)) {
             return (
               <img
                 key={i}
@@ -292,15 +297,43 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
   const memoryAnswers = (state as any)?.examSession?.answers ?? (state as any)?.activeAnswers ?? (state as any)?.answers ?? {};
 
   const urlReviewId = new URLSearchParams(location.search).get('id');
-  const resolvedResultId =
-    urlReviewId ??
+  const stateReviewId =
     (state as any)?.reviewResultId ??
     (state as any)?.activeReviewId ??
     (state as any)?.activeResultId ??
     (state as any)?.selectedResultId ??
-    (state as any)?.reviewId ??
-    localStorage.getItem('leskd_saved_review_id');
+    (state as any)?.reviewId;
 
+  const resolvedResultId = urlReviewId ?? stateReviewId ?? localStorage.getItem('leskd_saved_review_id');
+
+  // 1. Kunci ID tinjauan ke URL (?id=...) & localStorage agar aman saat di-refresh dari menu Admin maupun Peserta
+  useEffect(() => {
+    if (!resolvedResultId) return;
+    const idStr = String(resolvedResultId);
+    try {
+      localStorage.setItem('leskd_saved_review_id', idStr);
+    } catch {
+      // Abaikan jika storage dibatasi
+    }
+    const currentParams = new URLSearchParams(location.search);
+    if (currentParams.get('id') !== idStr) {
+      currentParams.set('id', idStr);
+      navigate(`${location.pathname}?${currentParams.toString()}`, { replace: true });
+    }
+  }, [resolvedResultId, location.pathname, location.search, navigate]);
+
+  // 2. Simpan cadangan ke sessionStorage jika data datang dari memori state (0 Byte egress saat refresh)
+  useEffect(() => {
+    if (memoryQuestions.length === 0) return;
+    const cacheKey = resolvedResultId ? `leskd_review_cache_${resolvedResultId}` : 'leskd_review_fallback';
+    try {
+      sessionStorage.setItem(cacheKey, JSON.stringify({ questions: memoryQuestions, answers: memoryAnswers }));
+    } catch {
+      // Abaikan jika kapasitas penuh
+    }
+  }, [memoryQuestions, memoryAnswers, resolvedResultId]);
+
+  // 3. Muat data dari sessionStorage dulu, baru tarik dari Supabase 1x jika belum ada
   useEffect(() => {
     const hasPropQuestions = Boolean(propQuestions && propQuestions.length > 0);
     if (hasPropQuestions ? true : memoryQuestions.length > 0) {
@@ -308,14 +341,8 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
     }
 
     async function loadLazySnapshot() {
-      if (!resolvedResultId) {
-        console.warn('ExamReview: Tidak ada result ID yang ditemukan.');
-        return;
-      }
+      const cacheKey = resolvedResultId ? `leskd_review_cache_${resolvedResultId}` : 'leskd_review_fallback';
 
-      const cacheKey = `leskd_review_cache_${resolvedResultId}`;
-
-      // 1. Cek cache sessionStorage dulu (0 Byte egress Supabase saat di-refresh!)
       try {
         const cachedRaw = sessionStorage.getItem(cacheKey);
         if (cachedRaw) {
@@ -330,7 +357,11 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
         sessionStorage.removeItem(cacheKey);
       }
 
-      // 2. Jika belum ada di cache tab saat ini, tarik 1x dari Supabase
+      if (!resolvedResultId) {
+        console.warn('ExamReview: Tidak ada result ID yang ditemukan.');
+        return;
+      }
+
       setIsFetchingDb(true);
       try {
         const data = await fetchExamSnapshot(resolvedResultId);
@@ -365,7 +396,7 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
             try {
               sessionStorage.setItem(cacheKey, JSON.stringify({ questions: safeQuestions, answers: safeAnswers }));
             } catch {
-              // Abaikan jika kapasitas sessionStorage penuh
+              // Abaikan
             }
           }
         }
@@ -455,6 +486,7 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
   const handleGoBack = () => {
     try {
       localStorage.removeItem('leskd_saved_review_id');
+      sessionStorage.removeItem('leskd_review_fallback');
     } catch {
       // Abaikan
     }
@@ -486,9 +518,9 @@ export function ExamReview({ questions: propQuestions, answers: propAnswers }: a
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div>
-            <h1 className="text-base font-bold text-gray-800">Pembahasan & Review Ujian</h1>
+            <h1 className="text-base font-bold text-gray-800">Pembahasan &amp; Review Ujian</h1>
             <p className="text-xs text-gray-500">
-              {isAdmin ? 'Mode Tinjauan Admin' : 'Lembar Evaluasi Pribadi'} • Menampilkan {filteredQuestions.length} dari {numberedQuestions.length} soal
+              {isAdmin ? 'Mode Tinjauan Admin' : 'Lembar Evaluasi Pribadi'} &bull; Menampilkan {filteredQuestions.length} dari {numberedQuestions.length} soal
             </p>
           </div>
         </div>
