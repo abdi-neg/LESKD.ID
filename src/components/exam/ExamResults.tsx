@@ -627,7 +627,7 @@ export function ExamResults() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.25 }}
           >
-            <DiagnosticReport breakdown={currentDiagnostic} />
+            <DiagnosticReport answers="{answers}" questions="{questions}"/>
           </motion.div>
         )}
 
