@@ -40,12 +40,6 @@ const PEN_COLORS = [
   { id: 'green', hex: '#059669', label: 'Hijau' },
 ];
 
-const PEN_SIZES = [
-  { id: 'sm', size: 2.5, label: 'Tipis' },
-  { id: 'md', size: 4.5, label: 'Sedang' },
-  { id: 'lg', size: 8, label: 'Tebal' },
-];
-
 function drawStrokeList(
   ctx: CanvasRenderingContext2D,
   strokes: StrokeItem[],
@@ -114,13 +108,16 @@ export default function HybridWhiteboard({ isOpen, onClose, questionKey, onModeC
   const [mode, setMode] = useState<string>('board');
   const [tool, setTool] = useState<string>('pen');
   const [color, setColor] = useState<string>('#0f172a');
-  const [penSize, setPenSize] = useState<number>(2.5);
+  const [penSize, setPenSize] = useState<number>(3);
+  const [eraserSize, setEraserSize] = useState<number>(26);
+  const [highlighterSize, setHighlighterSize] = useState<number>(20);
   const [showGrid, setShowGrid] = useState<boolean>(true);
 
   const [boardStrokes, setBoardStrokes] = useState<StrokeItem[]>([]);
   const [overlayStrokes, setOverlayStrokes] = useState<StrokeItem[]>([]);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const eraserCursorRef = useRef<HTMLDivElement>(null);
   const isDrawingRef = useRef<boolean>(false);
   const activeStrokeRef = useRef<any>(null);
 
@@ -146,6 +143,14 @@ export default function HybridWhiteboard({ isOpen, onClose, questionKey, onModeC
       setTool('pen');
     }
   }, [mode, tool]);
+
+  // Sembunyikan kursor lingkaran penghapus saat alat bukan eraser atau whiteboard ditutup
+  useEffect(() => {
+    const hideEraser = !isOpen ? true : tool !== 'eraser';
+    if (hideEraser && eraserCursorRef.current) {
+      eraserCursorRef.current.style.opacity = '0';
+    }
+  }, [isOpen, tool]);
 
   const redraw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -212,6 +217,20 @@ export default function HybridWhiteboard({ isOpen, onClose, questionKey, onModeC
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [isOpen, handleUndo, onClose]);
 
+  const updateEraserCursorPosition = (clientX: number, clientY: number) => {
+    if (tool !== 'eraser') return;
+    const el = eraserCursorRef.current;
+    if (!el) return;
+    el.style.opacity = '1';
+    el.style.transform = `translate3d(${clientX - eraserSize / 2}px, ${clientY - eraserSize / 2}px, 0)`;
+  };
+
+  const hideEraserCursor = () => {
+    if (eraserCursorRef.current) {
+      eraserCursorRef.current.style.opacity = '0';
+    }
+  };
+
   const getPointerPosition = (e: React.PointerEvent<HTMLCanvasElement>): StrokePoint => {
     const canvas = canvasRef.current;
     if (!canvas) return { x: 0, y: 0 };
@@ -226,15 +245,16 @@ export default function HybridWhiteboard({ isOpen, onClose, questionKey, onModeC
     if (tool === 'cursor') return;
     if (e.button !== 0 && e.pointerType === 'mouse') return;
 
+    updateEraserCursorPosition(e.clientX, e.clientY);
     e.currentTarget.setPointerCapture(e.pointerId);
     const pt = getPointerPosition(e);
 
     const strokeColor = tool === 'highlighter' ? '#facc15' : color;
     const strokeWidth =
       tool === 'eraser'
-        ? 24
+        ? eraserSize
         : tool === 'highlighter'
-          ? 20
+          ? highlighterSize
           : penSize;
 
     isDrawingRef.current = true;
@@ -249,6 +269,8 @@ export default function HybridWhiteboard({ isOpen, onClose, questionKey, onModeC
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    updateEraserCursorPosition(e.clientX, e.clientY);
+
     if (!isDrawingRef.current) return;
     if (!activeStrokeRef.current) return;
 
@@ -273,6 +295,30 @@ export default function HybridWhiteboard({ isOpen, onClose, questionKey, onModeC
     }
   };
 
+  // Konfigurasi slider dinamis sesuai alat yang sedang dipilih
+  const isEraserActive = tool === 'eraser';
+  const isHighlighterActive = tool === 'highlighter';
+  const activeSliderMin = isEraserActive ? 10 : isHighlighterActive ? 12 : 1;
+  const activeSliderMax = isEraserActive ? 64 : isHighlighterActive ? 40 : 14;
+  const activeSliderStep = isEraserActive ? 2 : isHighlighterActive ? 2 : 0.5;
+  const activeSliderValue = isEraserActive ? eraserSize : isHighlighterActive ? highlighterSize : penSize;
+  const activeSliderLabel = isEraserActive ? 'Hapus' : isHighlighterActive ? 'Stabilo' : 'Pena';
+
+  const handleSizeSliderChange = (rawValue: string) => {
+    const val = Number(rawValue);
+    if (Number.isNaN(val)) return;
+    if (isEraserActive) {
+      setEraserSize(val);
+    } else if (isHighlighterActive) {
+      setHighlighterSize(val);
+    } else {
+      setPenSize(val);
+    }
+  };
+
+  // Ukuran titik pratinjau di sebelah slider (dibatasi maksimal 18px agar toolbar rapi)
+  const previewDotSize = Math.max(4, Math.min(18, isEraserActive ? Math.round(eraserSize * 0.35) : Math.round(activeSliderValue)));
+
   const isOverlay = mode === 'overlay';
   const isCursorPassthrough = isOverlay && tool === 'cursor';
 
@@ -288,6 +334,17 @@ export default function HybridWhiteboard({ isOpen, onClose, questionKey, onModeC
     <AnimatePresence>
       {isOpen && (
         <>
+          {/* KURSOR LINGKARAN PRESISI KHUSUS PENGHAPUS (UKURAN 1:1 DENGAN DIAMETER HAPUS) */}
+          <div
+            ref={eraserCursorRef}
+            style={{
+              width: `${eraserSize}px`,
+              height: `${eraserSize}px`,
+              opacity: 0,
+            }}
+            className="fixed top-0 left-0 z-[45] pointer-events-none rounded-full border-2 border-slate-700 bg-rose-500/15 ring-1 ring-white/90 shadow-sm will-change-transform"
+          />
+
           {/* MODE 1: CORET LANGSUNG DI ATAS SOAL (TRANSPARENT OVERLAY) */}
           {isOverlay && (
             <div
@@ -301,11 +358,12 @@ export default function HybridWhiteboard({ isOpen, onClose, questionKey, onModeC
                 onPointerMove={handlePointerMove}
                 onPointerUp={finishStroke}
                 onPointerCancel={finishStroke}
+                onPointerLeave={hideEraserCursor}
                 className={`w-full h-full touch-none block ${
                   isCursorPassthrough
                     ? 'cursor-default'
-                    : tool === 'eraser'
-                      ? 'cursor-cell'
+                    : isEraserActive
+                      ? 'cursor-none'
                       : 'cursor-crosshair'
                 }`}
               />
@@ -416,26 +474,37 @@ export default function HybridWhiteboard({ isOpen, onClose, questionKey, onModeC
                   ))}
                 </div>
 
-                {/* Ukuran Pena */}
-                <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200">
-                  {PEN_SIZES.map((s) => (
-                    <button
-                      key={s.id}
-                      type="button"
-                      onClick={() => {
-                        setPenSize(s.size);
-                        if (tool !== 'pen') setTool('pen');
+                {/* Slider Ketebalan Dinamis (Pena / Stabilo / Penghapus) */}
+                <div className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-xl border border-slate-200">
+                  <div className="w-5 h-5 flex items-center justify-center flex-shrink-0">
+                    <span
+                      style={{
+                        width: `${previewDotSize}px`,
+                        height: `${previewDotSize}px`,
+                        backgroundColor: isEraserActive
+                          ? 'rgba(244, 63, 94, 0.2)'
+                          : isHighlighterActive
+                            ? '#facc15'
+                            : color,
                       }}
-                      title={s.label}
-                      className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-colors ${
-                        penSize === s.size && tool === 'pen'
-                          ? 'bg-slate-800 text-white'
-                          : 'text-slate-500 hover:bg-slate-100'
+                      className={`rounded-full inline-block ${
+                        isEraserActive ? 'border border-slate-700' : ''
                       }`}
-                    >
-                      {s.label}
-                    </button>
-                  ))}
+                    />
+                  </div>
+                  <input
+                    type="range"
+                    min={activeSliderMin}
+                    max={activeSliderMax}
+                    step={activeSliderStep}
+                    value={activeSliderValue}
+                    onChange={(e) => handleSizeSliderChange(e.target.value)}
+                    aria-label={`Ukuran ${activeSliderLabel}`}
+                    className="w-20 sm:w-24 h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-[#1e3a8a]"
+                  />
+                  <span className="text-[10px] font-bold text-slate-500 w-7 text-right font-mono">
+                    {activeSliderValue}
+                  </span>
                 </div>
 
                 {/* Aksi Undo & Bersihkan */}
@@ -470,8 +539,9 @@ export default function HybridWhiteboard({ isOpen, onClose, questionKey, onModeC
                   onPointerMove={handlePointerMove}
                   onPointerUp={finishStroke}
                   onPointerCancel={finishStroke}
+                  onPointerLeave={hideEraserCursor}
                   className={`w-full h-full touch-none block ${
-                    tool === 'eraser' ? 'cursor-cell' : 'cursor-crosshair'
+                    isEraserActive ? 'cursor-none' : 'cursor-crosshair'
                   }`}
                 />
               </div>
@@ -564,6 +634,31 @@ export default function HybridWhiteboard({ isOpen, onClose, questionKey, onModeC
                   />
                 ))}
               </div>
+
+              {/* Slider Ketebalan Dinamis (Tampil saat Pena, Stabilo, atau Penghapus aktif) */}
+              {tool !== 'cursor' && (
+                <>
+                  <div className="w-px h-5 bg-slate-700" />
+                  <div className="flex items-center gap-2 px-1">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase hidden sm:inline">
+                      {activeSliderLabel}
+                    </span>
+                    <input
+                      type="range"
+                      min={activeSliderMin}
+                      max={activeSliderMax}
+                      step={activeSliderStep}
+                      value={activeSliderValue}
+                      onChange={(e) => handleSizeSliderChange(e.target.value)}
+                      aria-label={`Ukuran ${activeSliderLabel}`}
+                      className="w-16 sm:w-20 h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-400"
+                    />
+                    <span className="text-[10px] font-mono text-slate-300 w-6 text-right">
+                      {activeSliderValue}
+                    </span>
+                  </div>
+                </>
+              )}
 
               <div className="w-px h-5 bg-slate-700" />
 
