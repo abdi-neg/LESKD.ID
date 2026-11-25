@@ -1,25 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  Plus, 
-  Trash2, 
-  CreditCard as Edit3, 
-  Check, 
-  X, 
-  RefreshCw, 
-  Copy, 
-  ToggleLeft, 
-  ToggleRight, 
-  CheckCircle2, 
-  BarChart2, 
-  ChevronDown, 
-  GraduationCap, 
-  BookOpen, 
-  Calculator, 
-  Users, 
-  MonitorPlay, 
+import {
+  Plus,
+  Trash2,
+  Edit3,
+  Check,
+  X,
+  RefreshCw,
+  Copy,
+  ToggleLeft,
+  ToggleRight,
+  CheckCircle2,
+  BarChart2,
+  ChevronDown,
+  GraduationCap,
+  BookOpen,
+  Calculator,
+  Users,
+  MonitorPlay,
   Clock,
-  Target // ✅ Ikon khusus untuk TO_SUBKATEGORI
+  Target
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -60,12 +60,11 @@ const TYPE_COLORS: Record<string, string> = {
   FULL: 'bg-[#1e3a8a]/10 text-[#1e3a8a]',
 };
 
-// Fungsi bantu untuk menormalisasi tipe paket dari database
 function normalizePkgType(rawType?: string): PackageType {
-  const upper = (rawType || 'FULL').toUpperCase();
-  if (upper === 'MINI_TIU' || upper === 'TIU') return 'MINI_TIU';
-  if (upper === 'MINI_TWK' || upper === 'TWK') return 'MINI_TWK';
-  if (upper === 'MINI_TKP' || upper === 'TKP') return 'MINI_TKP';
+  const upper = (rawType ?? 'FULL').toUpperCase();
+  if (upper === 'MINI_TIU' ? true : upper === 'TIU') return 'MINI_TIU';
+  if (upper === 'MINI_TWK' ? true : upper === 'TWK') return 'MINI_TWK';
+  if (upper === 'MINI_TKP' ? true : upper === 'TKP') return 'MINI_TKP';
   if (upper === 'TO_SUBKATEGORI') return 'TO_SUBKATEGORI';
   return 'FULL';
 }
@@ -74,7 +73,7 @@ function getDefaultDurationForType(type: PackageType): number {
   if (type === 'MINI_TIU') return EXAM_CONFIGS.TIU.timeMinutes;
   if (type === 'MINI_TWK') return EXAM_CONFIGS.TWK.timeMinutes;
   if (type === 'MINI_TKP') return EXAM_CONFIGS.TKP.timeMinutes;
-  if (type === 'TO_SUBKATEGORI') return 25; // Default 25 menit untuk latihan sub-kategori
+  if (type === 'TO_SUBKATEGORI') return 25;
   return EXAM_CONFIGS.FULL.timeMinutes;
 }
 
@@ -82,29 +81,36 @@ function generateToken() {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
-// Default form menggunakan waktu standar dari FULL CAT
 const emptyForm = {
   name: '',
   description: '',
   package_type: 'FULL' as PackageType,
   token: generateToken(),
-  auto_refresh_token: false,
   is_active: true,
-  duration_minutes: EXAM_CONFIGS.FULL.timeMinutes, 
+  duration_minutes: EXAM_CONFIGS.FULL.timeMinutes,
 };
 
-const CATEGORY_GROUPS: { type: PackageType; label: string; Icon: LucideIcon; iconBg: string; iconColor: string; color: string; border: string; headerBg: string }[] = [
-  { type: 'FULL',           label: 'Full Simulasi CAT',               Icon: GraduationCap, iconBg: 'bg-[#1e3a8a]/10', iconColor: 'text-[#1e3a8a]',    color: 'text-[#1e3a8a]',    border: 'border-[#1e3a8a]/20', headerBg: 'bg-[#1e3a8a]/5'  },
-  { type: 'MINI_TWK',       label: 'Mini Tryout TWK',                 Icon: BookOpen,      iconBg: 'bg-emerald-100',   iconColor: 'text-emerald-600', color: 'text-emerald-700', border: 'border-emerald-200',  headerBg: 'bg-emerald-50'   },
-  { type: 'MINI_TIU',       label: 'Mini Tryout TIU',                 Icon: Calculator,    iconBg: 'bg-blue-100',      iconColor: 'text-blue-600',    color: 'text-blue-700',    border: 'border-blue-200',     headerBg: 'bg-blue-50'      },
-  { type: 'MINI_TKP',       label: 'Mini Tryout TKP',                 Icon: Users,         iconBg: 'bg-amber-100',     iconColor: 'text-amber-600',   color: 'text-amber-700',   border: 'border-amber-200',    headerBg: 'bg-amber-50'     },
-  { type: 'TO_SUBKATEGORI', label: 'Drilling Sub-Kategori (Mikro)',   Icon: Target,        iconBg: 'bg-purple-100',    iconColor: 'text-purple-600',  color: 'text-purple-700',  border: 'border-purple-200',   headerBg: 'bg-purple-50'    },
+const CATEGORY_GROUPS: {
+  type: PackageType;
+  label: string;
+  Icon: LucideIcon;
+  iconBg: string;
+  iconColor: string;
+  color: string;
+  border: string;
+  headerBg: string;
+}[] = [
+  { type: 'FULL', label: 'Full Simulasi CAT', Icon: GraduationCap, iconBg: 'bg-[#1e3a8a]/10', iconColor: 'text-[#1e3a8a]', color: 'text-[#1e3a8a]', border: 'border-[#1e3a8a]/20', headerBg: 'bg-[#1e3a8a]/5' },
+  { type: 'MINI_TWK', label: 'Mini Tryout TWK', Icon: BookOpen, iconBg: 'bg-emerald-100', iconColor: 'text-emerald-600', color: 'text-emerald-700', border: 'border-emerald-200', headerBg: 'bg-emerald-50' },
+  { type: 'MINI_TIU', label: 'Mini Tryout TIU', Icon: Calculator, iconBg: 'bg-blue-100', iconColor: 'text-blue-600', color: 'text-blue-700', border: 'border-blue-200', headerBg: 'bg-blue-50' },
+  { type: 'MINI_TKP', label: 'Mini Tryout TKP', Icon: Users, iconBg: 'bg-amber-100', iconColor: 'text-amber-600', color: 'text-amber-700', border: 'border-amber-200', headerBg: 'bg-amber-50' },
+  { type: 'TO_SUBKATEGORI', label: 'Drilling Sub-Kategori (Mikro)', Icon: Target, iconBg: 'bg-purple-100', iconColor: 'text-purple-600', color: 'text-purple-700', border: 'border-purple-200', headerBg: 'bg-purple-50' },
 ];
 
 interface PackageCategoryListProps {
   packages: ExamPackage[];
   perPkgCounts: PerPackageCounts;
-  copiedId: string | null;
+  copiedId: string;
   copyToken: (pkg: ExamPackage) => void;
   updateToken: (pkg: ExamPackage, token: string) => void;
   toggleActive: (pkg: ExamPackage) => void;
@@ -112,7 +118,16 @@ interface PackageCategoryListProps {
   setDeleteId: (id: string) => void;
 }
 
-function PackageCategoryList({ packages, perPkgCounts, copiedId, copyToken, updateToken, toggleActive, startEdit, setDeleteId }: PackageCategoryListProps) {
+function PackageCategoryList({
+  packages,
+  perPkgCounts,
+  copiedId,
+  copyToken,
+  updateToken,
+  toggleActive,
+  startEdit,
+  setDeleteId
+}: PackageCategoryListProps) {
   const [openCategories, setOpenCategories] = useState<Set<PackageType>>(new Set());
   const navigate = useNavigate();
 
@@ -168,17 +183,20 @@ function PackageCategoryList({ packages, perPkgCounts, copiedId, copyToken, upda
                       const counts = perPkgCounts[pkg.id] ?? { TIU: 0, TWK: 0, TKP: 0 };
                       const totalActualQuestions = counts.TIU + counts.TWK + counts.TKP;
 
-                      const examType = normType === 'MINI_TIU' ? 'TIU'
-                        : normType === 'MINI_TWK' ? 'TWK'
-                        : normType === 'MINI_TKP' ? 'TKP' : 'FULL';
-                      const config = EXAM_CONFIGS[examType as keyof typeof EXAM_CONFIGS] || EXAM_CONFIGS.FULL;
-                      
-                      // 🌟 Untuk TO_SUBKATEGORI, tampilkan jumlah soal aktual yang diupload
+                      const examType = normType === 'MINI_TIU'
+                        ? 'TIU'
+                        : normType === 'MINI_TWK'
+                          ? 'TWK'
+                          : normType === 'MINI_TKP'
+                            ? 'TKP'
+                            : 'FULL';
+                      const config = EXAM_CONFIGS[examType as keyof typeof EXAM_CONFIGS] ?? EXAM_CONFIGS.FULL;
+
                       const displayQuestionCount = normType === 'TO_SUBKATEGORI'
                         ? (totalActualQuestions > 0 ? totalActualQuestions : 'Fleksibel')
                         : config.questionCount;
 
-                      const displayDuration = pkg.duration_minutes || getDefaultDurationForType(normType);
+                      const displayDuration = pkg.duration_minutes ? pkg.duration_minutes : getDefaultDurationForType(normType);
 
                       return (
                         <div key={pkg.id} className="px-4 py-4 hover:bg-gray-50/60 transition-colors">
@@ -188,9 +206,6 @@ function PackageCategoryList({ packages, perPkgCounts, copiedId, copyToken, upda
                                 <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${pkg.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
                                   {pkg.is_active ? 'Aktif' : 'Nonaktif'}
                                 </span>
-                                {pkg.auto_refresh_token && (
-                                  <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">Auto-Refresh</span>
-                                )}
                               </div>
                               <h3 className="font-semibold text-gray-800 mb-1 text-sm">{pkg.name}</h3>
                               {pkg.description && <p className="text-xs text-gray-400 mb-2">{pkg.description}</p>}
@@ -198,7 +213,7 @@ function PackageCategoryList({ packages, perPkgCounts, copiedId, copyToken, upda
                                 <div className="flex items-center gap-1.5 bg-gray-50 rounded-xl px-2.5 py-1.5">
                                   <span className="text-xs text-gray-400">Token:</span>
                                   <span className="font-mono font-bold text-gray-800 tracking-widest text-xs">{pkg.token}</span>
-                                  <button onClick={() => copyToken(pkg)} className="text-gray-400 hover:text-[#1e3a8a] transition-colors">
+                                  <button onClick={() => copyToken(pkg)} className="text-gray-400 hover:text-[#1e3a8a] transition-colors" title="Salin token">
                                     {copiedId === pkg.id ? <Check className="w-3.5 h-3.5 text-[#10b981]" /> : <Copy className="w-3.5 h-3.5" />}
                                   </button>
                                   <button
@@ -212,7 +227,6 @@ function PackageCategoryList({ packages, perPkgCounts, copiedId, copyToken, upda
                                 <span className="text-xs font-medium text-gray-500 bg-gray-50 px-2 py-1 rounded-lg border border-gray-100">
                                   {displayQuestionCount} soal
                                 </span>
-                                {/* 🌟 Badge Durasi */}
                                 <span className="flex items-center gap-1 text-xs font-medium text-[#1e3a8a] bg-blue-50 px-2 py-1 rounded-lg border border-blue-100">
                                   <Clock className="w-3 h-3" />
                                   {displayDuration} menit
@@ -220,23 +234,27 @@ function PackageCategoryList({ packages, perPkgCounts, copiedId, copyToken, upda
                                 <QuestionCountBadge pkg={pkg} counts={counts} />
                               </div>
                             </div>
-                            
+
                             <div className="flex items-center gap-1.5 flex-shrink-0">
-                              <button 
-                                onClick={() => navigate(`/admin/pembahasan-kelas/${pkg.id}`)} 
+                              <button
+                                onClick={() => navigate(`/admin/pembahasan-kelas/${pkg.id}`)}
                                 className="flex items-center gap-1.5 px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg transition-colors border border-indigo-100 shadow-sm"
                                 title="Buka Mode Proyektor untuk Pembahasan Kelas"
                               >
                                 <MonitorPlay className="w-3.5 h-3.5" />
                                 <span className="text-xs font-bold hidden sm:block">Bahas Kelas</span>
                               </button>
-                              <button onClick={() => toggleActive(pkg)} className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${pkg.is_active ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-600' : 'bg-gray-100 hover:bg-gray-200 text-gray-500'}`}>
+                              <button
+                                onClick={() => toggleActive(pkg)}
+                                title={pkg.is_active ? 'Nonaktifkan paket' : 'Aktifkan paket'}
+                                className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${pkg.is_active ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-600' : 'bg-gray-100 hover:bg-gray-200 text-gray-500'}`}
+                              >
                                 {pkg.is_active ? <ToggleRight className="w-3.5 h-3.5" /> : <ToggleLeft className="w-3.5 h-3.5" />}
                               </button>
-                              <button onClick={() => startEdit(pkg)} className="w-7 h-7 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-lg flex items-center justify-center transition-colors">
+                              <button onClick={() => startEdit(pkg)} title="Edit paket" className="w-7 h-7 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-lg flex items-center justify-center transition-colors">
                                 <Edit3 className="w-3.5 h-3.5" />
                               </button>
-                              <button onClick={() => setDeleteId(pkg.id)} className="w-7 h-7 bg-red-50 hover:bg-red-100 text-red-500 rounded-lg flex items-center justify-center transition-colors">
+                              <button onClick={() => setDeleteId(pkg.id)} title="Hapus paket" className="w-7 h-7 bg-red-50 hover:bg-red-100 text-red-500 rounded-lg flex items-center justify-center transition-colors">
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
                             </div>
@@ -262,16 +280,16 @@ export default function PackageManager() {
   const [loading, setLoading] = useState(true);
   const [initialLoading, setInitialLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [editId, setEditId] = useState<string | null>(null);
+  const [editId, setEditId] = useState<string>('');
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
-  const [deleteId, setDeleteId] = useState<string | null>(null);
-  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [deleteId, setDeleteId] = useState<string>('');
+  const [copiedId, setCopiedId] = useState<string>('');
   const [perPkgCounts, setPerPkgCounts] = useState<PerPackageCounts>({});
 
   async function loadQuestionCounts(pkgList: ExamPackage[]) {
     if (pkgList.length === 0) return;
-    
+
     const counts: PerPackageCounts = {};
     pkgList.forEach((p) => {
       counts[p.id] = { TIU: 0, TWK: 0, TKP: 0 };
@@ -285,15 +303,18 @@ export default function PackageManager() {
     if (!error && data) {
       data.forEach((row: any) => {
         if (counts[row.package_id]) {
+          const tiu = Number(row.tiu_count ?? 0);
+          const twk = Number(row.twk_count ?? 0);
+          const tkp = Number(row.tkp_count ?? 0);
           counts[row.package_id] = {
-            TIU: Number(row.tiu_count) || 0,
-            TWK: Number(row.twk_count) || 0,
-            TKP: Number(row.tkp_count) || 0,
+            TIU: Number.isNaN(tiu) ? 0 : tiu,
+            TWK: Number.isNaN(twk) ? 0 : twk,
+            TKP: Number.isNaN(tkp) ? 0 : tkp,
           };
         }
       });
     }
-    
+
     setPerPkgCounts(counts);
   }
 
@@ -308,16 +329,23 @@ export default function PackageManager() {
       console.error(err);
     } finally {
       setLoading(false);
-      setInitialLoading(false); 
+      setInitialLoading(false);
     }
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
-    const payload = { ...form, created_by: state.profile?.id, token_updated_at: new Date().toISOString() };
+    const payload = {
+      ...form,
+      auto_refresh_token: false,
+      created_by: state.profile?.id,
+      token_updated_at: new Date().toISOString()
+    };
 
     if (editId) {
       await supabase.from('exam_packages').update(payload).eq('id', editId);
@@ -326,9 +354,9 @@ export default function PackageManager() {
     }
     setSaving(false);
     setShowForm(false);
-    setEditId(null);
-    setForm(emptyForm);
-    load(); 
+    setEditId('');
+    setForm({ ...emptyForm, token: generateToken() });
+    load();
   }
 
   function startEdit(pkg: ExamPackage) {
@@ -340,9 +368,8 @@ export default function PackageManager() {
       description: pkg.description,
       package_type: normType,
       token: pkg.token,
-      auto_refresh_token: pkg.auto_refresh_token,
       is_active: pkg.is_active,
-      duration_minutes: pkg.duration_minutes || defaultDuration,
+      duration_minutes: pkg.duration_minutes ? pkg.duration_minutes : defaultDuration,
     });
     setEditId(pkg.id);
     setShowForm(true);
@@ -350,37 +377,37 @@ export default function PackageManager() {
   }
 
   async function updateToken(pkg: ExamPackage, newToken: string) {
-    setPackages(prev => prev.map(p => p.id === pkg.id ? { ...p, token: newToken } : p));
+    setPackages((prev) => prev.map((p) => (p.id === pkg.id ? { ...p, token: newToken } : p)));
     await supabase
       .from('exam_packages')
-      .update({ token: newToken, token_updated_at: new Date().toISOString() })
+      .update({ token: newToken, auto_refresh_token: false, token_updated_at: new Date().toISOString() })
       .eq('id', pkg.id);
-    load(true); 
+    load(true);
   }
 
   async function toggleActive(pkg: ExamPackage) {
     const targetStatus = !pkg.is_active;
-    setPackages(prev => prev.map(p => p.id === pkg.id ? { ...p, is_active: targetStatus } : p));
-    
+    setPackages((prev) => prev.map((p) => (p.id === pkg.id ? { ...p, is_active: targetStatus } : p)));
+
     await supabase
       .from('exam_packages')
       .update({ is_active: targetStatus })
       .eq('id', pkg.id);
-      
-    load(true); 
+
+    load(true);
   }
 
   async function confirmDelete() {
     if (!deleteId) return;
     await supabase.from('exam_packages').delete().eq('id', deleteId);
-    setDeleteId(null);
-    load(true); 
+    setDeleteId('');
+    load(true);
   }
 
   function copyToken(pkg: ExamPackage) {
     navigator.clipboard.writeText(pkg.token);
-    copiedId === pkg.id ? null : setCopiedId(pkg.id);
-    setTimeout(() => setCopiedId(null), 2000);
+    setCopiedId(pkg.id);
+    setTimeout(() => setCopiedId(''), 2000);
   }
 
   return (
@@ -388,12 +415,18 @@ export default function PackageManager() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold text-gray-800">Manajemen Paket Ujian</h2>
-          <p className="text-gray-500 text-sm mt-1">{packages.length} paket terdaftar</p>
+          <p className="text-gray-500 text-sm mt-1">
+            {packages.length} paket terdaftar {loading && !initialLoading ? '· memperbarui...' : ''}
+          </p>
         </div>
         <motion.button
           whileHover={{ scale: 1.03 }}
           whileTap={{ scale: 0.97 }}
-          onClick={() => { setForm({ ...emptyForm, token: generateToken() }); setEditId(null); setShowForm(true); }}
+          onClick={() => {
+            setForm({ ...emptyForm, token: generateToken() });
+            setEditId('');
+            setShowForm(true);
+          }}
           className="flex items-center gap-2 bg-[#1e3a8a] hover:bg-[#1e40af] text-white font-semibold px-4 py-2.5 rounded-xl transition-colors"
         >
           <Plus className="w-4 h-4" />
@@ -412,7 +445,9 @@ export default function PackageManager() {
             <form onSubmit={handleSubmit} className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6">
               <div className="flex items-center justify-between mb-5">
                 <h3 className="font-bold text-gray-800">{editId ? 'Edit Paket' : 'Buat Paket Baru'}</h3>
-                <button type="button" onClick={() => setShowForm(false)}><X className="w-5 h-5 text-gray-400" /></button>
+                <button type="button" onClick={() => setShowForm(false)}>
+                  <X className="w-5 h-5 text-gray-400" />
+                </button>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
@@ -432,21 +467,21 @@ export default function PackageManager() {
                     value={form.package_type}
                     onChange={(e) => {
                       const val = e.target.value as PackageType;
-                      setForm({ 
-                        ...form, 
+                      setForm({
+                        ...form,
                         package_type: val,
-                        // 🌟 Set otomatis rekomendasi waktu (25 menit untuk TO_SUBKATEGORI)
                         duration_minutes: getDefaultDurationForType(val)
                       });
                     }}
                     className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/30 focus:border-[#1e3a8a]"
                   >
-                    {PKG_TYPES.map((t) => <option key={t} value={t}>{TYPE_LABELS[t]}</option>)}
+                    {PKG_TYPES.map((t) => (
+                      <option key={t} value={t}>{TYPE_LABELS[t]}</option>
+                    ))}
                   </select>
                 </div>
               </div>
 
-              {/* 🌟 DESKRIPSI & INPUT DURASI WAKTU */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
                 <div className="sm:col-span-2">
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">Deskripsi</label>
@@ -465,8 +500,11 @@ export default function PackageManager() {
                       type="number"
                       min="1"
                       required
-                      value={form.duration_minutes || ''}
-                      onChange={(e) => setForm({ ...form, duration_minutes: parseInt(e.target.value) || 0 })}
+                      value={form.duration_minutes ? form.duration_minutes : ''}
+                      onChange={(e) => {
+                        const parsed = parseInt(e.target.value, 10);
+                        setForm({ ...form, duration_minutes: Number.isNaN(parsed) ? 0 : parsed });
+                      }}
                       className="w-full border border-gray-200 rounded-xl pl-4 pr-14 py-2.5 text-sm font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/30 focus:border-[#1e3a8a]"
                     />
                     <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-gray-400 font-medium">
@@ -476,7 +514,7 @@ export default function PackageManager() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">Token Akses (6 digit)</label>
                   <div className="flex gap-2">
@@ -498,24 +536,8 @@ export default function PackageManager() {
                     </button>
                   </div>
                 </div>
-                <div className="flex flex-col justify-end gap-3">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <button
-                      type="button"
-                      onClick={() => setForm({ ...form, auto_refresh_token: !form.auto_refresh_token })}
-                      className="text-gray-400"
-                    >
-                      {form.auto_refresh_token
-                        ? <ToggleRight className="w-8 h-8 text-[#10b981]" />
-                        : <ToggleLeft className="w-8 h-8 text-gray-300" />}
-                    </button>
-                    <div>
-                      <p className="text-sm font-medium text-gray-700">Auto-Refresh Token</p>
-                      <p className="text-xs text-gray-500">Perbarui token otomatis tiap 60 menit</p>
-                    </div>
-                  </label>
-
-                  <label className="flex items-center gap-2 cursor-pointer">
+                <div className="flex items-end pb-1">
+                  <label className="flex items-center gap-2.5 cursor-pointer">
                     <button
                       type="button"
                       onClick={() => setForm({ ...form, is_active: !form.is_active })}
@@ -525,15 +547,17 @@ export default function PackageManager() {
                         : <ToggleLeft className="w-8 h-8 text-gray-300" />}
                     </button>
                     <div>
-                      <p className="text-sm font-medium text-gray-700">Aktif</p>
-                      <p className="text-xs text-gray-500">Tampilkan ke peserta</p>
+                      <p className="text-sm font-medium text-gray-700">Status Paket Aktif</p>
+                      <p className="text-xs text-gray-500">Tampilkan paket ini ke peserta</p>
                     </div>
                   </label>
                 </div>
               </div>
 
               <div className="flex gap-3 justify-end">
-                <button type="button" onClick={() => setShowForm(false)} className="px-5 py-2.5 rounded-xl border border-gray-200 text-gray-600 font-medium hover:bg-gray-50 text-sm">Batal</button>
+                <button type="button" onClick={() => setShowForm(false)} className="px-5 py-2.5 rounded-xl border border-gray-200 text-gray-600 font-medium hover:bg-gray-50 text-sm">
+                  Batal
+                </button>
                 <button type="submit" disabled={saving} className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#10b981] hover:bg-[#059669] text-white font-semibold text-sm">
                   {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
                   {editId ? 'Simpan' : 'Buat Paket'}
@@ -547,7 +571,11 @@ export default function PackageManager() {
       <QuestionCountBadges perPkgCounts={perPkgCounts} packages={packages} />
 
       {initialLoading ? (
-        <div className="space-y-3">{[1, 2, 3].map((i) => <div key={i} className="bg-gray-100 rounded-2xl h-16 animate-pulse" />)}</div>
+        <div className="space-y-3">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="bg-gray-100 rounded-2xl h-16 animate-pulse" />
+          ))}
+        </div>
       ) : packages.length === 0 ? (
         <div className="text-center py-16 text-gray-400">
           <p className="font-medium">Belum ada paket ujian</p>
@@ -575,8 +603,12 @@ export default function PackageManager() {
               <h3 className="font-bold text-gray-800 text-lg mb-2">Hapus Paket?</h3>
               <p className="text-gray-500 text-sm mb-6">Tindakan ini tidak dapat dibatalkan.</p>
               <div className="flex gap-3">
-                <button onClick={() => setDeleteId(null)} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 font-medium hover:bg-gray-50">Batal</button>
-                <button onClick={confirmDelete} className="flex-1 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-white font-semibold">Hapus</button>
+                <button onClick={() => setDeleteId('')} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 font-medium hover:bg-gray-50">
+                  Batal
+                </button>
+                <button onClick={confirmDelete} className="flex-1 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-white font-semibold">
+                  Hapus
+                </button>
               </div>
             </motion.div>
           </motion.div>
@@ -593,10 +625,8 @@ const REQUIRED_COUNTS: Record<string, Partial<Record<keyof QuestionCounts, numbe
   FULL: { TIU: 35, TWK: 30, TKP: 45 },
 };
 
-type SummaryTab = 'all' | 'full' | 'mini' | 'sub';
-
 function QuestionCountBadges({ perPkgCounts, packages }: { perPkgCounts: PerPackageCounts; packages: ExamPackage[] }) {
-  const [tab, setTab] = useState<SummaryTab>('all');
+  const [tab, setTab] = useState<string>('all');
   const [open, setOpen] = useState(false);
 
   if (packages.length === 0) return null;
@@ -604,12 +634,12 @@ function QuestionCountBadges({ perPkgCounts, packages }: { perPkgCounts: PerPack
   const filtered = packages.filter((pkg) => {
     const norm = normalizePkgType(pkg.package_type);
     if (tab === 'full') return norm === 'FULL';
-    if (tab === 'mini') return norm === 'MINI_TIU' || norm === 'MINI_TWK' || norm === 'MINI_TKP';
+    if (tab === 'mini') return ['MINI_TIU', 'MINI_TWK', 'MINI_TKP'].includes(norm);
     if (tab === 'sub') return norm === 'TO_SUBKATEGORI';
     return true;
   });
 
-  const tabs: { key: SummaryTab; label: string; count: number }[] = [
+  const tabs: { key: string; label: string; count: number }[] = [
     { key: 'all', label: 'Semua', count: packages.length },
     { key: 'full', label: 'Full Simulasi', count: packages.filter((p) => normalizePkgType(p.package_type) === 'FULL').length },
     { key: 'mini', label: 'Mini Tryout', count: packages.filter((p) => ['MINI_TIU', 'MINI_TWK', 'MINI_TKP'].includes(normalizePkgType(p.package_type))).length },
@@ -676,7 +706,7 @@ function QuestionCountBadges({ perPkgCounts, packages }: { perPkgCounts: PerPack
                       const isSubKategori = normType === 'TO_SUBKATEGORI';
                       const totalSubQuestions = counts.TIU + counts.TWK + counts.TKP;
 
-                      const reqs = REQUIRED_COUNTS[normType] || {};
+                      const reqs = REQUIRED_COUNTS[normType] ?? {};
                       const cats = isSubKategori
                         ? ((['TWK', 'TIU', 'TKP'] as (keyof QuestionCounts)[]).filter((c) => counts[c] > 0))
                         : (Object.keys(reqs) as (keyof QuestionCounts)[]);
@@ -694,8 +724,8 @@ function QuestionCountBadges({ perPkgCounts, packages }: { perPkgCounts: PerPack
                             ${allComplete
                               ? 'bg-emerald-50 border-emerald-200'
                               : anyProgress
-                              ? 'bg-amber-50/60 border-amber-200'
-                              : 'bg-gray-50 border-gray-200'
+                                ? 'bg-amber-50/60 border-amber-200'
+                                : 'bg-gray-50 border-gray-200'
                             }`}
                         >
                           <div className="flex items-start justify-between gap-1 mb-2.5">
@@ -781,15 +811,19 @@ function QuestionCountBadge({ pkg, counts }: { pkg: ExamPackage; counts: Questio
     );
   }
 
-  const reqs = REQUIRED_COUNTS[normType] || REQUIRED_COUNTS.FULL;
+  const reqs = REQUIRED_COUNTS[normType] ?? REQUIRED_COUNTS.FULL;
   const cats = Object.keys(reqs) as (keyof QuestionCounts)[];
   const allComplete = cats.every((c) => counts[c] >= (reqs[c] ?? 0));
   const parts = cats.map((c) => `${c}: ${counts[c]}/${reqs[c]}`).join(' · ');
 
   return (
-    <span className={`text-xs font-semibold px-2.5 py-1 rounded-full flex items-center gap-1 ${allComplete ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-50 text-amber-600'}`}>
+    <span className={`text-xs font-semibold px-2.5 py-1 rounded-full flex items-center gap-1 ${isReadyOrComplete(allComplete)}`}>
       {allComplete && <CheckCircle2 className="w-3 h-3" />}
       {parts}
     </span>
   );
+}
+
+function isReadyOrComplete(allComplete: boolean): string {
+  return allComplete ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-50 text-amber-600';
 }
