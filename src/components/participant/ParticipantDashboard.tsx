@@ -83,7 +83,12 @@ export default function ParticipantDashboard() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const activeDashboardTab = searchParams.get('tab') === 'kelas' ? 'kelas' : 'tryout';
+  const [userGroups, setUserGroups] = useState<string[]>(() =>
+    Array.isArray(profile?.access_groups) && profile.access_groups.length > 0
+      ? profile.access_groups
+      : ['UMUM']
+  );
+
   const [showHistory, setShowHistory] = useState(searchParams.get('history') === '1');
   const [resultsLoading, setResultsLoading] = useState(true);
 
@@ -94,6 +99,48 @@ export default function ParticipantDashboard() {
   const [globalSnapshot, setGlobalSnapshot] = useState<any>(null);
   const [loadingGlobal, setLoadingGlobal] = useState(false);
 
+  // Sinkronkan access_groups terbaru dari database (~40 Byte) agar perubahan grup Admin langsung terbaca saat refresh
+  useEffect(() => {
+    if (!profile?.id) return;
+
+    if (Array.isArray(profile.access_groups) && profile.access_groups.length > 0) {
+      setUserGroups(profile.access_groups);
+    }
+
+    let isMounted = true;
+    (async () => {
+      const { data: profData } = await supabase
+        .from('profiles')
+        .select('access_groups')
+        .eq('id', profile.id)
+        .maybeSingle();
+
+      if (isMounted && Array.isArray(profData?.access_groups) && profData.access_groups.length > 0) {
+        setUserGroups(profData.access_groups);
+      }
+    })();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [profile?.id, profile?.access_groups]);
+
+  // Akun murni OFFLINE tidak menampilkan tab Ruang Kelas (model bayar per pertemuan)
+  const isOfflineOnly =
+    userGroups.length > 0 &&
+    userGroups.every((g) => String(g).toUpperCase().startsWith('OFFLINE'));
+
+  const activeDashboardTab = !isOfflineOnly && searchParams.get('tab') === 'kelas' ? 'kelas' : 'tryout';
+
+  // Bersihkan parameter ?tab=kelas otomatis jika akun murni OFFLINE mengakses URL tersebut secara manual
+  useEffect(() => {
+    if (isOfflineOnly && searchParams.get('tab') === 'kelas') {
+      const nextParams: Record<string, string> = {};
+      if (searchParams.get('history') === '1') nextParams.history = '1';
+      setSearchParams(nextParams, { replace: true });
+    }
+  }, [isOfflineOnly, searchParams, setSearchParams]);
+
   useEffect(() => {
     if (!profile?.id) return;
     setResultsLoading(true);
@@ -101,7 +148,7 @@ export default function ParticipantDashboard() {
   }, [profile?.id]);
 
   const handleSwitchDashboardTab = (nextTab: 'tryout' | 'kelas') => {
-    if (nextTab === 'kelas') {
+    if (nextTab === 'kelas' && !isOfflineOnly) {
       setSearchParams({ tab: 'kelas' }, { replace: true });
     } else {
       const nextParams: Record<string, string> = {};
@@ -253,7 +300,9 @@ export default function ParticipantDashboard() {
                   Selamat Datang,<br className="hidden sm:block" /> <span className="text-blue-300">{profile?.full_name}</span>
                 </h1>
                 <p className="text-blue-100/90 text-sm md:text-base leading-relaxed max-w-lg">
-                  Pantau progres belajar Anda secara real-time. Akses simulasi CAT maupun materi &amp; rekaman kelas langsung dari satu dashboard.
+                  {isOfflineOnly
+                    ? 'Pantau progres belajar Anda secara real-time. Pilih paket simulasi CAT dan latihan di bawah untuk mengasah kesiapan menghadapi seleksi ASN.'
+                    : 'Pantau progres belajar Anda secara real-time. Akses simulasi CAT maupun materi & rekaman kelas langsung dari satu dashboard.'}
                 </p>
               </div>
 
@@ -279,33 +328,35 @@ export default function ParticipantDashboard() {
             </div>
           </section>
 
-          {/* NAVIGASI TAB UTAMA: SIMULASI & TRYOUT vs RUANG KELAS */}
-          <div className="bg-white p-1.5 rounded-2xl border border-slate-200/80 shadow-sm grid grid-cols-2 sm:inline-grid sm:w-auto gap-1.5">
-            <button
-              type="button"
-              onClick={() => handleSwitchDashboardTab('tryout')}
-              className={`flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-xs sm:text-sm font-bold transition-all ${
-                activeDashboardTab === 'tryout'
-                  ? 'bg-[#1e3a8a] text-white shadow-md shadow-blue-900/20'
-                  : 'text-slate-600 hover:bg-slate-50'
-              }`}
-            >
-              <ClipboardList className="w-4 h-4" />
-              <span>Simulasi &amp; Tryout</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => handleSwitchDashboardTab('kelas')}
-              className={`flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-xs sm:text-sm font-bold transition-all ${
-                activeDashboardTab === 'kelas'
-                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-900/20'
-                  : 'text-slate-600 hover:bg-slate-50'
-              }`}
-            >
-              <Video className="w-4 h-4" />
-              <span>Ruang Kelas</span>
-            </button>
-          </div>
+          {/* NAVIGASI TAB UTAMA (Disembunyikan khusus akun murni OFFLINE) */}
+          {!isOfflineOnly && (
+            <div className="bg-white p-1.5 rounded-2xl border border-slate-200/80 shadow-sm grid grid-cols-2 sm:inline-grid sm:w-auto gap-1.5">
+              <button
+                type="button"
+                onClick={() => handleSwitchDashboardTab('tryout')}
+                className={`flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-xs sm:text-sm font-bold transition-all ${
+                  activeDashboardTab === 'tryout'
+                    ? 'bg-[#1e3a8a] text-white shadow-md shadow-blue-900/20'
+                    : 'text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                <ClipboardList className="w-4 h-4" />
+                <span>Simulasi &amp; Tryout</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSwitchDashboardTab('kelas')}
+                className={`flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-xs sm:text-sm font-bold transition-all ${
+                  activeDashboardTab === 'kelas'
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-900/20'
+                    : 'text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                <Video className="w-4 h-4" />
+                <span>Ruang Kelas</span>
+              </button>
+            </div>
+          )}
 
           {activeDashboardTab === 'kelas' ? (
             <section className="pt-1">
