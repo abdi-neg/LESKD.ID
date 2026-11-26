@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import {
   LogOut, LayoutDashboard, BookOpen, Activity, History,
-  Package, Users, Shield, UserCheck, BarChart3
+  Package, Users, Shield, UserCheck, BarChart3, Video
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { supabase } from '../../lib/supabase';
@@ -16,6 +16,7 @@ import ManageParticipants from './ManageParticipants';
 import ExamReview from '../exam/ExamReview';
 import ParticipantDiagnostic from './ParticipantDiagnostic';
 import ClassReviewMode from './ClassReviewMode';
+import ClassroomManager from './ClassroomManager';
 
 type TabPath = string;
 
@@ -40,6 +41,7 @@ export default function AdminDashboard() {
 
   const allTabs: { id: TabPath; label: string; icon: React.ElementType; superAdminOnly?: boolean }[] = [
     { id: 'overview', label: 'Ringkasan', icon: LayoutDashboard },
+    { id: 'classroom', label: 'Ruang Kelas', icon: Video },
     { id: 'packages', label: 'Paket Ujian', icon: Package },
     { id: 'questions', label: 'Kelola Soal', icon: BookOpen },
     { id: 'participants', label: 'Peserta', icon: Users },
@@ -56,11 +58,11 @@ export default function AdminDashboard() {
     if (tabId === 'results' && currentSubPath.startsWith('results')) return true;
     if (tabId === 'diagnostic' && currentSubPath.startsWith('diagnostic')) return true;
     if (tabId === 'packages' && currentSubPath.startsWith('pembahasan-kelas')) return true;
+    if (tabId === 'classroom' && currentSubPath.startsWith('classroom')) return true;
     return false;
   };
 
   const handleTabChange = (targetPath: TabPath) => {
-    // Reset state review saat Admin berpindah tab dari halaman Tinjau Peserta
     if (state.currentView === 'exam-review') {
       try {
         localStorage.removeItem('leskd_saved_review_id');
@@ -138,6 +140,7 @@ export default function AdminDashboard() {
         >
           <Routes>
             <Route path="/" element={<AdminOverview onNavigate={handleTabChange} isSuperAdmin={isSuperAdmin} />} />
+            <Route path="classroom" element={<ClassroomManager />} />
             <Route path="packages" element={<PackageManager />} />
             <Route path="pembahasan-kelas/:packageId" element={<ClassReviewMode />} />
             <Route path="questions" element={<QuestionManager />} />
@@ -263,10 +266,22 @@ function AdminOverview({ onNavigate, isSuperAdmin }: { onNavigate: (tab: TabPath
         ))}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <motion.button
-          initial={{ opacity: 0, x: -20 }}
-          animate={{ opacity: 1, x: 0 }}
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.15 }}
+          onClick={() => onNavigate('classroom')}
+          className="bg-gradient-to-br from-indigo-600 to-indigo-800 rounded-3xl p-6 text-white hover:shadow-lg transition-shadow text-left"
+        >
+          <Video className="w-8 h-8 mb-3 opacity-85" />
+          <h3 className="text-xl font-bold mb-1">Ruang Kelas</h3>
+          <p className="text-indigo-100 text-sm">Atur Link Zoom, PDF materi, &amp; rekaman kelas</p>
+        </motion.button>
+
+        <motion.button
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
           onClick={() => onNavigate('packages')}
           className="bg-gradient-to-br from-[#1e3a8a] to-blue-700 rounded-3xl p-6 text-white hover:shadow-lg transition-shadow text-left"
@@ -289,8 +304,8 @@ function AdminOverview({ onNavigate, isSuperAdmin }: { onNavigate: (tab: TabPath
         </motion.button>
 
         <motion.button
-          initial={{ opacity: 0, x: 20 }}
-          animate={{ opacity: 1, x: 0 }}
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
           onClick={() => onNavigate('live')}
           className="bg-gradient-to-br from-rose-500 to-rose-600 rounded-3xl p-6 text-white hover:shadow-lg transition-shadow text-left"
