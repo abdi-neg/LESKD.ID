@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Key, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
 import { ExamPackage } from '../../types';
@@ -10,7 +10,12 @@ interface Props {
   onClose: () => void;
 }
 
-// 🌟 KAMUS WARNA KONSISTEN (Mendukung TO_SUBKATEGORI, Amber TKP & Case-Insensitive)
+interface VerifyTokenResponse {
+  valid: boolean;
+  code: string;
+  message: string;
+}
+
 const PKG_COLORS: Record<string, { bg: string; text: string; light: string }> = {
   MINI_TIU:       { bg: 'bg-blue-600',    text: 'text-blue-700',    light: 'bg-blue-50'    },
   TIU:            { bg: 'bg-blue-600',    text: 'text-blue-700',    light: 'bg-blue-50'    },
@@ -27,42 +32,60 @@ export default function TokenGate({ pkg, onSuccess, onClose }: Props) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [verified, setVerified] = useState(false);
+  const timerRef = useRef<number | null>(null);
 
   const normType = (pkg.package_type || 'FULL').toUpperCase();
   const colors = PKG_COLORS[normType] ?? PKG_COLORS.FULL;
 
+  useEffect(() => {
+    return () => {
+      if (timerRef.current !== null) {
+        window.clearTimeout(timerRef.current);
+      }
+    };
+  }, []);
+
+  function handleSafeClose() {
+    if (loading || verified) return;
+    onClose();
+  }
+
   async function handleVerify(e: React.FormEvent) {
     e.preventDefault();
+    if (loading || verified) return;
+
+    const cleanToken = token.trim();
+    if (cleanToken.length !== 6) {
+      setError('Token harus terdiri dari 6 digit angka.');
+      return;
+    }
+
     setError('');
     setLoading(true);
 
     try {
-      // ─── 🌟 Ambil token paling segar dari Supabase detik ini juga ───
-      const { data, error: dbError } = await supabase
-        .from('exam_packages')
-        .select('token')
-        .eq('id', pkg.id)
-        .single();
+      // Validasi token + status aktif + access_groups langsung di server Supabase (RPC)
+      const { data, error: rpcError } = await supabase.rpc('verify_package_token', {
+        p_package_id: pkg.id,
+        p_token: cleanToken,
+      });
 
-      if (dbError || !data) {
-        setError('Gagal terhubung ke server untuk verifikasi token.');
+      if (rpcError || !data) {
+        console.error('RPC verify_package_token error:', rpcError);
+        setError('Gagal terhubung ke server untuk verifikasi token. Coba beberapa saat lagi.');
         setLoading(false);
         return;
       }
 
-      const inputTokenClean = token.trim();
-      let dbTokenClean = String(data.token || '').trim();
+      const result = data as VerifyTokenResponse;
 
-      // ─── 🌟 ANTI-DROP ZERO: Jika token di DB berupa angka yang kehilangan '0' di depan ───
-      if (dbTokenClean.length < 6 && /^\d+$/.test(dbTokenClean)) {
-        dbTokenClean = dbTokenClean.padStart(6, '0');
-      }
-
-      if (inputTokenClean === dbTokenClean) {
+      if (result.valid) {
         setVerified(true);
-        setTimeout(onSuccess, 900);
+        timerRef.current = window.setTimeout(() => {
+          onSuccess();
+        }, 800);
       } else {
-        setError('Token tidak valid. Pastikan token yang Anda masukkan benar.');
+        setError(result.message || 'Token tidak valid. Pastikan token yang Anda masukkan benar.');
       }
     } catch (err) {
       console.error(err);
@@ -79,7 +102,7 @@ export default function TokenGate({ pkg, onSuccess, onClose }: Props) {
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-        onClick={onClose}
+        onClick={handleSafeClose}
       >
         <motion.div
           initial={{ opacity: 0, scale: 0.9, y: 20 }}
@@ -91,16 +114,21 @@ export default function TokenGate({ pkg, onSuccess, onClose }: Props) {
         >
           <div className={`p-5 ${colors.bg}`}>
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 bg-white/20 rounded-xl flex items-center justify-center">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-9 h-9 bg-white/20 rounded-xl flex items-center justify-center flex-shrink-0">
                   <Key className="w-5 h-5 text-white" />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <p className="text-white/70 text-xs">Verifikasi Token</p>
-                  <p className="text-white font-bold text-sm">{pkg.name}</p>
+                  <p className="text-white font-bold text-sm truncate">{pkg.name}</p>
                 </div>
               </div>
-              <button onClick={onClose} className="w-7 h-7 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center">
+              <button
+                type="button"
+                onClick={handleSafeClose}
+                disabled={loading || verified}
+                className="w-7 h-7 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center flex-shrink-0 disabled:opacity-40"
+              >
                 <X className="w-4 h-4 text-white" />
               </button>
             </div>
@@ -132,9 +160,13 @@ export default function TokenGate({ pkg, onSuccess, onClose }: Props) {
                     inputMode="numeric"
                     pattern="[0-9]*"
                     value={token}
-                    onChange={(e) => setToken(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    disabled={loading}
+                    onChange={(e) => {
+                      if (error) setError('');
+                      setToken(e.target.value.replace(/\D/g, '').slice(0, 6));
+                    }}
                     placeholder="000000"
-                    className="w-full border border-gray-200 rounded-xl px-4 py-3 text-2xl font-mono font-bold text-center tracking-[0.5em] focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/30 focus:border-[#1e3a8a] transition-all"
+                    className="w-full border border-gray-200 rounded-xl px-4 py-3 text-2xl font-mono font-bold text-center tracking-[0.5em] focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/30 focus:border-[#1e3a8a] transition-all disabled:bg-gray-50"
                     maxLength={6}
                     required
                     autoFocus
@@ -145,10 +177,10 @@ export default function TokenGate({ pkg, onSuccess, onClose }: Props) {
                   <motion.div
                     initial={{ opacity: 0, y: -8 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="flex items-center gap-2 text-red-500 text-sm bg-red-50 border border-red-100 rounded-xl px-4 py-3"
+                    className="flex items-start gap-2 text-red-600 text-xs sm:text-sm bg-red-50 border border-red-100 rounded-xl px-4 py-3 leading-relaxed"
                   >
-                    <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                    {error}
+                    <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                    <span>{error}</span>
                   </motion.div>
                 )}
 
