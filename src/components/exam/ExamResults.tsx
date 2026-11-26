@@ -28,6 +28,16 @@ interface MistakeBadge {
   detail: string;
 }
 
+interface VerifyTokenResponse {
+  valid: boolean;
+  code: string;
+  message: string;
+}
+
+// Hanya ambil kolom metadata aman (TANPA kolom token) saat memulai ulang ujian
+const SAFE_PACKAGE_COLUMNS =
+  'id, name, description, package_type, duration_minutes, is_active, target_groups, is_teaser, created_at';
+
 export function ExamResults() {
   const { state, dispatch, startExam } = useApp();
   const [savedResultId, setSavedResultId] = useState<any>(null);
@@ -152,7 +162,6 @@ export function ExamResults() {
     ? Math.min(100, Math.round((scores.total / maxTotalScore) * 100))
     : 0;
 
-  // Kalkulasi kecepatan pengerjaan (detik per soal)
   const endTimestamp = completedAt ? new Date(completedAt).getTime() : Date.now();
   const startTimestamp = startedAt ? new Date(startedAt).getTime() : endTimestamp;
   const totalDurationSeconds = Math.max(1, Math.floor((endTimestamp - startTimestamp) / 1000));
@@ -181,7 +190,6 @@ export function ExamResults() {
           note: 'Berisiko kehabisan waktu pada simulasi 110 soal. Biasakan lewati soal buntu.'
         };
 
-  // Status penguasaan bab berdasarkan akurasi
   const masteryEvaluation = accuracyPercentage >= 80
     ? {
         title: 'Menguasai Materi',
@@ -312,9 +320,16 @@ export function ExamResults() {
       ? 'bg-gradient-to-br from-[#10b981] to-emerald-600'
       : 'bg-gradient-to-br from-[#1e3a8a] to-blue-700';
 
-  // Validasi Token Ulangi Ujian — Terhubung langsung ke exam_packages (sinkron dengan TokenGate.tsx)
+  const handleCloseTokenModal = () => {
+    if (isValidating) return;
+    setIsTokenModalOpen(false);
+  };
+
+  // Validasi Token Ulangi Ujian via Supabase RPC (Anti-Intip Token & Cek access_groups)
   const handleVerifyTokenAndRepeat = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isValidating) return;
+
     const inputTokenClean = inputToken.trim();
 
     if (inputTokenClean.length !== 6) {
@@ -331,45 +346,60 @@ export function ExamResults() {
     setIsValidating(true);
 
     try {
-      const { data, error } = await supabase
-        .from('exam_packages')
-        .select('*')
-        .eq('id', session.packageId)
-        .single();
+      // 1. Verifikasi token, status aktif, persetujuan akun, dan access_groups di server
+      const { data: verifyData, error: rpcError } = await supabase.rpc('verify_package_token', {
+        p_package_id: session.packageId,
+        p_token: inputTokenClean,
+      });
 
-      const hasDbError = Boolean(error);
-      if (hasDbError ? true : !data) {
+      if (rpcError || !verifyData) {
+        console.error('RPC verify_package_token error:', rpcError);
         setTokenError('Gagal terhubung ke server untuk verifikasi token.');
         setIsValidating(false);
         return;
       }
 
-      if (!data.is_active) {
-        setTokenError('Paket ujian ini sedang dinonaktifkan oleh Admin.');
+      const verifyResult = verifyData as VerifyTokenResponse;
+      if (!verifyResult.valid) {
+        setTokenError(
+          verifyResult.message || 'Token tidak valid. Pastikan token 6-digit sesuai dengan yang dibagikan Admin.'
+        );
         setIsValidating(false);
         return;
       }
 
-      let dbTokenClean = String(data.token ?? '').trim();
-      if (dbTokenClean.length < 6 && /^\d+$/.test(dbTokenClean)) {
-        dbTokenClean = dbTokenClean.padStart(6, '0');
-      }
+      // 2. Tarik metadata paket yang aman (TANPA kolom token) untuk memulai sesi baru
+      const { data: pkgData, error: pkgError } = await supabase
+        .from('exam_packages')
+        .select(SAFE_PACKAGE_COLUMNS)
+        .eq('id', session.packageId)
+        .single();
 
-      if (inputTokenClean !== dbTokenClean) {
-        setTokenError('Token tidak valid. Pastikan token 6-digit sesuai dengan yang dibagikan Admin.');
+      if (pkgError || !pkgData) {
+        setTokenError('Gagal memuat metadata paket ujian. Silakan coba lagi.');
         setIsValidating(false);
         return;
       }
 
       setIsTokenModalOpen(false);
       setInputToken('');
-      await startExam(examType, data as any);
+      await startExam(examType, pkgData as any);
     } catch (err) {
       console.error(err);
       setTokenError('Terjadi kendala sistem saat memproses token.');
     } finally {
       setIsValidating(false);
     }
+  };
+
+  const handleOpenReview = () => {
+    if (!savedResultId) return;
+    try {
+      localStorage.setItem('leskd_saved_review_id', String(savedResultId));
+    } catch {
+      // Abaikan jika browser membatasi storage
+    }
+    dispatch({ type: 'OPEN_REVIEW', payload: savedResultId });
   };
 
   const miniStatsCards = isSubKategori
@@ -394,7 +424,7 @@ export function ExamResults() {
     ? `${Math.floor(totalDurationSeconds / 60)}m ${totalDurationSeconds % 60}d`
     : `${totalDurationSeconds}d`;
 
-  const isSubmitDisabled = isValidating ? true : inputToken.length !== 6;
+  const isSubmitDisabled = isValidating || inputToken.length !== 6;
 
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-4 relative">
@@ -487,7 +517,6 @@ export function ExamResults() {
               </span>
             </div>
 
-            {/* Kartu Penguasaan Bab & Ritme Kecepatan */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
               <div className={`rounded-2xl border p-4 ${masteryEvaluation.borderClass}`}>
                 <div className="flex items-center justify-between gap-2 mb-2">
@@ -518,7 +547,6 @@ export function ExamResults() {
               </div>
             </div>
 
-            {/* Peta Nomor Meleset & Kosong */}
             <div className="pt-2 border-t border-gray-100">
               <div className="flex items-center justify-between mb-2.5">
                 <span className="text-xs font-bold uppercase tracking-wider text-gray-500 flex items-center gap-1.5">
@@ -563,7 +591,7 @@ export function ExamResults() {
           </motion.div>
         )}
 
-        {/* Per-Category Score Summary (Untuk Full SKD, Mini TO, atau Drilling Lintas Kategori) */}
+        {/* Per-Category Score Summary */}
         {showCategorySummaryCard && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -620,14 +648,14 @@ export function ExamResults() {
           </motion.div>
         )}
 
-        {/* Grafik Diagnosis Evaluasi Materi */}
+        {/* Grafik Diagnosis Evaluasi Materi (FIX: tanpa tanda kutip pada props) */}
         {showDiagnosticChart && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.25 }}
           >
-            <DiagnosticReport answers="{answers}" questions="{questions}"/>
+            <DiagnosticReport questions={questions} answers={answers} />
           </motion.div>
         )}
 
@@ -640,7 +668,7 @@ export function ExamResults() {
         >
           {savedResultId ? (
             <button
-              onClick={() => dispatch({ type: 'OPEN_REVIEW', payload: savedResultId })}
+              onClick={handleOpenReview}
               className="w-full py-4 rounded-2xl bg-[#10b981] hover:bg-emerald-600 text-white font-bold transition-colors flex items-center justify-center gap-2 text-base shadow-sm"
             >
               <BookOpen className="w-5 h-5" />
@@ -676,7 +704,7 @@ export function ExamResults() {
         </motion.div>
       </div>
 
-      {/* MODAL POP-UP TOKEN (SINKRON DENGAN EXAM_PACKAGES) */}
+      {/* MODAL POP-UP TOKEN ULANGI UJIAN (VERIFIKASI VIA SUPABASE RPC) */}
       <AnimatePresence>
         {isTokenModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -684,7 +712,7 @@ export function ExamResults() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              onClick={() => setIsTokenModalOpen(false)}
+              onClick={handleCloseTokenModal}
               className="fixed inset-0 bg-black/50 backdrop-blur-sm"
             />
 
@@ -700,8 +728,10 @@ export function ExamResults() {
                   <h3 className="font-bold text-gray-800 text-lg">Verifikasi Token Ulang</h3>
                 </div>
                 <button
-                  onClick={() => setIsTokenModalOpen(false)}
-                  className="p-1.5 hover:bg-gray-100 rounded-full text-gray-400 hover:text-gray-600 transition-colors"
+                  type="button"
+                  disabled={isValidating}
+                  onClick={handleCloseTokenModal}
+                  className="p-1.5 hover:bg-gray-100 rounded-full text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-40"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -720,7 +750,10 @@ export function ExamResults() {
                     maxLength={6}
                     autoFocus
                     value={inputToken}
-                    onChange={(e) => setInputToken(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    onChange={(e) => {
+                      if (tokenError) setTokenError('');
+                      setInputToken(e.target.value.replace(/\D/g, '').slice(0, 6));
+                    }}
                     placeholder="000000"
                     disabled={isValidating}
                     className={`w-full px-4 py-3 rounded-xl border font-mono font-bold text-center tracking-[0.45em] text-2xl focus:outline-none focus:ring-2 transition-all
@@ -730,9 +763,10 @@ export function ExamResults() {
                     <motion.p
                       initial={{ opacity: 0, y: -5 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className="text-red-500 text-xs mt-1.5 font-medium flex items-center gap-1"
+                      className="text-red-500 text-xs mt-1.5 font-medium flex items-start gap-1.5 leading-relaxed"
                     >
-                      <XCircle className="w-3.5 h-3.5 flex-shrink-0" /> {tokenError}
+                      <XCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                      <span>{tokenError}</span>
                     </motion.p>
                   )}
                 </div>
@@ -741,8 +775,8 @@ export function ExamResults() {
                   <button
                     type="button"
                     disabled={isValidating}
-                    onClick={() => setIsTokenModalOpen(false)}
-                    className="flex-1 py-2.5 rounded-xl border border-gray-200 font-semibold text-gray-600 hover:bg-gray-50 text-sm transition-colors"
+                    onClick={handleCloseTokenModal}
+                    className="flex-1 py-2.5 rounded-xl border border-gray-200 font-semibold text-gray-600 hover:bg-gray-50 text-sm transition-colors disabled:opacity-50"
                   >
                     Batal
                   </button>
