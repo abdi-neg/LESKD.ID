@@ -13,7 +13,9 @@ import {
   PieChart,
   Award,
   Calendar,
-  AlertCircle
+  AlertCircle,
+  Video,
+  ClipboardList
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -23,6 +25,7 @@ import ExamCards from './ExamCards';
 import Leaderboard from './Leaderboard';
 import ExamHistory from './ExamHistory';
 import DiagnosticReport from '../exam/DiagnosticReport';
+import ClassroomSection from './ClassroomSection';
 
 const normalizeQuestionData = (q: any) => {
   const rawSub = q.sub_category ?? q.sub_kategori ?? q.subCategory ?? q.subKategori ?? q.SUB_KATEGORI ?? q.SUB_CATEGORY ?? 'Umum';
@@ -80,6 +83,7 @@ export default function ParticipantDashboard() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
+  const activeDashboardTab = searchParams.get('tab') === 'kelas' ? 'kelas' : 'tryout';
   const [showHistory, setShowHistory] = useState(searchParams.get('history') === '1');
   const [resultsLoading, setResultsLoading] = useState(true);
 
@@ -95,6 +99,16 @@ export default function ParticipantDashboard() {
     setResultsLoading(true);
     fetchUserExamHistory().finally(() => setResultsLoading(false));
   }, [profile?.id]);
+
+  const handleSwitchDashboardTab = (nextTab: 'tryout' | 'kelas') => {
+    if (nextTab === 'kelas') {
+      setSearchParams({ tab: 'kelas' }, { replace: true });
+    } else {
+      const nextParams: Record<string, string> = {};
+      if (showHistory) nextParams.history = '1';
+      setSearchParams(nextParams, { replace: true });
+    }
+  };
 
   const toggleHistory = () => {
     const nextState = !showHistory;
@@ -223,7 +237,7 @@ export default function ParticipantDashboard() {
       </nav>
 
       <main className="max-w-6xl mx-auto px-4 sm:px-6 pt-8 pb-16">
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-10">
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-8">
 
           {/* HERO & STATS SECTION */}
           <section className="bg-gradient-to-br from-blue-700 via-blue-800 to-[#1e3a8a] rounded-3xl p-8 md:p-10 text-white shadow-2xl shadow-blue-900/30 relative overflow-hidden border border-blue-600/30">
@@ -239,7 +253,7 @@ export default function ParticipantDashboard() {
                   Selamat Datang,<br className="hidden sm:block" /> <span className="text-blue-300">{profile?.full_name}</span>
                 </h1>
                 <p className="text-blue-100/90 text-sm md:text-base leading-relaxed max-w-lg">
-                  Pantau progres belajar Anda secara real-time. Pilih paket simulasi di bawah untuk mulai mengasah kemampuan menghadapi seleksi ASN.
+                  Pantau progres belajar Anda secara real-time. Akses simulasi CAT maupun materi &amp; rekaman kelas langsung dari satu dashboard.
                 </p>
               </div>
 
@@ -265,100 +279,136 @@ export default function ParticipantDashboard() {
             </div>
           </section>
 
-          {/* DIAGNOSTIC REPORT (ON-DEMAND) */}
-          {!resultsLoading && totalExams > 0 && (
-            <section className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-              <div className="mb-6 px-2">
-                <span className="text-[10px] font-black text-[#1e3a8a] uppercase tracking-widest block mb-1.5 opacity-80">Smart Diagnostic</span>
-                <h2 className="text-2xl font-black text-slate-900 tracking-tight">Peta Kekuatan Akumulatif</h2>
-              </div>
-
-              <div className="bg-white border border-slate-200/60 rounded-3xl p-8 md:p-12 shadow-sm relative overflow-hidden">
-                {!globalSnapshot ? (
-                  <div className="text-center relative z-10 max-w-lg mx-auto">
-                    <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center mx-auto mb-6 border border-blue-100">
-                      <PieChart className="w-8 h-8 text-blue-600 opacity-90" />
-                    </div>
-
-                    <h3 className="text-xl font-bold text-slate-800 mb-3">Analisis Progres Tryout</h3>
-                    <p className="text-sm text-slate-500 mb-8 leading-relaxed">
-                      Klik tombol di bawah untuk menganalisis dan memuat grafik diagram kompetensi gabungan dari riwayat tryout utama Anda.
-                    </p>
-
-                    <button
-                      onClick={handleLoadGlobalDiagnostic}
-                      disabled={loadingGlobal}
-                      className="w-full sm:w-auto bg-[#1e3a8a] hover:bg-[#152961] text-white px-10 py-3.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 mx-auto transition-all disabled:opacity-70 shadow-xl shadow-blue-900/20 active:scale-95"
-                    >
-                      {loadingGlobal ? <Loader2 className="w-4 h-4 animate-spin" /> : <Activity className="w-4 h-4" />}
-                      {loadingGlobal ? 'Menganalisis Data...' : 'Muat Peta Kekuatan'}
-                    </button>
-                  </div>
-                ) : globalSnapshot.questions.length === 0 ? (
-                  <div className="text-center relative z-10 py-8 max-w-md mx-auto">
-                    <AlertCircle className="w-10 h-10 text-slate-300 mx-auto mb-3" />
-                    <h3 className="font-bold text-slate-700 mb-1">Belum Ada Riwayat Tryout Utama</h3>
-                    <p className="text-sm text-slate-500 leading-relaxed">
-                      Peta Kekuatan Akumulatif hanya menganalisis paket Tryout Utama (tidak termasuk latihan per sub-kategori). Silakan selesaikan paket tryout utama terlebih dahulu.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="animate-in fade-in zoom-in-95 duration-500 relative z-10">
-                    <DiagnosticReport questions={globalSnapshot.questions} answers={globalSnapshot.answers} />
-                  </div>
-                )}
-
-                {!globalSnapshot && (
-                  <div className="absolute top-0 right-0 p-12 opacity-5 pointer-events-none">
-                    <Brain className="w-64 h-64 text-blue-900" />
-                  </div>
-                )}
-              </div>
-            </section>
-          )}
-
-          {/* EXAM CARDS */}
-          <section className="space-y-6 pt-4">
-            <div className="px-2">
-              <h2 className="text-2xl font-black text-slate-900 tracking-tight">Paket Simulasi Tersedia</h2>
-            </div>
-            <ExamCards />
-          </section>
-
-          {/* HISTORY SECTION */}
-          <section className="space-y-4 pt-4">
+          {/* NAVIGASI TAB UTAMA: SIMULASI & TRYOUT vs RUANG KELAS */}
+          <div className="bg-white p-1.5 rounded-2xl border border-slate-200/80 shadow-sm grid grid-cols-2 sm:inline-grid sm:w-auto gap-1.5">
             <button
-              onClick={toggleHistory}
-              className="w-full bg-white hover:bg-blue-50/50 border border-slate-200 rounded-2xl p-5 flex items-center justify-between transition-all shadow-sm group"
+              type="button"
+              onClick={() => handleSwitchDashboardTab('tryout')}
+              className={`flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-xs sm:text-sm font-bold transition-all ${
+                activeDashboardTab === 'tryout'
+                  ? 'bg-[#1e3a8a] text-white shadow-md shadow-blue-900/20'
+                  : 'text-slate-600 hover:bg-slate-50'
+              }`}
             >
-              <div className="flex items-center gap-4">
-                <div className="bg-blue-100 p-2.5 rounded-xl group-hover:bg-blue-200 transition-colors">
-                  <History className="w-5 h-5 text-[#1e3a8a]" />
-                </div>
-                <span className="font-bold text-sm text-slate-800 uppercase tracking-widest">Riwayat Pengerjaan</span>
-              </div>
-              {showHistory ? <ChevronUp className="w-5 h-5 text-slate-400 group-hover:text-blue-500" /> : <ChevronDown className="w-5 h-5 text-slate-400 group-hover:text-blue-500" />}
+              <ClipboardList className="w-4 h-4" />
+              <span>Simulasi &amp; Tryout</span>
             </button>
+            <button
+              type="button"
+              onClick={() => handleSwitchDashboardTab('kelas')}
+              className={`flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-xs sm:text-sm font-bold transition-all ${
+                activeDashboardTab === 'kelas'
+                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-900/20'
+                  : 'text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              <Video className="w-4 h-4" />
+              <span>Ruang Kelas</span>
+            </button>
+          </div>
 
-            <AnimatePresence>
-              {showHistory && (
-                <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
-                  <div className="pt-2 pb-6">
-                    <ExamHistory
-                      records={historyRecords}
-                      onViewReview={handleOpenReview}
-                      onViewDetails={handleViewDetails}
-                    />
+          {activeDashboardTab === 'kelas' ? (
+            <section className="pt-1">
+              <ClassroomSection />
+            </section>
+          ) : (
+            <div className="space-y-10">
+              {/* DIAGNOSTIC REPORT (ON-DEMAND) */}
+              {!resultsLoading && totalExams > 0 && (
+                <section className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                  <div className="mb-6 px-2">
+                    <span className="text-[10px] font-black text-[#1e3a8a] uppercase tracking-widest block mb-1.5 opacity-80">Smart Diagnostic</span>
+                    <h2 className="text-2xl font-black text-slate-900 tracking-tight">Peta Kekuatan Akumulatif</h2>
                   </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </section>
 
-          {/* LEADERBOARD */}
-          <section className="border-t border-slate-200 pt-12 pb-6">
-            <Leaderboard />
-          </section>
+                  <div className="bg-white border border-slate-200/60 rounded-3xl p-8 md:p-12 shadow-sm relative overflow-hidden">
+                    {!globalSnapshot ? (
+                      <div className="text-center relative z-10 max-w-lg mx-auto">
+                        <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center mx-auto mb-6 border border-blue-100">
+                          <PieChart className="w-8 h-8 text-blue-600 opacity-90" />
+                        </div>
+
+                        <h3 className="text-xl font-bold text-slate-800 mb-3">Analisis Progres Tryout</h3>
+                        <p className="text-sm text-slate-500 mb-8 leading-relaxed">
+                          Klik tombol di bawah untuk menganalisis dan memuat grafik diagram kompetensi gabungan dari riwayat tryout utama Anda.
+                        </p>
+
+                        <button
+                          onClick={handleLoadGlobalDiagnostic}
+                          disabled={loadingGlobal}
+                          className="w-full sm:w-auto bg-[#1e3a8a] hover:bg-[#152961] text-white px-10 py-3.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 mx-auto transition-all disabled:opacity-70 shadow-xl shadow-blue-900/20 active:scale-95"
+                        >
+                          {loadingGlobal ? <Loader2 className="w-4 h-4 animate-spin" /> : <Activity className="w-4 h-4" />}
+                          {loadingGlobal ? 'Menganalisis Data...' : 'Muat Peta Kekuatan'}
+                        </button>
+                      </div>
+                    ) : globalSnapshot.questions.length === 0 ? (
+                      <div className="text-center relative z-10 py-8 max-w-md mx-auto">
+                        <AlertCircle className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+                        <h3 className="font-bold text-slate-700 mb-1">Belum Ada Riwayat Tryout Utama</h3>
+                        <p className="text-sm text-slate-500 leading-relaxed">
+                          Peta Kekuatan Akumulatif hanya menganalisis paket Tryout Utama (tidak termasuk latihan per sub-kategori). Silakan selesaikan paket tryout utama terlebih dahulu.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="animate-in fade-in zoom-in-95 duration-500 relative z-10">
+                        <DiagnosticReport questions={globalSnapshot.questions} answers={globalSnapshot.answers} />
+                      </div>
+                    )}
+
+                    {!globalSnapshot && (
+                      <div className="absolute top-0 right-0 p-12 opacity-5 pointer-events-none">
+                        <Brain className="w-64 h-64 text-blue-900" />
+                      </div>
+                    )}
+                  </div>
+                </section>
+              )}
+
+              {/* EXAM CARDS */}
+              <section className="space-y-6 pt-2">
+                <div className="px-2">
+                  <h2 className="text-2xl font-black text-slate-900 tracking-tight">Paket Simulasi Tersedia</h2>
+                </div>
+                <ExamCards />
+              </section>
+
+              {/* HISTORY SECTION */}
+              <section className="space-y-4 pt-4">
+                <button
+                  onClick={toggleHistory}
+                  className="w-full bg-white hover:bg-blue-50/50 border border-slate-200 rounded-2xl p-5 flex items-center justify-between transition-all shadow-sm group"
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="bg-blue-100 p-2.5 rounded-xl group-hover:bg-blue-200 transition-colors">
+                      <History className="w-5 h-5 text-[#1e3a8a]" />
+                    </div>
+                    <span className="font-bold text-sm text-slate-800 uppercase tracking-widest">Riwayat Pengerjaan</span>
+                  </div>
+                  {showHistory ? <ChevronUp className="w-5 h-5 text-slate-400 group-hover:text-blue-500" /> : <ChevronDown className="w-5 h-5 text-slate-400 group-hover:text-blue-500" />}
+                </button>
+
+                <AnimatePresence>
+                  {showHistory && (
+                    <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
+                      <div className="pt-2 pb-6">
+                        <ExamHistory
+                          records={historyRecords}
+                          onViewReview={handleOpenReview}
+                          onViewDetails={handleViewDetails}
+                        />
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </section>
+
+              {/* LEADERBOARD */}
+              <section className="border-t border-slate-200 pt-12 pb-6">
+                <Leaderboard />
+              </section>
+            </div>
+          )}
 
         </motion.div>
       </main>
