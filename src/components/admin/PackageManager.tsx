@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus,
   Trash2,
-  Edit3,
+  CreditCard as Edit3,
   Check,
   X,
   RefreshCw,
@@ -19,11 +19,13 @@ import {
   Users,
   MonitorPlay,
   Clock,
-  Target
+  Target,
+  Lock,
+  Tag
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { ExamPackage, PackageType } from '../../types';
+import { ExamPackage, PackageType, PackageTargetGroup, PACKAGE_TARGET_OPTIONS } from '../../types';
 import { supabase } from '../../lib/supabase';
 import { useApp } from '../../context/AppContext';
 import { EXAM_CONFIGS } from '../../data/mockData';
@@ -61,12 +63,19 @@ const TYPE_COLORS: Record<string, string> = {
 };
 
 function normalizePkgType(rawType?: string): PackageType {
-  const upper = (rawType ?? 'FULL').toUpperCase();
-  if (upper === 'MINI_TIU' ? true : upper === 'TIU') return 'MINI_TIU';
-  if (upper === 'MINI_TWK' ? true : upper === 'TWK') return 'MINI_TWK';
-  if (upper === 'MINI_TKP' ? true : upper === 'TKP') return 'MINI_TKP';
+  const upper = String(rawType ?? 'FULL').toUpperCase();
+  if (upper === 'MINI_TIU' || upper === 'TIU') return 'MINI_TIU';
+  if (upper === 'MINI_TWK' || upper === 'TWK') return 'MINI_TWK';
+  if (upper === 'MINI_TKP' || upper === 'TKP') return 'MINI_TKP';
   if (upper === 'TO_SUBKATEGORI') return 'TO_SUBKATEGORI';
   return 'FULL';
+}
+
+function getPkgTargetGroups(pkg: ExamPackage): PackageTargetGroup[] {
+  if (Array.isArray(pkg.target_groups) && pkg.target_groups.length > 0) {
+    return pkg.target_groups as PackageTargetGroup[];
+  }
+  return ['SEMUA'];
 }
 
 function getDefaultDurationForType(type: PackageType): number {
@@ -86,8 +95,11 @@ const emptyForm = {
   description: '',
   package_type: 'FULL' as PackageType,
   token: generateToken(),
+  auto_refresh_token: false,
   is_active: true,
   duration_minutes: EXAM_CONFIGS.FULL.timeMinutes,
+  target_groups: ['SEMUA'] as PackageTargetGroup[],
+  is_teaser: false,
 };
 
 const CATEGORY_GROUPS: {
@@ -134,7 +146,11 @@ function PackageCategoryList({
   const toggleCategory = (type: PackageType) => {
     setOpenCategories((prev) => {
       const next = new Set(prev);
-      next.has(type) ? next.delete(type) : next.add(type);
+      if (next.has(type)) {
+        next.delete(type);
+      } else {
+        next.add(type);
+      }
       return next;
     });
   };
@@ -176,12 +192,13 @@ function PackageCategoryList({
                 >
                   <div
                     className="overflow-y-auto scrollbar-thin divide-y divide-gray-50"
-                    style={{ maxHeight: '372px' }}
+                    style={{ maxHeight: '420px' }}
                   >
                     {group.map((pkg) => {
                       const normType = normalizePkgType(pkg.package_type);
                       const counts = perPkgCounts[pkg.id] ?? { TIU: 0, TWK: 0, TKP: 0 };
                       const totalActualQuestions = counts.TIU + counts.TWK + counts.TKP;
+                      const pkgTargets = getPkgTargetGroups(pkg);
 
                       const examType = normType === 'MINI_TIU'
                         ? 'TIU'
@@ -202,10 +219,26 @@ function PackageCategoryList({
                         <div key={pkg.id} className="px-4 py-4 hover:bg-gray-50/60 transition-colors">
                           <div className="flex items-start gap-4">
                             <div className="flex-1 min-w-0">
-                              <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                              <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
                                 <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${pkg.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
                                   {pkg.is_active ? 'Aktif' : 'Nonaktif'}
                                 </span>
+                                {pkgTargets.map((t) => {
+                                  const opt = PACKAGE_TARGET_OPTIONS.find((o) => o.id === t);
+                                  return (
+                                    <span
+                                      key={t}
+                                      className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${opt?.badgeClass ?? 'bg-gray-100 text-gray-600 border-gray-200'}`}
+                                    >
+                                      {opt?.shortLabel ?? t}
+                                    </span>
+                                  );
+                                })}
+                                {pkg.is_teaser && (
+                                  <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200">
+                                    <Lock className="w-2.5 h-2.5" /> Teaser Umum
+                                  </span>
+                                )}
                               </div>
                               <h3 className="font-semibold text-gray-800 mb-1 text-sm">{pkg.name}</h3>
                               {pkg.description && <p className="text-xs text-gray-400 mb-2">{pkg.description}</p>}
@@ -219,7 +252,7 @@ function PackageCategoryList({
                                   <button
                                     onClick={() => updateToken(pkg, generateToken())}
                                     className="text-gray-400 hover:text-[#1e3a8a] transition-colors"
-                                    title="Generate token baru"
+                                    title="Acak token baru secara manual"
                                   >
                                     <RefreshCw className="w-3.5 h-3.5" />
                                   </button>
@@ -246,19 +279,18 @@ function PackageCategoryList({
                               </button>
                               <button
                                 onClick={() => toggleActive(pkg)}
-                                title={pkg.is_active ? 'Nonaktifkan paket' : 'Aktifkan paket'}
                                 className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${pkg.is_active ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-600' : 'bg-gray-100 hover:bg-gray-200 text-gray-500'}`}
+                                title={pkg.is_active ? 'Nonaktifkan paket' : 'Aktifkan paket'}
                               >
                                 {pkg.is_active ? <ToggleRight className="w-3.5 h-3.5" /> : <ToggleLeft className="w-3.5 h-3.5" />}
                               </button>
-                              <button onClick={() => startEdit(pkg)} title="Edit paket" className="w-7 h-7 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-lg flex items-center justify-center transition-colors">
+                              <button onClick={() => startEdit(pkg)} className="w-7 h-7 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-lg flex items-center justify-center transition-colors" title="Edit paket">
                                 <Edit3 className="w-3.5 h-3.5" />
                               </button>
-                              <button onClick={() => setDeleteId(pkg.id)} title="Hapus paket" className="w-7 h-7 bg-red-50 hover:bg-red-100 text-red-500 rounded-lg flex items-center justify-center transition-colors">
+                              <button onClick={() => setDeleteId(pkg.id)} className="w-7 h-7 bg-red-50 hover:bg-red-100 text-red-500 rounded-lg flex items-center justify-center transition-colors" title="Hapus paket">
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
                             </div>
-
                           </div>
                         </div>
                       );
@@ -277,7 +309,6 @@ function PackageCategoryList({
 export default function PackageManager() {
   const { state } = useApp();
   const [packages, setPackages] = useState<ExamPackage[]>([]);
-  const [loading, setLoading] = useState(true);
   const [initialLoading, setInitialLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<string>('');
@@ -303,13 +334,10 @@ export default function PackageManager() {
     if (!error && data) {
       data.forEach((row: any) => {
         if (counts[row.package_id]) {
-          const tiu = Number(row.tiu_count ?? 0);
-          const twk = Number(row.twk_count ?? 0);
-          const tkp = Number(row.tkp_count ?? 0);
           counts[row.package_id] = {
-            TIU: Number.isNaN(tiu) ? 0 : tiu,
-            TWK: Number.isNaN(twk) ? 0 : twk,
-            TKP: Number.isNaN(tkp) ? 0 : tkp,
+            TIU: Number(row.tiu_count) || 0,
+            TWK: Number(row.twk_count) || 0,
+            TKP: Number(row.tkp_count) || 0,
           };
         }
       });
@@ -318,8 +346,7 @@ export default function PackageManager() {
     setPerPkgCounts(counts);
   }
 
-  async function load(isSilent = false) {
-    if (!isSilent) setLoading(true);
+  async function load() {
     try {
       const { data } = await supabase.from('exam_packages').select('*').order('created_at');
       const pkgList = (data ?? []) as ExamPackage[];
@@ -328,7 +355,6 @@ export default function PackageManager() {
     } catch (err) {
       console.error(err);
     } finally {
-      setLoading(false);
       setInitialLoading(false);
     }
   }
@@ -337,14 +363,43 @@ export default function PackageManager() {
     load();
   }, []);
 
+  function toggleTargetGroup(target: PackageTargetGroup) {
+    setForm((prev) => {
+      const curr = prev.target_groups;
+      let next: PackageTargetGroup[];
+
+      if (target === 'SEMUA') {
+        next = ['SEMUA'];
+      } else {
+        const withoutAll = curr.filter((g) => g !== 'SEMUA');
+        if (withoutAll.includes(target)) {
+          next = withoutAll.filter((g) => g !== target);
+          if (next.length === 0) next = ['SEMUA'];
+        } else {
+          next = [...withoutAll, target];
+        }
+      }
+
+      const openToUmum = next.includes('SEMUA') || next.includes('UMUM');
+      return {
+        ...prev,
+        target_groups: next,
+        is_teaser: openToUmum ? false : prev.is_teaser,
+      };
+    });
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
+    const openToUmum = form.target_groups.includes('SEMUA') || form.target_groups.includes('UMUM');
     const payload = {
       ...form,
       auto_refresh_token: false,
+      target_groups: form.target_groups.length > 0 ? form.target_groups : ['SEMUA'],
+      is_teaser: openToUmum ? false : form.is_teaser,
       created_by: state.profile?.id,
-      token_updated_at: new Date().toISOString()
+      token_updated_at: new Date().toISOString(),
     };
 
     if (editId) {
@@ -368,8 +423,11 @@ export default function PackageManager() {
       description: pkg.description,
       package_type: normType,
       token: pkg.token,
+      auto_refresh_token: false,
       is_active: pkg.is_active,
       duration_minutes: pkg.duration_minutes ? pkg.duration_minutes : defaultDuration,
+      target_groups: getPkgTargetGroups(pkg),
+      is_teaser: Boolean(pkg.is_teaser),
     });
     setEditId(pkg.id);
     setShowForm(true);
@@ -380,9 +438,9 @@ export default function PackageManager() {
     setPackages((prev) => prev.map((p) => (p.id === pkg.id ? { ...p, token: newToken } : p)));
     await supabase
       .from('exam_packages')
-      .update({ token: newToken, auto_refresh_token: false, token_updated_at: new Date().toISOString() })
+      .update({ token: newToken, token_updated_at: new Date().toISOString() })
       .eq('id', pkg.id);
-    load(true);
+    load();
   }
 
   async function toggleActive(pkg: ExamPackage) {
@@ -394,30 +452,32 @@ export default function PackageManager() {
       .update({ is_active: targetStatus })
       .eq('id', pkg.id);
 
-    load(true);
+    load();
   }
 
   async function confirmDelete() {
     if (!deleteId) return;
     await supabase.from('exam_packages').delete().eq('id', deleteId);
     setDeleteId('');
-    load(true);
+    load();
   }
 
   function copyToken(pkg: ExamPackage) {
     navigator.clipboard.writeText(pkg.token);
-    setCopiedId(pkg.id);
+    if (copiedId !== pkg.id) {
+      setCopiedId(pkg.id);
+    }
     setTimeout(() => setCopiedId(''), 2000);
   }
+
+  const isFormOpenToUmum = form.target_groups.includes('SEMUA') || form.target_groups.includes('UMUM');
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold text-gray-800">Manajemen Paket Ujian</h2>
-          <p className="text-gray-500 text-sm mt-1">
-            {packages.length} paket terdaftar {loading && !initialLoading ? '· memperbarui...' : ''}
-          </p>
+          <p className="text-gray-500 text-sm mt-1">{packages.length} paket terdaftar</p>
         </div>
         <motion.button
           whileHover={{ scale: 1.03 }}
@@ -514,7 +574,64 @@ export default function PackageManager() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5">
+              {/* Target Grup Akses & Opsi Teaser */}
+              <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 mb-4 space-y-3">
+                <div>
+                  <label className="flex items-center gap-1.5 text-sm font-semibold text-gray-700 mb-2">
+                    <Tag className="w-4 h-4 text-[#1e3a8a]" />
+                    Target Grup Akses Paket
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {PACKAGE_TARGET_OPTIONS.map((opt) => {
+                      const isSelected = form.target_groups.includes(opt.id);
+                      return (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          onClick={() => toggleTargetGroup(opt.id)}
+                          className={`px-3.5 py-2 rounded-xl text-xs font-bold border transition-all ${
+                            isSelected
+                              ? opt.activeBtnClass
+                              : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="text-[11px] text-gray-500 mt-2">
+                    Paket hanya akan muncul di dashboard peserta yang memiliki grup sesuai pilihan di atas.
+                  </p>
+                </div>
+
+                {/* Opsi Teaser Terkunci (hanya muncul jika paket eksklusif kelas berbayar) */}
+                {!isFormOpenToUmum && (
+                  <div className="pt-3 border-t border-slate-200/80">
+                    <label className="flex items-center gap-3 cursor-pointer">
+                      <button
+                        type="button"
+                        onClick={() => setForm({ ...form, is_teaser: !form.is_teaser })}
+                      >
+                        {form.is_teaser
+                          ? <ToggleRight className="w-8 h-8 text-amber-500" />
+                          : <ToggleLeft className="w-8 h-8 text-gray-300" />}
+                      </button>
+                      <div>
+                        <p className="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
+                          <Lock className="w-3.5 h-3.5 text-amber-600" />
+                          Tampilkan sebagai Teaser Terkunci (Khusus Akun Umum)
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          Muncul tergembok di dashboard peserta Umum sebagai pancingan promosi (disarankan pilih 1–2 paket unggulan saja).
+                        </p>
+                      </div>
+                    </label>
+                  </div>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5 items-end">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">Token Akses (6 digit)</label>
                   <div className="flex gap-2">
@@ -530,14 +647,15 @@ export default function PackageManager() {
                       type="button"
                       onClick={() => setForm({ ...form, token: generateToken() })}
                       className="px-3 py-2.5 bg-gray-100 hover:bg-gray-200 rounded-xl text-gray-600 transition-colors"
-                      title="Generate acak"
+                      title="Generate token acak"
                     >
                       <RefreshCw className="w-4 h-4" />
                     </button>
                   </div>
                 </div>
-                <div className="flex items-end pb-1">
-                  <label className="flex items-center gap-2.5 cursor-pointer">
+
+                <div className="flex items-center bg-gray-50 border border-gray-100 rounded-xl px-4 py-2.5">
+                  <label className="flex items-center gap-3 cursor-pointer w-full">
                     <button
                       type="button"
                       onClick={() => setForm({ ...form, is_active: !form.is_active })}
@@ -547,8 +665,8 @@ export default function PackageManager() {
                         : <ToggleLeft className="w-8 h-8 text-gray-300" />}
                     </button>
                     <div>
-                      <p className="text-sm font-medium text-gray-700">Status Paket Aktif</p>
-                      <p className="text-xs text-gray-500">Tampilkan paket ini ke peserta</p>
+                      <p className="text-sm font-semibold text-gray-700">Status Paket Aktif</p>
+                      <p className="text-xs text-gray-500">Tampilkan paket ini ke dashboard peserta</p>
                     </div>
                   </label>
                 </div>
@@ -817,13 +935,9 @@ function QuestionCountBadge({ pkg, counts }: { pkg: ExamPackage; counts: Questio
   const parts = cats.map((c) => `${c}: ${counts[c]}/${reqs[c]}`).join(' · ');
 
   return (
-    <span className={`text-xs font-semibold px-2.5 py-1 rounded-full flex items-center gap-1 ${isReadyOrComplete(allComplete)}`}>
+    <span className={`text-xs font-semibold px-2.5 py-1 rounded-full flex items-center gap-1 ${allComplete ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-50 text-amber-600'}`}>
       {allComplete && <CheckCircle2 className="w-3 h-3" />}
       {parts}
     </span>
   );
-}
-
-function isReadyOrComplete(allComplete: boolean): string {
-  return allComplete ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-50 text-amber-600';
 }
