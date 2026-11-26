@@ -4,10 +4,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Users, Search, ChevronRight, ArrowLeft, Loader2,
   BarChart3, CheckCircle2, AlertCircle, Award, TrendingUp,
-  Target, BookOpen, ClipboardList, LayoutGrid, LineChart,
+  Target, BookOpen, ClipboardList, LayoutGrid, LineChart, Tag,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { Profile } from '../../types';
+import { Profile, AccessGroup, USER_GROUP_OPTIONS } from '../../types';
 import { useApp } from '../../context/AppContext';
 
 interface ExamResultRow {
@@ -51,6 +51,13 @@ const categoryMeta = [
 
 function isDrillingPackage(packageType: unknown): boolean {
   return String(packageType ?? '').toUpperCase().trim() === 'TO_SUBKATEGORI';
+}
+
+function getParticipantGroups(p: Profile): AccessGroup[] {
+  if (Array.isArray(p.access_groups) && p.access_groups.length > 0) {
+    return p.access_groups as AccessGroup[];
+  }
+  return ['UMUM'];
 }
 
 function safePercent(num: number, den: number): number {
@@ -253,7 +260,7 @@ function CategoryCard({ diag }: { diag: CategoryDiag }) {
           {diag.strengths.length > 0 ? (
             diag.strengths.map((s, i) => (
               <div key={i} className="flex justify-between text-gray-700">
-                <span className="truncate max-w-[110px]">• {s.name}</span>
+                <span className="truncate max-w-[110px]">&bull; {s.name}</span>
                 <span className="text-emerald-600 font-bold">{s.percentage}%</span>
               </div>
             ))
@@ -268,7 +275,7 @@ function CategoryCard({ diag }: { diag: CategoryDiag }) {
           {diag.weaknesses.length > 0 ? (
             diag.weaknesses.map((w, i) => (
               <div key={i} className="flex justify-between text-gray-700">
-                <span className="truncate max-w-[110px]">• {w.name}</span>
+                <span className="truncate max-w-[110px]">&bull; {w.name}</span>
                 <span className="text-rose-500 font-bold">{w.percentage}%</span>
               </div>
             ))
@@ -556,7 +563,6 @@ function OverallView({
 
       const cacheKey = `leskd_diag_overall_${participantId}_${cacheSignature}`;
 
-      // 1. Cek cache sessionStorage dulu (0 Byte egress Supabase saat Admin refresh halaman)
       try {
         const cachedRaw = sessionStorage.getItem(cacheKey);
         if (cachedRaw) {
@@ -571,7 +577,6 @@ function OverallView({
         sessionStorage.removeItem(cacheKey);
       }
 
-      // 2. Tarik maksimal 20 tryout utama terbaru (tidak termasuk Drilling Sub-Kategori)
       setLoadingGlobal(true);
       try {
         const { data } = await supabase
@@ -642,7 +647,6 @@ function OverallView({
 
   return (
     <div className="space-y-5">
-      {/* Stats row */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {statsCards.map((s, i) => (
           <motion.div
@@ -660,7 +664,6 @@ function OverallView({
 
       <ScoreTrendChart results={mainCompleted} />
 
-      {/* Aggregate competency donuts */}
       <div>
         <h4 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-1.5 flex-wrap">
           <Target className="w-4 h-4 text-[#1e3a8a]" />
@@ -692,7 +695,7 @@ function OverallView({
   );
 }
 
-// ─── Per-participant detail view (SINKRON URL ?tab=&exam=) ───────────────────
+// ─── Per-participant detail view (SINKRON URL ?participant=&group=&tab=&exam=) ─
 
 function ParticipantDetail({ participant, onBack }: { participant: Profile; onBack: () => void }) {
   const { fetchExamSnapshot } = useApp();
@@ -701,6 +704,7 @@ function ParticipantDetail({ participant, onBack }: { participant: Profile; onBa
   const rawTab = searchParams.get('tab');
   const activeTab = rawTab === 'per-exam' ? 'per-exam' : 'overall';
   const examIdFromUrl = searchParams.get('exam');
+  const groupFromUrl = searchParams.get('group');
 
   const [results, setResults] = useState<ExamResultRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -709,6 +713,21 @@ function ParticipantDetail({ participant, onBack }: { participant: Profile; onBa
   const [diagLoading, setDiagLoading] = useState(false);
 
   const restoredExamRef = useRef<string>('');
+  const participantGroups = getParticipantGroups(participant);
+
+  function buildDetailParams(nextTab: string, examId?: string): Record<string, string> {
+    const params: Record<string, string> = {
+      participant: String(participant.id),
+      tab: nextTab,
+    };
+    if (groupFromUrl && groupFromUrl !== 'ALL') {
+      params.group = groupFromUrl;
+    }
+    if (examId) {
+      params.exam = examId;
+    }
+    return params;
+  }
 
   useEffect(() => {
     let isCancelled = false;
@@ -742,15 +761,11 @@ function ParticipantDetail({ participant, onBack }: { participant: Profile; onBa
 
     if (syncUrl) {
       restoredExamRef.current = row.id;
-      setSearchParams(
-        { participant: String(participant.id), tab: 'per-exam', exam: String(row.id) },
-        { replace: true }
-      );
+      setSearchParams(buildDetailParams('per-exam', String(row.id)), { replace: true });
     }
 
     const cacheKey = `leskd_diag_exam_${row.id}`;
 
-    // 1. Cek cache sessionStorage dulu (0 Byte egress Supabase saat di-refresh)
     try {
       const cachedRaw = sessionStorage.getItem(cacheKey);
       if (cachedRaw) {
@@ -764,7 +779,6 @@ function ParticipantDetail({ participant, onBack }: { participant: Profile; onBa
       sessionStorage.removeItem(cacheKey);
     }
 
-    // 2. Lazy load dari Supabase 1x jika belum ada di cache tab
     setDiagLoading(true);
     const data = await fetchExamSnapshot(row.id);
 
@@ -794,7 +808,6 @@ function ParticipantDetail({ participant, onBack }: { participant: Profile; onBa
     setDiagLoading(false);
   }
 
-  // Pulihkan otomatis ujian yang sedang dibuka di tab Per Ujian saat di-refresh
   useEffect(() => {
     if (activeTab !== 'per-exam') return;
     if (!examIdFromUrl) return;
@@ -810,16 +823,12 @@ function ParticipantDetail({ participant, onBack }: { participant: Profile; onBa
 
   const handleTabSwitch = (nextTab: string) => {
     if (nextTab === 'overall') {
-      setSearchParams({ participant: String(participant.id), tab: 'overall' }, { replace: true });
+      setSearchParams(buildDetailParams('overall'), { replace: true });
     } else {
-      const nextParams: Record<string, string> = {
-        participant: String(participant.id),
-        tab: 'per-exam',
-      };
-      if (selectedResult?.id) {
-        nextParams.exam = String(selectedResult.id);
-      }
-      setSearchParams(nextParams, { replace: true });
+      setSearchParams(
+        buildDetailParams('per-exam', selectedResult?.id ? String(selectedResult.id) : undefined),
+        { replace: true }
+      );
     }
   };
 
@@ -846,7 +855,20 @@ function ParticipantDetail({ participant, onBack }: { participant: Profile; onBa
             {participant.full_name.charAt(0).toUpperCase()}
           </div>
           <div className="min-w-0">
-            <h2 className="text-xl font-bold text-gray-800 truncate">{participant.full_name}</h2>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="text-xl font-bold text-gray-800 truncate">{participant.full_name}</h2>
+              {participantGroups.map((g) => {
+                const opt = USER_GROUP_OPTIONS.find((o) => o.id === g);
+                return (
+                  <span
+                    key={g}
+                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${opt?.badgeClass ?? 'bg-gray-100 text-gray-600 border-gray-200'}`}
+                  >
+                    {opt?.shortLabel ?? g}
+                  </span>
+                );
+              })}
+            </div>
             <p className="text-sm text-gray-500 truncate">{participant.email}</p>
           </div>
         </div>
@@ -890,9 +912,7 @@ function ParticipantDetail({ participant, onBack }: { participant: Profile; onBa
           onSwitchPerExam={() => handleTabSwitch('per-exam')}
         />
       ) : (
-        /* ── Per-exam tab ─────────────────────────────────── */
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left: result list */}
           <div className="lg:col-span-1 space-y-3">
             <h3 className="text-sm font-bold text-gray-600 uppercase tracking-wider flex items-center gap-1.5">
               <ClipboardList className="w-4 h-4" /> Riwayat Ujian
@@ -938,7 +958,6 @@ function ParticipantDetail({ participant, onBack }: { participant: Profile; onBa
             })}
           </div>
 
-          {/* Right: per-exam diagnostics */}
           <div className="lg:col-span-2">
             {!selectedResult ? (
               <div className="h-full min-h-48 flex flex-col items-center justify-center text-gray-400 bg-gray-50 rounded-2xl border border-dashed border-gray-200 gap-2 p-8">
@@ -957,7 +976,6 @@ function ParticipantDetail({ participant, onBack }: { participant: Profile; onBa
               </div>
             ) : (
               <div className="space-y-4">
-                {/* Score summary */}
                 <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex flex-wrap gap-4">
                   {[
                     { label: 'Total Skor', value: selectedResult.total_score, color: 'text-[#1e3a8a]' },
@@ -983,7 +1001,6 @@ function ParticipantDetail({ participant, onBack }: { participant: Profile; onBa
                     <p className="text-xs text-gray-500 mt-0.5">Status</p>
                   </div>
                 </div>
-                {/* Donut charts */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   {diags.map((diag) => (
                     <CategoryCard key={diag.id} diag={diag} />
@@ -998,7 +1015,7 @@ function ParticipantDetail({ participant, onBack }: { participant: Profile; onBa
   );
 }
 
-// ─── Main list view (SINKRON URL ?participant=) ──────────────────────────────
+// ─── Main list view (SINKRON URL ?participant=&group=) ───────────────────────
 
 export default function ParticipantDiagnostic() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -1008,6 +1025,8 @@ export default function ParticipantDiagnostic() {
   const [examCounts, setExamCounts] = useState<Record<string, number>>({});
 
   const participantIdFromUrl = searchParams.get('participant');
+  const rawGroup = searchParams.get('group');
+  const groupFromUrl = rawGroup ? rawGroup : 'ALL';
 
   useEffect(() => {
     async function load() {
@@ -1047,14 +1066,26 @@ export default function ParticipantDiagnostic() {
     return participants.find((p) => String(p.id) === String(participantIdFromUrl)) ?? null;
   }, [participants, participantIdFromUrl]);
 
+  const groupCounts = useMemo(() => {
+    const map: Record<string, number> = { ALL: participants.length };
+    USER_GROUP_OPTIONS.forEach((opt) => {
+      map[opt.id] = participants.filter((p) => getParticipantGroups(p).includes(opt.id)).length;
+    });
+    return map;
+  }, [participants]);
+
   const q = search.toLowerCase();
   const filtered = participants.filter((p) => {
     const matchName = p.full_name.toLowerCase().includes(q);
     const matchEmail = p.email.toLowerCase().includes(q);
-    return matchName ? true : matchEmail;
+    const matchText = matchName ? true : matchEmail;
+    const matchGroup =
+      groupFromUrl === 'ALL'
+        ? true
+        : getParticipantGroups(p).includes(groupFromUrl as AccessGroup);
+    return matchText && matchGroup;
   });
 
-  // Saat halaman di-refresh pada URL ?participant=..., tampilkan loading halus (bukan berkedip ke daftar peserta)
   if (loading && participantIdFromUrl) {
     return (
       <div className="flex flex-col items-center justify-center py-20 gap-3 text-[#1e3a8a]">
@@ -1068,7 +1099,13 @@ export default function ParticipantDiagnostic() {
     return (
       <ParticipantDetail
         participant={selectedParticipant}
-        onBack={() => setSearchParams({}, { replace: false })}
+        onBack={() => {
+          if (groupFromUrl !== 'ALL') {
+            setSearchParams({ group: groupFromUrl }, { replace: false });
+          } else {
+            setSearchParams({}, { replace: false });
+          }
+        }}
       />
     );
   }
@@ -1081,18 +1118,52 @@ export default function ParticipantDiagnostic() {
           Diagram Kompetensi Peserta
         </h2>
         <p className="text-sm text-gray-500 mt-1">
-          Pantau peta kekuatan dan kelemahan sub-materi setiap peserta berdasarkan riwayat ujian mereka
+          Pantau peta kekuatan dan kelemahan sub-materi setiap peserta berdasarkan grup kelas dan riwayat ujian
         </p>
       </div>
 
-      <div className="relative max-w-md">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Cari nama atau email peserta..."
-          className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/20 focus:border-[#1e3a8a]"
-        />
+      {/* Pencarian & Filter Grup Kelas */}
+      <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm space-y-3">
+        <div className="relative max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Cari nama atau email peserta..."
+            className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/20 focus:border-[#1e3a8a]"
+          />
+        </div>
+
+        <div className="flex items-center gap-2 flex-wrap pt-2 border-t border-gray-100">
+          <span className="text-xs font-semibold text-gray-400 flex items-center gap-1 mr-1">
+            <Tag className="w-3.5 h-3.5" /> Filter Kelas:
+          </span>
+          <button
+            type="button"
+            onClick={() => setSearchParams({}, { replace: true })}
+            className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-colors ${
+              groupFromUrl === 'ALL'
+                ? 'bg-[#1e3a8a] text-white border-[#1e3a8a]'
+                : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
+            }`}
+          >
+            Semua ({groupCounts.ALL ?? 0})
+          </button>
+          {USER_GROUP_OPTIONS.map((grp) => (
+            <button
+              key={grp.id}
+              type="button"
+              onClick={() => setSearchParams({ group: grp.id }, { replace: true })}
+              className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-colors ${
+                groupFromUrl === grp.id
+                  ? grp.activeBtnClass
+                  : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+              }`}
+            >
+              {grp.shortLabel} ({groupCounts[grp.id] ?? 0})
+            </button>
+          ))}
+        </div>
       </div>
 
       {loading ? (
@@ -1104,20 +1175,27 @@ export default function ParticipantDiagnostic() {
       ) : filtered.length === 0 ? (
         <div className="text-center py-16 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
           <Users className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-          <p className="text-gray-500 font-medium">Tidak ada peserta ditemukan</p>
+          <p className="text-gray-500 font-medium">Tidak ada peserta ditemukan pada filter ini</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <AnimatePresence>
             {filtered.map((p, i) => {
               const count = examCounts[p.id] ?? 0;
+              const pGroups = getParticipantGroups(p);
               return (
                 <motion.button
                   key={p.id}
                   initial={{ opacity: 0, y: 12 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: i * 0.03 }}
-                  onClick={() => setSearchParams({ participant: String(p.id) }, { replace: false })}
+                  transition={{ delay: Math.min(i * 0.03, 0.25) }}
+                  onClick={() => {
+                    const nextParams: Record<string, string> = { participant: String(p.id) };
+                    if (groupFromUrl !== 'ALL') {
+                      nextParams.group = groupFromUrl;
+                    }
+                    setSearchParams(nextParams, { replace: false });
+                  }}
                   className="text-left bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:border-blue-200 transition-all p-4 flex items-center gap-4 group"
                 >
                   <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-[#1e3a8a] to-blue-600 flex items-center justify-center text-white font-bold shrink-0">
@@ -1126,10 +1204,21 @@ export default function ParticipantDiagnostic() {
                   <div className="flex-1 min-w-0">
                     <p className="font-semibold text-gray-800 truncate">{p.full_name}</p>
                     <p className="text-xs text-gray-400 truncate">{p.email}</p>
-                    <div className="flex items-center gap-2 mt-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
                       <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${p.is_approved ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-600'}`}>
                         {p.is_approved ? 'Aktif' : 'Pending'}
                       </span>
+                      {pGroups.map((g) => {
+                        const opt = USER_GROUP_OPTIONS.find((o) => o.id === g);
+                        return (
+                          <span
+                            key={g}
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${opt?.badgeClass ?? 'bg-gray-100 text-gray-600 border-gray-200'}`}
+                          >
+                            {opt?.shortLabel ?? g}
+                          </span>
+                        );
+                      })}
                       {count > 0 ? (
                         <span className="text-[10px] font-medium text-gray-400 flex items-center gap-0.5">
                           <BookOpen className="w-3 h-3" /> {count} ujian
