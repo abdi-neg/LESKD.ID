@@ -25,13 +25,16 @@ import { EXAM_CONFIGS } from '../../data/mockData';
 
 const ADMIN_WHATSAPP = '628175201122';
 
+// Hanya ambil kolom publik yang aman ke browser peserta (TANPA kolom token)
+const SAFE_PACKAGE_COLUMNS =
+  'id, name, description, package_type, duration_minutes, is_active, target_groups, is_teaser, created_at';
+
 interface TeaserPackage {
   id: string;
   name: string;
   description: string;
   package_type: PackageType;
   duration_minutes?: number;
-  question_count?: number;
   target_groups?: string[];
   is_teaser?: boolean;
   is_active: boolean;
@@ -70,8 +73,8 @@ export default function ExamCards() {
   async function loadPackages() {
     setLoading(true);
     try {
-      // 1. Ambil access_groups terbaru langsung dari tabel profiles (hanya ~40 Byte)
-      // agar perubahan grup oleh Admin langsung aktif saat peserta refresh tanpa perlu logout
+      // 1. Ambil access_groups terbaru dari tabel profiles (~40 Byte)
+      // agar perubahan grup oleh Admin langsung aktif saat peserta refresh tanpa logout
       let resolvedGroups: string[] =
         Array.isArray(state.profile?.access_groups) && state.profile.access_groups.length > 0
           ? state.profile.access_groups
@@ -91,30 +94,38 @@ export default function ExamCards() {
 
       setUserGroups(resolvedGroups);
 
-      // 2. Tarik paket aktif yang sesuai grup peserta atau bertarget 'SEMUA'
+      // 2. Tarik paket aktif yang sesuai grup peserta atau bertarget 'SEMUA' (tanpa kolom token)
       const allowedTargets = Array.from(new Set([...resolvedGroups, 'SEMUA']));
-      const { data: openData } = await supabase
+      const { data: openData, error: openError } = await supabase
         .from('exam_packages')
-        .select('*')
+        .select(SAFE_PACKAGE_COLUMNS)
         .eq('is_active', true)
         .overlaps('target_groups', allowedTargets)
         .order('created_at');
 
-      const openList = (openData ?? []) as ExamPackage[];
+      if (openError) {
+        console.error('Gagal memuat daftar paket terbuka:', openError);
+      }
+
+      const openList = (openData ?? []) as unknown as ExamPackage[];
       setPackages(openList);
 
-      // 3. Khusus peserta yang murni 'UMUM', tarik maksimal 2 paket teaser terkunci TANPA kolom token
+      // 3. Khusus peserta yang murni 'UMUM', tarik maksimal 2 paket teaser terkunci (tanpa kolom token)
       const isUmumOnly = resolvedGroups.every((g) => g === 'UMUM');
       if (isUmumOnly) {
-        const { data: teaserData } = await supabase
+        const { data: teaserData, error: teaserError } = await supabase
           .from('exam_packages')
-          .select('id, name, description, package_type, duration_minutes, question_count, target_groups, is_teaser, is_active')
+          .select(SAFE_PACKAGE_COLUMNS)
           .eq('is_active', true)
           .eq('is_teaser', true)
           .order('created_at');
 
+        if (teaserError) {
+          console.error('Gagal memuat daftar paket teaser:', teaserError);
+        }
+
         const openIds = new Set(openList.map((p) => p.id));
-        const filteredTeasers = ((teaserData ?? []) as TeaserPackage[])
+        const filteredTeasers = ((teaserData ?? []) as unknown as TeaserPackage[])
           .filter((t) => !openIds.has(t.id))
           .slice(0, 2);
 
@@ -185,6 +196,7 @@ export default function ExamCards() {
           })}
         </div>
         <button
+          type="button"
           onClick={loadPackages}
           className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 hover:text-[#1e3a8a] bg-white border border-gray-200 px-3 py-1.5 rounded-xl transition-colors"
           title="Muat Ulang Daftar Paket"
@@ -204,12 +216,9 @@ export default function ExamCards() {
 
             const config = EXAM_CONFIGS[examType] || { questionCount: 20, timeMinutes: 20 };
             const displayQuestions =
-              (pkg as any).question_count ||
-              (pkg as any).total_questions ||
-              (normalizedType === 'TO_SUBKATEGORI' ? 'Drilling' : config.questionCount);
+              normalizedType === 'TO_SUBKATEGORI' ? 'Drilling' : config.questionCount;
             const displayMinutes =
               pkg.duration_minutes ||
-              (pkg as any).time_minutes ||
               (normalizedType === 'TO_SUBKATEGORI' ? 25 : config.timeMinutes);
 
             return (
@@ -251,6 +260,7 @@ export default function ExamCards() {
                     </div>
                   </div>
                   <motion.button
+                    type="button"
                     whileTap={{ scale: 0.97 }}
                     className="w-full py-2.5 rounded-xl text-sm font-semibold bg-gray-50 text-gray-700 group-hover:bg-gray-100 border border-gray-200 flex items-center justify-center gap-1.5 transition-all"
                   >
