@@ -1,5 +1,5 @@
-import { createContext, useContext, useReducer, useEffect, ReactNode, useState, useCallback } from 'react';
-import { AppState, AppView, ExamSession, Profile, Question, ExamType, ExamPackage } from '../types'; 
+import { createContext, useContext, useReducer, useEffect, ReactNode, useState, useCallback, useRef } from 'react';
+import { AppState, AppView, ExamSession, Profile, Question, ExamType, ExamPackage } from '../types';
 import { mockQuestions, EXAM_CONFIGS } from '../data/mockData';
 import { supabase, getProfile } from '../lib/supabase';
 import {
@@ -34,6 +34,7 @@ const initialState: AppState = {
   reviewResultId: null,
 };
 
+const ACTIVE_INITIAL_SECONDS_KEY = 'active_exam_initial_seconds';
 let isStartingExam = false;
 
 export function packageTypeToExamType(pt: string): ExamType {
@@ -44,7 +45,49 @@ export function packageTypeToExamType(pt: string): ExamType {
   return 'FULL';
 }
 
-// 🌟 Deteksi kategori otomatis untuk paket TO_SUBKATEGORI berdasarkan isi soalnya
+function resolveInitialSeconds(
+  examType: ExamType,
+  questionsCount: number,
+  packageType?: string,
+  durationMinutes?: number | null,
+  savedInitialSeconds?: number | null
+): number {
+  if (savedInitialSeconds && savedInitialSeconds > 0) {
+    return savedInitialSeconds;
+  }
+  if (durationMinutes && durationMinutes > 0) {
+    return durationMinutes * 60;
+  }
+  const config = EXAM_CONFIGS[examType] || EXAM_CONFIGS.FULL;
+  const isSubKategori = packageType?.toUpperCase() === 'TO_SUBKATEGORI';
+  const fallbackMinutes = isSubKategori ? Math.max(20, questionsCount) : config.timeMinutes;
+  return fallbackMinutes * 60;
+}
+
+function computeWallClockRemaining(startedAt: Date | string | undefined, initialSeconds: number): number {
+  if (!startedAt) return initialSeconds;
+  const startMs = new Date(startedAt).getTime();
+  if (Number.isNaN(startMs)) return initialSeconds;
+  const elapsed = Math.max(0, Math.floor((Date.now() - startMs) / 1000));
+  return Math.max(0, initialSeconds - elapsed);
+}
+
+function clearLocalExamArtifacts(sessionId?: string | null) {
+  if (sessionId) {
+    clearExamProgress(sessionId);
+  } else {
+    localStorage.removeItem('exam_active_session_id');
+  }
+  localStorage.removeItem('active_db_result_id');
+  localStorage.removeItem(ACTIVE_INITIAL_SECONDS_KEY);
+
+  const savedView = localStorage.getItem('leskd_saved_view');
+  if (savedView === 'exam-engine' || savedView === 'exam-results') {
+    localStorage.removeItem('leskd_saved_view');
+  }
+}
+
+// Deteksi kategori otomatis untuk paket TO_SUBKATEGORI berdasarkan isi soalnya
 function resolveEffectiveExamType(defaultType: ExamType, questions: Question[], packageType?: string): ExamType {
   if (packageType?.toUpperCase() !== 'TO_SUBKATEGORI' || questions.length === 0) {
     return defaultType;
@@ -62,17 +105,17 @@ function resolveEffectiveExamType(defaultType: ExamType, questions: Question[], 
 async function fetchQuestionsForExam(examType: ExamType, packageId?: string, packageType?: string): Promise<Question[]> {
   const config = EXAM_CONFIGS[examType] || EXAM_CONFIGS.FULL;
   const isSubKategori = packageType?.toUpperCase() === 'TO_SUBKATEGORI';
-  
+
   const categoryWeight: Record<string, number> = {
-    'TWK': 1,
-    'TIU': 2,
-    'TKP': 3 
+    TWK: 1,
+    TIU: 2,
+    TKP: 3,
   };
 
   const sortSKD = (a: Question, b: Question) => {
     const weightA = categoryWeight[a.category?.toUpperCase()] || 99;
     const weightB = categoryWeight[b.category?.toUpperCase()] || 99;
-    return weightA - weightB; 
+    return weightA - weightB;
   };
 
   if (packageId) {
@@ -98,8 +141,7 @@ async function fetchQuestionsForExam(examType: ExamType, packageId?: string, pac
           option_e_image: q.option_e_image ?? null,
         };
       }) as Question[];
-      
-      // Untuk TO_SUBKATEGORI atau FULL, ambil semua soal di dalam paket tanpa memfilter kategori secara kaku
+
       const filtered = (examType === 'FULL' || isSubKategori)
         ? mappedData
         : mappedData.filter((q) => q.category?.toUpperCase() === examType);
@@ -127,25 +169,23 @@ async function fetchQuestionsForExam(examType: ExamType, packageId?: string, pac
       explanation_image_url: (q as any).explanation_image_url ?? null,
     };
   }) as Question[];
-  
+
   let padded = mappedMock;
-  while (padded.length < config.questionCount) { padded = [...padded, ...padded].slice(0, config.questionCount); }
-  
+  while (padded.length < config.questionCount) {
+    padded = [...padded, ...padded].slice(0, config.questionCount);
+  }
+
   return [...padded.slice(0, config.questionCount)].sort(sortSKD);
 }
 
 function buildSession(examType: ExamType, questions: Question[], pkg?: ExamPackage): ExamSession {
   const effectiveExamType = resolveEffectiveExamType(examType, questions, pkg?.package_type);
-  const config = EXAM_CONFIGS[effectiveExamType] || EXAM_CONFIGS.FULL;
-  const isSubKategori = pkg?.package_type?.toUpperCase() === 'TO_SUBKATEGORI';
-
-  // 🌟 Jika TO_SUBKATEGORI tidak memiliki duration_minutes, set default 1 menit per soal (minimal 20 menit)
-  const fallbackMinutes = isSubKategori ? Math.max(20, questions.length) : config.timeMinutes;
-  const activeTimeMinutes = pkg?.duration_minutes && pkg.duration_minutes > 0 
-    ? pkg.duration_minutes 
-    : fallbackMinutes;
-
-  const initialSeconds = activeTimeMinutes * 60;
+  const initialSeconds = resolveInitialSeconds(
+    effectiveExamType,
+    questions.length,
+    pkg?.package_type,
+    pkg?.duration_minutes
+  );
 
   const answers: ExamSession['answers'] = {};
   const securedQuestions = questions.map((q) => {
@@ -194,7 +234,7 @@ function calculateScores(session: ExamSession) {
   session.questions.forEach((q) => {
     const answer = session.answers[q.id];
     if (!answer?.selectedAnswer) return;
-    
+
     if (q.category === 'TKP') {
       const selected = answer.selectedAnswer.toLowerCase().trim();
       let points = 0;
@@ -209,7 +249,7 @@ function calculateScores(session: ExamSession) {
       const userAns = answer.selectedAnswer.toUpperCase().trim();
       const trueAns = (q.correct_answer || '').toUpperCase().trim();
       const pts = userAns === trueAns ? 5 : 0;
-      
+
       if (pts > 0) correctCount++;
       if (q.category === 'TIU') tiu += pts;
       else twk += pts;
@@ -218,7 +258,7 @@ function calculateScores(session: ExamSession) {
   return { tiu, twk, tkp, total: tiu + twk + tkp, correctCount };
 }
 
-// 🌟 Evaluasi Passing Grade yang mendukung Tryout Standar & Proporsional TO_SUBKATEGORI
+// Evaluasi Passing Grade untuk Tryout Standar & Proporsional TO_SUBKATEGORI
 function checkPassedStatus(examType: ExamType, scores: { tiu: number; twk: number; tkp: number }, session?: ExamSession) {
   const pkgType = (session as any)?.packageType?.toUpperCase();
 
@@ -264,16 +304,22 @@ function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, authLoading: action.payload };
     case 'SET_PROFILE': {
       if (!action.payload) return { ...state, profile: null, currentView: 'landing', authLoading: false };
-      
+
       const savedView = localStorage.getItem('leskd_saved_view') as AppView | null;
       const savedReviewId = localStorage.getItem('leskd_saved_review_id');
-      
+
       const examActive = state.currentView === 'exam-engine' || state.currentView === 'exam-results';
       let targetView = examActive ? state.currentView : getViewForProfile(action.payload);
-      
+
       if (!action.payload.is_approved) {
         targetView = 'waiting-room';
-      } else if (!examActive && savedView && savedView !== 'landing') {
+      } else if (
+        !examActive &&
+        savedView &&
+        savedView !== 'landing' &&
+        savedView !== 'exam-engine' &&
+        savedView !== 'exam-results'
+      ) {
         targetView = savedView;
       }
 
@@ -286,8 +332,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
       };
     }
     case 'LOGOUT':
-      localStorage.removeItem('exam_active_session_id');
-      localStorage.removeItem('active_db_result_id'); 
+      clearLocalExamArtifacts(state.examSession?.id);
       localStorage.removeItem('leskd_saved_view');
       localStorage.removeItem('leskd_saved_review_id');
       return { ...initialState, authLoading: false };
@@ -297,17 +342,17 @@ function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, examSession: null, currentView: 'exam-engine' };
     case 'RESUME_EXAM': {
       if (!action.payload) return state;
-      return { 
-        ...state, 
-        examSession: action.payload, 
-        currentView: action.payload.status === 'completed' ? 'exam-results' : 'exam-engine' 
+      return {
+        ...state,
+        examSession: action.payload,
+        currentView: action.payload.status === 'completed' ? 'exam-results' : 'exam-engine',
       };
     }
     case 'ANSWER_QUESTION': {
       if (!state.examSession) return state;
       return {
         ...state,
-        examSession: { ...state.examSession, answers: action.payload.answers }
+        examSession: { ...state.examSession, answers: action.payload.answers },
       };
     }
     case 'TOGGLE_MARK': {
@@ -323,26 +368,40 @@ function appReducer(state: AppState, action: AppAction): AppState {
       };
     }
     case 'NAVIGATE_QUESTION':
-      return state.examSession ? { ...state, examSession: { ...state.examSession, currentQuestionIndex: action.payload } } : state;
+      return state.examSession
+        ? { ...state, examSession: { ...state.examSession, currentQuestionIndex: action.payload } }
+        : state;
     case 'RESTORE_TIMER':
-      return state.examSession ? { ...state, examSession: { ...state.examSession, timeRemaining: action.payload } } : state;
+      return state.examSession
+        ? { ...state, examSession: { ...state.examSession, timeRemaining: action.payload } }
+        : state;
     case 'TICK_TIMER': {
-      if (!state.examSession || state.examSession.timeRemaining <= 0) return state;
-      return { ...state, examSession: { ...state.examSession, timeRemaining: state.examSession.timeRemaining - 1 } };
+      if (!state.examSession || state.examSession.status !== 'in_progress') return state;
+      const initialSec = (state.examSession as any).initialTimeSeconds;
+      const nextRemaining =
+        typeof initialSec === 'number' && initialSec > 0 && state.examSession.startedAt
+          ? computeWallClockRemaining(state.examSession.startedAt, initialSec)
+          : Math.max(0, state.examSession.timeRemaining - 1);
+
+      if (nextRemaining === state.examSession.timeRemaining) return state;
+      return { ...state, examSession: { ...state.examSession, timeRemaining: nextRemaining } };
     }
     case 'FINALIZE_EXAM_STORE': {
       return {
         ...state,
         currentView: 'exam-results',
-        examSession: action.payload
+        examSession: action.payload,
       };
     }
     case 'CLEAR_EXAM': {
-      if (state.examSession) clearExamProgress(state.examSession.id);
-      else localStorage.removeItem('exam_active_session_id');
-      localStorage.removeItem('active_db_result_id'); 
+      clearLocalExamArtifacts(state.examSession?.id);
       const isAdmin = state.profile?.role === 'admin' || state.profile?.role === 'super_admin';
-      return { ...state, examSession: null, reviewResultId: null, currentView: isAdmin ? 'admin-dashboard' : 'participant-dashboard' };
+      return {
+        ...state,
+        examSession: null,
+        reviewResultId: null,
+        currentView: isAdmin ? 'admin-dashboard' : 'participant-dashboard',
+      };
     }
     case 'OPEN_REVIEW':
       return { ...state, reviewResultId: action.payload, currentView: 'exam-review' };
@@ -372,13 +431,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(appReducer, initialState);
   const [isSyncLocked, setIsSyncLocked] = useState(false);
   const [examHistory, setExamHistory] = useState<any[]>([]);
+  const isSubmittingRef = useRef(false);
 
   async function signOut() {
     try {
       await supabase.auth.signOut();
       dispatch({ type: 'LOGOUT' });
     } catch (err) {
-      console.error("Gagal melakukan proses log out:", err);
+      console.error('Gagal melakukan proses log out:', err);
     }
   }
 
@@ -389,73 +449,49 @@ export function AppProvider({ children }: { children: ReactNode }) {
         .select('review_snapshot, diagnostic_breakdown')
         .eq('id', resultId)
         .single();
-      
+
       if (error) throw error;
       return data;
     } catch (err) {
-      console.error("Gagal memuat detail snapshot:", err);
+      console.error('Gagal memuat detail snapshot:', err);
       return null;
     }
   }, []);
 
+  // Filter status in_progress langsung di level database + tanpa kueri fallback user_name
   const fetchUserExamHistory = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      const SAFE_COLUMNS = 'id, participant_id, user_name, package_type, package_id, package_name, score_tiu, score_twk, score_tkp, total_score, questions_total, questions_correct, passed, status, started_at, completed_at, duration_seconds';
+      const SAFE_COLUMNS =
+        'id, participant_id, user_name, package_type, package_id, package_name, score_tiu, score_twk, score_tkp, total_score, questions_total, questions_correct, passed, status, started_at, completed_at, duration_seconds';
 
       const { data, error } = await supabase
         .from('exam_results')
         .select(SAFE_COLUMNS)
         .eq('participant_id', user.id)
+        .or('status.neq.in_progress,status.is.null')
         .order('completed_at', { ascending: false });
 
       if (error) throw error;
-      let finalRecords = data || [];
 
-      if (finalRecords.length === 0 && user.email) {
-        const { data: fallbackEmail } = await supabase
-          .from('exam_results')
-          .select(SAFE_COLUMNS)
-          .eq('user_name', user.email)
-          .order('completed_at', { ascending: false });
-        
-        if (fallbackEmail && fallbackEmail.length > 0) {
-          finalRecords = fallbackEmail;
-        }
-      }
-
-      if (finalRecords.length === 0) {
-        const profileName = state.profile?.full_name || user.user_metadata?.full_name || user.user_metadata?.name;
-        if (profileName) {
-          const { data: fallbackName } = await supabase
-            .from('exam_results')
-            .select(SAFE_COLUMNS)
-            .eq('user_name', profileName)
-            .order('completed_at', { ascending: false });
-          
-          if (fallbackName && fallbackName.length > 0) {
-            finalRecords = fallbackName;
-          }
-        }
-      }
-
-      const safeCompletedRecords = finalRecords.filter((r) => {
-        if (r.status === 'in_progress') return false;
+      const safeCompletedRecords = (data || []).filter((r) => {
+        const normStatus = String(r.status ?? '').toLowerCase().trim();
+        if (normStatus === 'in_progress' || normStatus === 'abandoned') return false;
         return (
-          r.status === 'completed' || 
-          r.status === 'selesai' || 
-          r.status === null || 
+          normStatus === 'completed' ||
+          normStatus === 'selesai' ||
+          r.status === null ||
           (r.total_score !== undefined && r.total_score !== null)
         );
       });
 
       setExamHistory(safeCompletedRecords);
     } catch (err) {
-      console.error("Gagal memuat riwayat ujian:", err);
+      console.error('Gagal memuat riwayat ujian:', err);
     }
-  }, [state.profile?.full_name]);
+  }, []);
 
   useEffect(() => {
     if (state.currentView && state.currentView !== 'landing') {
@@ -468,7 +504,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [state.currentView, state.reviewResultId]);
 
-  // 🌟 SINKRONISASI REALTIME HEMAT KUOTA
+  // Sinkronisasi skor live setiap kali peserta menjawab (terkunci khusus status in_progress)
   useEffect(() => {
     const session = state.examSession;
     if (!session || session.status === 'completed' || isSyncLocked) return;
@@ -481,11 +517,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const liveScores = calculateScores(session);
         const isPassed = checkPassedStatus(session.examType, liveScores, session);
 
+        const initialSec = resolveInitialSeconds(
+          session.examType,
+          session.questions.length,
+          (session as any).packageType,
+          null,
+          (session as any).initialTimeSeconds
+        );
         const startedTimeMs = session.startedAt ? new Date(session.startedAt).getTime() : Date.now();
-        const elapsedFromStart = Math.floor((Date.now() - startedTimeMs) / 1000);
-        const fallbackConfig = EXAM_CONFIGS[session.examType] || EXAM_CONFIGS.FULL;
-        const initialSec = (session as any).initialTimeSeconds || (fallbackConfig.timeMinutes * 60);
-        const durationUsed = elapsedFromStart > 0 ? elapsedFromStart : Math.max(0, initialSec - session.timeRemaining);
+        const elapsedFromStart = Math.max(0, Math.floor((Date.now() - startedTimeMs) / 1000));
+        const durationUsed = Math.min(initialSec, elapsedFromStart);
 
         supabase
           .from('exam_results')
@@ -496,11 +537,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
             total_score: liveScores.total,
             questions_correct: liveScores.correctCount,
             passed: isPassed,
-            duration_seconds: durationUsed
+            duration_seconds: durationUsed,
           })
           .eq('id', dbResultId)
-          .then(({ error }) => { 
-            if (error) console.error("Realtime Sync Error:", error); 
+          .eq('status', 'in_progress')
+          .then(({ error }) => {
+            if (error) console.error('Realtime Sync Error:', error);
           });
       }
     }
@@ -513,59 +555,82 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [state.examSession?.timeRemaining, state.examSession?.answers]);
 
+  // Timer berbasis waktu nyata + langsung sinkron ketika tab HP/browser kembali aktif
   useEffect(() => {
     if (!state.examSession || state.examSession.status !== 'in_progress') return;
+
     const timer = setInterval(() => {
       dispatch({ type: 'TICK_TIMER' });
     }, 1000);
-    return () => clearInterval(timer);
+
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        dispatch({ type: 'TICK_TIMER' });
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, [state.examSession?.status, state.examSession?.id]);
 
   useEffect(() => {
     if (
-      state.examSession && 
-      state.examSession.status === 'in_progress' && 
+      state.examSession &&
+      state.examSession.status === 'in_progress' &&
       state.examSession.timeRemaining <= 0 &&
-      !isSyncLocked
+      !isSyncLocked &&
+      !isSubmittingRef.current
     ) {
       submitExamSession();
     }
   }, [state.examSession?.timeRemaining, state.examSession?.status, isSyncLocked]);
 
-  async function refreshProfile(retries = 3) {
+  const refreshProfile = useCallback(async (retries = 3) => {
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { dispatch({ type: 'SET_PROFILE', payload: null }); return; }
+    if (!user) {
+      dispatch({ type: 'SET_PROFILE', payload: null });
+      return;
+    }
     try {
       let profile = await getProfile(user.id);
       let attempts = 0;
       while (!profile && attempts < retries) {
-        await new Promise(resolve => setTimeout(resolve, 600));
+        await new Promise((resolve) => setTimeout(resolve, 600));
         profile = await getProfile(user.id);
         attempts++;
       }
       dispatch({ type: 'SET_PROFILE', payload: profile ? (profile as Profile) : null });
-    } catch { 
-      dispatch({ type: 'SET_PROFILE', payload: null }); 
+    } catch {
+      dispatch({ type: 'SET_PROFILE', payload: null });
     }
-  }
+  }, []);
 
   async function startExam(examType: ExamType, pkg?: ExamPackage) {
     if (isStartingExam) return;
 
     try {
       isStartingExam = true;
-      setIsSyncLocked(false); 
+      isSubmittingRef.current = false;
+      setIsSyncLocked(false);
+
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { alert("Sesi login tidak valid."); return; }
+      if (!user) {
+        alert('Sesi login tidak valid.');
+        return;
+      }
 
       const questions = await fetchQuestionsForExam(examType, pkg?.id, pkg?.package_type);
       if (!questions || questions.length === 0) {
-        alert("Gagal memuat kumpulan soal ujian.");
+        alert('Gagal memuat kumpulan soal ujian.');
         return;
       }
-      
+
       const session = buildSession(examType, questions, pkg);
 
+      // Bersihkan sisa sesi in_progress lama milik peserta ini sebelum memulai sesi baru
       await supabase
         .from('exam_results')
         .delete()
@@ -576,15 +641,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
         .from('exam_results')
         .insert({
           participant_id: user.id,
-          user_name: state.profile?.full_name || user.email, 
+          user_name: state.profile?.full_name || user.email,
           package_type: pkg?.package_type || examType,
           package_id: pkg?.id || null,
           package_name: pkg?.name || 'Tryout Full SKD',
-          score_tiu: 0, score_twk: 0, score_tkp: 0, total_score: 0,
-          questions_total: questions.length, questions_correct: 0,
-          passed: false, 
+          score_tiu: 0,
+          score_twk: 0,
+          score_tkp: 0,
+          total_score: 0,
+          questions_total: questions.length,
+          questions_correct: 0,
+          passed: false,
           status: 'in_progress',
-          started_at: new Date().toISOString()
+          started_at: session.startedAt ? new Date(session.startedAt).toISOString() : new Date().toISOString(),
         })
         .select()
         .single();
@@ -592,21 +661,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (insertErr) throw insertErr;
       const finalDbRow = newRow;
 
-      const sessionWithResultId = { 
-        ...session, 
+      const sessionWithResultId = {
+        ...session,
         resultId: finalDbRow.id,
         userName: state.profile?.full_name || user.email,
-        packageType: pkg?.package_type || examType
+        packageType: pkg?.package_type || examType,
       };
 
       localStorage.setItem('active_db_result_id', finalDbRow.id);
+      localStorage.setItem(ACTIVE_INITIAL_SECONDS_KEY, String((session as any).initialTimeSeconds || session.timeRemaining));
       saveExamProgress(sessionWithResultId);
       dispatch({ type: 'RESUME_EXAM', payload: sessionWithResultId });
-
     } catch (err) {
-      console.error("Gagal menginisialisasi sesi ujian:", err);
+      console.error('Gagal menginisialisasi sesi ujian:', err);
       dispatch({ type: 'CLEAR_EXAM' });
-      alert("Terjadi kendala jaringan saat memuat sesi tryout baru.");
+      alert('Terjadi kendala jaringan saat memuat sesi tryout baru.');
     } finally {
       isStartingExam = false;
     }
@@ -614,31 +683,33 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   async function submitExamSession(diagnosticBreakdown?: any) {
     const session = state.examSession;
-    if (!session || isSyncLocked) return;
+    if (!session || isSyncLocked || isSubmittingRef.current) return;
 
     const dbResultId = (session as any).resultId || localStorage.getItem('active_db_result_id');
     if (!dbResultId) {
-      alert("Sesi ID database hilang. Silakan kembali ke dashboard.");
+      alert('Sesi ID database hilang. Silakan kembali ke dashboard.');
       return;
     }
 
     try {
+      isSubmittingRef.current = true;
       setIsSyncLocked(true);
+
       const scores = calculateScores(session);
       const isPassed = checkPassedStatus(session.examType, scores, session);
-      
-      const injectedQuestions = session.questions.map(q => {
+
+      const injectedQuestions = session.questions.map((q) => {
         const finalSub = q.sub_category || (q as any).sub_kategori || (q as any).SUB_KATEGORI || 'Umum';
         return {
           ...q,
           sub_category: finalSub,
-          sub_kategori: finalSub
+          sub_kategori: finalSub,
         };
       });
 
       const snapshotPayload = {
         questions: injectedQuestions,
-        answers: session.answers
+        answers: session.answers,
       };
 
       let finalDiagnostic = diagnosticBreakdown;
@@ -670,51 +741,78 @@ export function AppProvider({ children }: { children: ReactNode }) {
         });
         finalDiagnostic = breakdown;
       }
-      
+
+      const initialSec = resolveInitialSeconds(
+        session.examType,
+        session.questions.length,
+        (session as any).packageType,
+        null,
+        (session as any).initialTimeSeconds
+      );
       const startedTimeMs = session.startedAt ? new Date(session.startedAt).getTime() : Date.now();
-      const elapsedSeconds = Math.floor((Date.now() - startedTimeMs) / 1000);
-      const fallbackConfig = EXAM_CONFIGS[session.examType] || EXAM_CONFIGS.FULL;
-      const fallbackInitial = (session as any).initialTimeSeconds || (fallbackConfig.timeMinutes * 60);
-      const finalDurationSeconds = elapsedSeconds > 0 ? elapsedSeconds : Math.max(0, fallbackInitial - session.timeRemaining);
-      
-      const { error } = await supabase
+      const elapsedSeconds = Math.max(0, Math.floor((Date.now() - startedTimeMs) / 1000));
+      const finalDurationSeconds = Math.min(initialSec, elapsedSeconds);
+
+      const completedPayload = {
+        score_tiu: scores.tiu,
+        score_twk: scores.twk,
+        score_tkp: scores.tkp,
+        total_score: scores.total,
+        questions_correct: scores.correctCount,
+        passed: isPassed,
+        status: 'completed',
+        completed_at: new Date().toISOString(),
+        duration_seconds: finalDurationSeconds,
+        review_snapshot: JSON.stringify(snapshotPayload),
+        diagnostic_breakdown: finalDiagnostic,
+      };
+
+      const { data: updatedRow, error } = await supabase
         .from('exam_results')
-        .update({
-          score_tiu: scores.tiu,
-          score_twk: scores.twk,
-          score_tkp: scores.tkp,
-          total_score: scores.total,
-          questions_correct: scores.correctCount,
-          passed: isPassed,
-          status: 'completed', 
-          completed_at: new Date().toISOString(),
-          duration_seconds: finalDurationSeconds,
-          review_snapshot: JSON.stringify(snapshotPayload),
-          diagnostic_breakdown: finalDiagnostic
-        })
-        .eq('id', dbResultId);
+        .update(completedPayload)
+        .eq('id', dbResultId)
+        .select('id')
+        .maybeSingle();
 
       if (error) throw error;
 
-      clearExamProgress(session.id);
-      
-      localStorage.removeItem('exam_active_session_id');
-      localStorage.removeItem('active_db_result_id'); 
+      // Pengaman anti silent-failure: jika baris in_progress terlanjur dibersihkan Admin,
+      // simpan hasil akhir sebagai baris baru agar jawaban peserta tetap terekam aman.
+      if (!updatedRow) {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error('Sesi autentikasi tidak ditemukan saat menyimpan hasil.');
+
+        const { error: fallbackInsertErr } = await supabase
+          .from('exam_results')
+          .insert({
+            participant_id: user.id,
+            user_name: (session as any).userName || state.profile?.full_name || user.email,
+            package_type: (session as any).packageType || session.examType,
+            package_id: session.packageId || null,
+            package_name: session.packageName || 'Tryout Full SKD',
+            questions_total: session.questions.length,
+            started_at: session.startedAt ? new Date(session.startedAt).toISOString() : new Date().toISOString(),
+            ...completedPayload,
+          });
+
+        if (fallbackInsertErr) throw fallbackInsertErr;
+      }
+
+      clearLocalExamArtifacts(session.id);
 
       const completedSession: ExamSession = {
         ...session,
         status: 'completed',
         completedAt: new Date(),
-        scores
+        scores,
       };
 
       dispatch({ type: 'FINALIZE_EXAM_STORE', payload: completedSession });
-
       fetchUserExamHistory();
-
     } catch (err) {
-      console.error("Terjadi kegagalan submit:", err);
-      setIsSyncLocked(false); 
+      console.error('Terjadi kegagalan submit:', err);
+      isSubmittingRef.current = false;
+      setIsSyncLocked(false);
       alert("Gagal mengirimkan jawaban. Pastikan koneksi internet stabil lalu klik 'Selesai' lagi.");
     }
   }
@@ -726,62 +824,156 @@ export function AppProvider({ children }: { children: ReactNode }) {
         .delete()
         .eq('id', resultId);
 
-      if (!error) { 
-        dispatch({ type: 'DELETE_EXAM_RESULT', payload: resultId }); 
+      if (!error) {
+        dispatch({ type: 'DELETE_EXAM_RESULT', payload: resultId });
         setExamHistory((prev) => prev.filter((item) => item.id !== resultId));
-        return true; 
+        return true;
       }
       return false;
-    } catch { return false; }
+    } catch {
+      return false;
+    }
   }
 
+  // Inisialisasi sesi 1x saat mount + validasi database & waktu nyata sebelum RESUME_EXAM
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        const savedId = getActiveSessionId();
-        if (savedId) {
-          const saved = loadExamProgress(savedId);
-          if (saved && (saved as any).status !== 'completed') {
-            const backupResultId = localStorage.getItem('active_db_result_id') || undefined;
+    let isMounted = true;
 
-            fetchQuestionsForExam(saved.examType, saved.packageId, (saved as any).packageType).then((questions) => {
-              dispatch({
-                type: 'RESUME_EXAM',
-                payload: {
-                  id: saved.sessionId, packageId: saved.packageId, packageName: saved.packageName,
-                  examType: saved.examType, questions, answers: saved.answers,
-                  currentQuestionIndex: saved.currentQuestionIndex, timeRemaining: saved.timeRemaining,
-                  status: 'in_progress', startedAt: new Date(saved.startedAt), 
-                  resultId: (saved as any).resultId || backupResultId || undefined,
-                  packageType: (saved as any).packageType
-                } as any
-              });
-            });
-          } else { 
-            localStorage.removeItem('exam_active_session_id'); 
-            localStorage.removeItem('active_db_result_id');
-          }
-        }
+    async function restoreSavedExamIfValid(userId: string) {
+      const savedId = getActiveSessionId();
+      if (!savedId) return;
+
+      const saved = loadExamProgress(savedId);
+      if (!saved || (saved as any).status === 'completed') {
+        clearLocalExamArtifacts(savedId);
+        return;
+      }
+
+      const dbResultId = (saved as any).resultId || localStorage.getItem('active_db_result_id') || undefined;
+      if (!dbResultId) {
+        clearLocalExamArtifacts(savedId);
+        return;
+      }
+
+      // 1. Cek apakah baris sesi masih ada dan benar-benar berstatus in_progress di Supabase
+      const { data: dbRow, error: dbCheckErr } = await supabase
+        .from('exam_results')
+        .select('id, status')
+        .eq('id', dbResultId)
+        .eq('participant_id', userId)
+        .maybeSingle();
+
+      if (!isMounted) return;
+
+      if (!dbCheckErr && (!dbRow || String(dbRow.status ?? '').toLowerCase() !== 'in_progress')) {
+        clearLocalExamArtifacts(savedId);
+        return;
+      }
+
+      // 2. Muat soal + tentukan batas durasi paket yang akurat
+      const questions = await fetchQuestionsForExam(saved.examType, saved.packageId, (saved as any).packageType);
+      if (!isMounted) return;
+
+      const storedInitialSec = Number(localStorage.getItem(ACTIVE_INITIAL_SECONDS_KEY) || 0);
+      let pkgDurationMinutes: number | null = null;
+      if (!storedInitialSec && saved.packageId) {
+        const { data: pkgMeta } = await supabase
+          .from('exam_packages')
+          .select('duration_minutes')
+          .eq('id', saved.packageId)
+          .maybeSingle();
+        pkgDurationMinutes = pkgMeta?.duration_minutes ?? null;
+      }
+
+      const initialSec = resolveInitialSeconds(
+        saved.examType,
+        questions.length,
+        (saved as any).packageType,
+        pkgDurationMinutes,
+        (saved as any).initialTimeSeconds || storedInitialSec || null
+      );
+
+      // 3. Hitung sisa waktu nyata sejak startedAt (anti timer freeze saat tab ditutup)
+      const actualRemaining = computeWallClockRemaining(saved.startedAt, initialSec);
+      const hasAnyAnswer = Object.values(saved.answers || {}).some((a: any) => Boolean(a?.selectedAnswer));
+
+      // Jika waktu sudah habis dan belum ada satu pun soal terjawab, bersihkan rapi agar tidak mengotori riwayat
+      if (actualRemaining <= 0 && !hasAnyAnswer) {
+        await supabase
+          .from('exam_results')
+          .delete()
+          .eq('id', dbResultId)
+          .eq('status', 'in_progress');
+        clearLocalExamArtifacts(savedId);
+        return;
+      }
+
+      if (!isMounted) return;
+
+      dispatch({
+        type: 'RESUME_EXAM',
+        payload: {
+          id: saved.sessionId,
+          packageId: saved.packageId,
+          packageName: saved.packageName,
+          examType: saved.examType,
+          questions,
+          answers: saved.answers,
+          currentQuestionIndex: saved.currentQuestionIndex,
+          timeRemaining: actualRemaining,
+          initialTimeSeconds: initialSec,
+          status: 'in_progress',
+          startedAt: new Date(saved.startedAt),
+          resultId: dbResultId,
+          packageType: (saved as any).packageType,
+        } as any,
+      });
+    }
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!isMounted) return;
+      if (session?.user) {
+        restoreSavedExamIfValid(session.user.id);
         refreshProfile();
         fetchUserExamHistory();
-      } else { dispatch({ type: 'SET_AUTH_LOADING', payload: false }); }
+      } else {
+        dispatch({ type: 'SET_AUTH_LOADING', payload: false });
+      }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_OUT' || !session) { dispatch({ type: 'LOGOUT' }); setExamHistory([]); return; }
+      if (event === 'SIGNED_OUT' || !session) {
+        dispatch({ type: 'LOGOUT' });
+        setExamHistory([]);
+        return;
+      }
       if (event === 'SIGNED_IN' && session.user) {
         refreshProfile();
-        fetchUserExamHistory(); 
+        fetchUserExamHistory();
       }
     });
-    return () => subscription.unsubscribe();
-  }, [fetchUserExamHistory]);
+
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
+  }, [fetchUserExamHistory, refreshProfile]);
 
   return (
-    <AppContext.Provider value={{ 
-      state, dispatch, signOut, refreshProfile, startExam, deleteHistory, submitExamSession,
-      examHistory, fetchUserExamHistory, fetchExamSnapshot
-    }}>
+    <AppContext.Provider
+      value={{
+        state,
+        dispatch,
+        signOut,
+        refreshProfile,
+        startExam,
+        deleteHistory,
+        submitExamSession,
+        examHistory,
+        fetchUserExamHistory,
+        fetchExamSnapshot,
+      }}
+    >
       {children}
     </AppContext.Provider>
   );
