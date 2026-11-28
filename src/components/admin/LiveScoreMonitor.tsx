@@ -514,7 +514,7 @@ export default function LiveScoreMonitor() {
               </div>
               <div>
                 <p className="text-xs sm:text-sm font-bold text-amber-300">
-                  Terdeteksi {expiredSessions.length} sesi terputus / kedaluwarsa (>2–3 jam tanpa submit)
+                  Terdeteksi {expiredSessions.length} sesi terputus / kedaluwarsa (lebih dari 2–3 jam tanpa submit)
                 </p>
                 <p className="text-[11px] text-slate-400 mt-0.5">
                   Otomatis disembunyikan agar tidak mengganggu pantauan hari ini dan tidak merusak statistik aktif.
